@@ -3,6 +3,24 @@ const { saveProfile, getProfile } = require("../store/profileStore");
 function validateProfile(data) {
   if (!data.fullName || typeof data.fullName !== "string") return "fullName is required";
   if (data.fullName.trim().length < 2) return "fullName must be at least 2 characters";
+
+  // email (optional, but if present must be valid)
+  if (data.email != null) {
+    if (typeof data.email !== "string") return "email must be a string";
+    const email = data.email.trim();
+    if (email.length === 0) return "email cannot be empty";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "email is invalid";
+  }
+
+  // phoneNumber (optional, but if present must be valid)
+  if (data.phoneNumber != null) {
+    if (typeof data.phoneNumber !== "string") return "phoneNumber must be a string";
+    const phone = data.phoneNumber.trim();
+    if (phone.length === 0) return "phoneNumber cannot be empty";
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length < 7) return "phoneNumber is invalid";
+  }
+
   return null;
 }
 
@@ -23,6 +41,20 @@ function normalizeEmergencyContact(value) {
   };
 }
 
+function normalizeEmail(value) {
+  if (typeof value !== "string") return null;
+  const email = value.trim().toLowerCase();
+  if (!email) return null;
+  return email;
+}
+
+function normalizePhoneNumber(value) {
+  if (typeof value !== "string") return null;
+  const phone = value.trim();
+  if (!phone) return null;
+  return phone;
+}
+
 // POST /profile (create or update)
 function postProfile(req, res) {
   const userId = req.userId;
@@ -36,6 +68,10 @@ function postProfile(req, res) {
     dateOfBirth: data.dateOfBirth || null,
     gender: data.gender || null,
     bloodType: data.bloodType || null,
+
+    email: normalizeEmail(data.email),
+    phoneNumber: normalizePhoneNumber(data.phoneNumber),
+
     allergies: normalizeStringArray(data.allergies),
     chronicConditions: normalizeStringArray(data.chronicConditions),
     emergencyContact: normalizeEmergencyContact(data.emergencyContact),
