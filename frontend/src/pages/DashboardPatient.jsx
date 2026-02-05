@@ -14,6 +14,7 @@ export default function DashboardPatient(){
         </button>
         <button
         type="button"
+        onClick = {() => navigate("/profilePatient")}
         className="bg-sky-600 px-4 py-2 text-white rounded-lg px-4 py-2 hover:bg-sky-500">
           Profile
         </button>
