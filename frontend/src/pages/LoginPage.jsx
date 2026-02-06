@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import bgImage from "../assets/landingBg.png";
 
-export default function LoginPage(){
+export default function LoginPage({ embedded = false, onClose }) {
     const navigate = useNavigate();
     const[showPassword, setShowPassword] = useState(false);
     function handleLogin(){
@@ -19,8 +20,30 @@ export default function LoginPage(){
     }
 
     return(
-        <div className="min-h-screen bg-gradient-to-b from-[#A0D6FF] to-[#cce9ff] flex items-center justify-center p-6">
-            <div className="shadow-md shadow-white w-full max-w-md rounded-2xl bg-[#1B7AC3]/30 border border-[#5286AE]/10 p-10">
+        <div
+            className={`flex items-center justify-center ${
+                embedded ? "" : "min-h-screen p-6"
+            }`}
+            style={
+                embedded
+                ? {}
+                : {
+                    backgroundImage: `url(${bgImage})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                    }
+            }
+        >
+
+            <div className="relative w-full max-w-md rounded-2xl bg-[#51b2e9]/10 backdrop-blur-sm border border-white/40 shadow-lg p-10">
+                {embedded && (
+                <button
+                    onClick={onClose}
+                    className="absolute top-4 right-4 text-white text-xl"
+                >
+                    ✕
+                </button>
+                )}
                 <div className="text-center">
                     <h1 className="text-4xl font-extrabold text-white">
                         Healio
@@ -61,14 +84,14 @@ export default function LoginPage(){
                     <button
                     type="button"
                     onClick={handleLogin}
-                    className="mt-3 w-full h-11 bg-sky-700 rounded-lg text-white font-semibold hover:bg-[#1c84d4]/90 transition">
+                    className="mt-3 w-full h-11 bg-sky-500 rounded-lg text-white font-semibold hover:bg-[#1c84d4]/90 transition">
                         Login
                     </button>
                     <p className="text-center text-white text-sm">
                         Don't have an account yet?{" "}
                         <span
                         onClick = {() => navigate("/signup")}
-                        className="text-sky-700 hover:underline cursor-pointer">
+                        className="text-sky-300 hover:underline cursor-pointer">
                             Sign up
                         </span>
                     </p>
