@@ -118,3 +118,17 @@ const login = async (req, res) => {
 };
 
 module.exports = { register, login };
+
+const me = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("email role isVerified createdAt");
+    if (!user) return res.status(404).json({ message: "User not found." });
+    return res.json({ user });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Server error." });
+  }
+};
+    
+
+module.exports = { register, login, me };
