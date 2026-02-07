@@ -11,11 +11,15 @@ export default function App() {
   const [message, setMessage] = useState("Loading...");
 
   useEffect(() => {
-    fetch("http://localhost:5050/health")
-      .then((res) => res.json())
-      .then((data) => setMessage(`Status: ${data.status}`))
-      .catch(() => setMessage("Backend not reachable"));
-  }, []);
+  const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5050";
+
+  fetch(`${apiUrl}/symptoms`)
+    .then((res) => res.json())
+    .then((data) => setMessage(`Symptoms loaded: ${data.length}`))
+    .catch(() => setMessage("Backend not reachable"));
+}, []);
+
+
 
   return (
     <BrowserRouter>
