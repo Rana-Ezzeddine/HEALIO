@@ -17,15 +17,19 @@ export default function DashboardPatient() {
     }
   }, []);
 
-  function handleLogout() {
-    try {
-      localStorage.removeItem("userRole");
-      localStorage.removeItem("firstName");
-    } catch (err) {
-      console.error(err);
-    }
-    navigate("/");
+function handleLogout() {
+  try {
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("user");
+
+    localStorage.removeItem("userRole");
+    localStorage.removeItem("firstName");
+  } catch (err) {
+    console.error(err);
   }
+  navigate("/");
+}
+
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-sky-100 to-white">
