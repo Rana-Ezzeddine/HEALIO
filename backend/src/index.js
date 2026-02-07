@@ -3,6 +3,7 @@ const cors = require("cors");
 require("dotenv").config();
 
 const profileRoutes = require("./routes/profileRoutes");
+const symptomsRoutes = require("./routes/symptoms.routes");
 
 const app = express();
 
@@ -15,8 +16,9 @@ app.get("/", (req, res) => {
   res.status(200).send("HEALIO backend is running ✅");
 });
 
-// US5 routes
+// Routes
 app.use("/profile", profileRoutes);
+app.use("/symptoms", symptomsRoutes);
 
 const PORT = process.env.PORT || 5050;
 app.listen(PORT, () => {
