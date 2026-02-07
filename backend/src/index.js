@@ -4,7 +4,15 @@
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, "../../.env") });
 
-console.log("ENV loaded. Has MONGO_URI?", !!process.env.MONGO_URI);
+/////////////////////////////////////////////////
+// ✅ Fail-fast env validation (production habit)
+/////////////////////////////////////////////////
+const requiredEnv = ["MONGO_URI", "JWT_ACCESS_SECRET"];
+for (const key of requiredEnv) {
+  if (!process.env[key]) {
+    throw new Error(`Missing required environment variable: ${key}`);
+  }
+}
 
 /////////////////////////////////////////////////
 // ✅ Core Imports
@@ -15,8 +23,8 @@ const cors = require("cors");
 // Database
 const connectDB = require("./config/db");
 
-// Routes  ⭐⭐⭐ ALL ROUTES MUST BE HERE
-const authRoutes = require("./routes/auth.routes.js");
+// Routes
+const authRoutes = require("./routes/auth.routes");
 const profileRoutes = require("./routes/profileRoutes");
 const symptomsRoutes = require("./routes/symptoms.routes");
 
@@ -28,33 +36,43 @@ const app = express();
 /////////////////////////////////////////////////
 // ✅ Middlewares
 /////////////////////////////////////////////////
-app.use(cors());
-app.use(express.json());
+
+// CORS: lock this down later to your frontend origin
+app.use(
+  cors({
+    origin: true, // ok for dev; in prod set to your frontend URL
+    credentials: true,
+  })
+);
+
+app.use(express.json({ limit: "1mb" })); // basic hardening
 
 /////////////////////////////////////////////////
 // ✅ Health Route
 /////////////////////////////////////////////////
-app.get("/", (req, res) => {
-  res.status(200).send("HEALIO backend is running ✅");
+app.get("/health", (req, res) => {
+  res.status(200).json({ ok: true, service: "healio-backend" });
 });
 
-console.log("authRoutes type:", typeof authRoutes);
-console.log("profileRoutes type:", typeof profileRoutes);
-console.log("symptomsRoutes type:", typeof symptomsRoutes);
+/////////////////////////////////////////////////
+// ✅ API Routes (use a consistent prefix)
+/////////////////////////////////////////////////
+app.use("/api/auth", authRoutes);
+app.use("/api/profile", profileRoutes);
+app.use("/api/symptoms", symptomsRoutes);
 
 /////////////////////////////////////////////////
-// ✅ API Routes
+// ✅ Global error handler (minimal but important)
 /////////////////////////////////////////////////
-app.use("/auth", authRoutes);
-app.use("/profile", profileRoutes);
-app.use("/symptoms", symptomsRoutes);
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ message: "Internal server error" });
+});
 
 /////////////////////////////////////////////////
 // ✅ Start Server ONLY after DB connects
 /////////////////////////////////////////////////
 const PORT = process.env.PORT || 5050;
-
-console.log("About to connect DB...");
 
 connectDB().then(() => {
   app.listen(PORT, () => {

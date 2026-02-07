@@ -1,12 +1,12 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const validator = require("validator");
 const User = require("../models/User");
 
-// simple strong password check
 function isStrongPassword(pw) {
   return (
     typeof pw === "string" &&
-    pw.length >= 8 &&
+    pw.length >= 10 &&
     /[A-Z]/.test(pw) &&
     /[a-z]/.test(pw) &&
     /[0-9]/.test(pw)
@@ -15,39 +15,52 @@ function isStrongPassword(pw) {
 
 const register = async (req, res) => {
   try {
-    const { email, password, role } = req.body;
+    const { email, password } = req.body;
 
-    // 1) validate
     if (!email || !password) {
       return res.status(400).json({ message: "Email and password are required." });
     }
+
+    if (!validator.isEmail(String(email))) {
+      return res.status(400).json({ message: "Invalid email format." });
+    }
+
     if (!isStrongPassword(password)) {
       return res.status(400).json({
-        message: "Password must be 8+ chars and include uppercase, lowercase, and a number.",
+        message: "Password must be 10+ chars and include uppercase, lowercase, and a number.",
       });
     }
 
-    const cleanEmail = String(email).toLowerCase().trim();
+    const cleanEmail = String(email || "").toLowerCase().trim();
 
-    // 2) block duplicates
-    const existing = await User.findOne({ email: cleanEmail });
+    // light UX pre-check
+    const existing = await User.exists({ email: cleanEmail });
     if (existing) {
       return res.status(409).json({ message: "Email already registered." });
     }
 
-    // 3) hash password
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(password, 12);
 
-    // 4) create user in DB
-    await User.create({
+    const user = await User.create({
       email: cleanEmail,
-      password: passwordHash,   // stored hashed
-      role: role || "patient",
+      passwordHash,
+      role: "patient",
       isVerified: false,
     });
 
-    return res.status(201).json({ message: "Registered successfully. Please verify your email." });
+    return res.status(201).json({
+      message: "Registered successfully. Please verify your email.",
+      user: {
+        id: user._id,
+        email: user.email,
+        role: user.role,
+        isVerified: user.isVerified,
+      },
+    });
   } catch (err) {
+    if (err && err.code === 11000) {
+      return res.status(409).json({ message: "Email already registered." });
+    }
     console.error(err);
     return res.status(500).json({ message: "Server error during registration." });
   }
@@ -57,42 +70,45 @@ const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // 1) validate
     if (!email || !password) {
       return res.status(400).json({ message: "Email and password are required." });
     }
 
-    const cleanEmail = String(email).toLowerCase().trim();
+    if (!validator.isEmail(String(email))) {
+      return res.status(400).json({ message: "Invalid email format." });
+    }
 
-    // 2) find user
-    const user = await User.findOne({ email: cleanEmail });
+    const cleanEmail = String(email || "").toLowerCase().trim();
+
+    const user = await User.findOne({ email: cleanEmail }).select("+passwordHash");
     if (!user) {
-      return res.status(400).json({ message: "Invalid credentials." });
+      return res.status(401).json({ message: "Invalid credentials." });
     }
 
-    // 3) check password
-    const ok = await bcrypt.compare(password, user.password);
+    const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) {
-      return res.status(400).json({ message: "Invalid credentials." });
+      return res.status(401).json({ message: "Invalid credentials." });
     }
 
-    // 4) (later) block if not verified
-    // if (!user.isVerified) return res.status(403).json({ message: "Verify your email first." });
-
-    // 5) issue JWT
-    if (!process.env.JWT_SECRET) {
-      return res.status(500).json({ message: "JWT_SECRET missing in .env" });
+    const secret = process.env.JWT_ACCESS_SECRET;
+    if (!secret) {
+      return res.status(500).json({ message: "Server misconfigured." });
     }
 
     const token = jwt.sign(
-      { id: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { sub: user._id.toString(), role: user.role, isVerified: user.isVerified },
+      secret,
+      { expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || "15m" }
     );
 
     return res.json({
       token,
-      role: user.role,
+      user: {
+        id: user._id,
+        email: user.email,
+        role: user.role,
+        isVerified: user.isVerified,
+      },
       message: "Login successful",
     });
   } catch (err) {
