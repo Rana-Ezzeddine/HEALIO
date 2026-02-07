@@ -1,4 +1,4 @@
-import { apiUrl } from "./api/http";
+import { apiUrl, authHeaders } from "./api/http";
 import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
@@ -14,7 +14,12 @@ export default function App() {
   useEffect(() => {
   const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5050";
 
-fetch(`${apiUrl}/api/symptoms`)
+
+fetch(`${apiUrl}/api/symptoms`, {
+  headers: {
+    ...authHeaders(),
+  },
+})
     .then((res) => res.json())
     .then((data) => setMessage(`Symptoms loaded: ${data.length}`))
     .catch(() => setMessage("Backend not reachable"));
