@@ -1,55 +1,31 @@
 const { saveProfile, getProfile } = require("../store/profileStore");
 
-function extractNames(data) {
-  // Preferred new fields
-  let firstName = typeof data.firstName === "string" ? data.firstName.trim() : "";
-  let lastName = typeof data.lastName === "string" ? data.lastName.trim() : "";
+// Letters-only (Unicode) + at least 2 chars. (Supports Arabic/Latin/etc letters)
+// If you truly want ONLY English letters, replace with: /^[A-Za-z]{2,}$/
+const NAME_REGEX = /^[\p{L}]{2,}$/u;
 
-  // Backward compatibility: if old client sends fullName, split it
-  if ((!firstName || !lastName) && typeof data.fullName === "string") {
-    const parts = data.fullName.trim().split(/\s+/).filter(Boolean);
-    if (!firstName && parts.length >= 1) firstName = parts[0];
-    if (!lastName && parts.length >= 2) lastName = parts.slice(1).join(" ");
-  }
+const ALLOWED_GENDERS = new Set(["male", "female"]);
+const ALLOWED_BLOOD_TYPES = new Set(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]);
 
-  return { firstName, lastName };
+function normalizeName(value) {
+  if (typeof value !== "string") return null;
+  const v = value.trim();
+  if (!v) return null;
+  return v;
 }
 
-function validateProfile(data) {
-  const { firstName, lastName } = extractNames(data);
-
-  if (!firstName) return "firstName is required";
-  if (firstName.length < 2) return "firstName must be at least 2 characters";
-
-  if (!lastName) return "lastName is required";
-  if (lastName.length < 2) return "lastName must be at least 2 characters";
-
-  // email (optional, but if present must be valid)
-  if (data.email != null) {
-    if (typeof data.email !== "string") return "email must be a string";
-    const email = data.email.trim();
-    if (email.length === 0) return "email cannot be empty";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "email is invalid";
-  }
-
-  // phoneNumber (optional, but if present must be valid)
-  if (data.phoneNumber != null) {
-    if (typeof data.phoneNumber !== "string") return "phoneNumber must be a string";
-    const phone = data.phoneNumber.trim();
-    if (phone.length === 0) return "phoneNumber cannot be empty";
-    const digits = phone.replace(/\D/g, "");
-    if (digits.length < 7) return "phoneNumber is invalid";
-  }
-
-  return null;
+function normalizeGender(value) {
+  if (typeof value !== "string") return null;
+  const v = value.trim().toLowerCase();
+  if (!v) return null;
+  return v;
 }
 
-function normalizeStringArray(value) {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((x) => typeof x === "string")
-    .map((x) => x.trim())
-    .filter((x) => x.length > 0);
+function normalizeBloodType(value) {
+  if (typeof value !== "string") return null;
+  const v = value.trim().toUpperCase();
+  if (!v) return null;
+  return v;
 }
 
 function normalizeEmail(value) {
@@ -66,10 +42,75 @@ function normalizePhoneNumber(value) {
   return phone;
 }
 
+function isValidName(value) {
+  if (typeof value !== "string") return false;
+  const v = value.trim();
+  return NAME_REGEX.test(v);
+}
+
+function isValidEmail(value) {
+  if (typeof value !== "string") return false;
+  const v = value.trim();
+  if (!v) return false;
+  // Simple practical email check (not perfect, but good enough for most apps)
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
+function isValidPhoneNumber(value) {
+  if (typeof value !== "string") return false;
+  const v = value.trim();
+  if (!v) return false;
+
+  // Allow +, spaces, hyphens, parentheses. Reject other weird chars.
+  if (!/^[0-9+()\-\s]+$/.test(v)) return false;
+
+  // Must have enough digits to be a real number
+  const digits = v.replace(/\D/g, "");
+  return digits.length >= 7 && digits.length <= 15;
+}
+
+function isValidDateOfBirth(value) {
+  if (typeof value !== "string") return false;
+  const v = value.trim();
+
+  // Require YYYY-MM-DD
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+
+  const [y, m, d] = v.split("-").map(Number);
+
+  // Basic sanity
+  if (m < 1 || m > 12) return false;
+  if (d < 1 || d > 31) return false;
+
+  // Validate it's an actual calendar date
+  const date = new Date(Date.UTC(y, m - 1, d));
+  if (
+    date.getUTCFullYear() !== y ||
+    date.getUTCMonth() !== m - 1 ||
+    date.getUTCDate() !== d
+  ) {
+    return false;
+  }
+
+  // Not in the future
+  const now = new Date();
+  if (date.getTime() > now.getTime()) return false;
+
+  return true;
+}
+
+function normalizeStringArray(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((x) => typeof x === "string")
+    .map((x) => x.trim())
+    .filter((x) => x.length > 0);
+}
+
 function normalizeEmergencyContact(value) {
   if (!value || typeof value !== "object") return null;
 
-  // Backward compatibility: accept `phone` too
+  // accept old key `phone` too
   const rawPhone = value.phoneNumber ?? value.phone;
 
   return {
@@ -77,6 +118,68 @@ function normalizeEmergencyContact(value) {
     relationship: typeof value.relationship === "string" ? value.relationship.trim() : null,
     phoneNumber: typeof rawPhone === "string" ? rawPhone.trim() : null,
   };
+}
+
+function validateProfile(data) {
+  // Required: firstName
+  if (data.firstName == null) return "firstName is required";
+  if (typeof data.firstName !== "string") return "firstName must be a string";
+  if (!isValidName(data.firstName)) return "firstName must be at least 2 letters and contain only letters";
+
+  // Required: lastName
+  if (data.lastName == null) return "lastName is required";
+  if (typeof data.lastName !== "string") return "lastName must be a string";
+  if (!isValidName(data.lastName)) return "lastName must be at least 2 letters and contain only letters";
+
+  // Required: gender (male/female)
+  if (data.gender == null) return "gender is required";
+  if (typeof data.gender !== "string") return "gender must be a string";
+  const gender = normalizeGender(data.gender);
+  if (!gender || !ALLOWED_GENDERS.has(gender)) return "gender must be either 'male' or 'female'";
+
+  // Required: dateOfBirth (YYYY-MM-DD)
+  if (data.dateOfBirth == null) return "dateOfBirth is required";
+  if (typeof data.dateOfBirth !== "string") return "dateOfBirth must be a string";
+  if (!isValidDateOfBirth(data.dateOfBirth)) return "dateOfBirth must be a valid date in YYYY-MM-DD format (not in the future)";
+
+  // Required: phoneNumber
+  if (data.phoneNumber == null) return "phoneNumber is required";
+  if (typeof data.phoneNumber !== "string") return "phoneNumber must be a string";
+  if (!isValidPhoneNumber(data.phoneNumber)) return "phoneNumber is invalid";
+
+  // Required: bloodType
+  if (data.bloodType == null) return "bloodType is required";
+  if (typeof data.bloodType !== "string") return "bloodType must be a string";
+  const bloodType = normalizeBloodType(data.bloodType);
+  if (!bloodType || !ALLOWED_BLOOD_TYPES.has(bloodType)) {
+    return "bloodType must be one of: A+, A-, B+, B-, AB+, AB-, O+, O-";
+  }
+
+  // Optional: email (if present, must be valid)
+  if (data.email != null) {
+    if (typeof data.email !== "string") return "email must be a string";
+    if (!isValidEmail(data.email)) return "email is invalid";
+  }
+
+  // Optional: emergencyContact (if present, validate fields)
+  if (data.emergencyContact != null) {
+    if (typeof data.emergencyContact !== "object") return "emergencyContact must be an object";
+
+    const ec = normalizeEmergencyContact(data.emergencyContact);
+    if (!ec) return "emergencyContact is invalid";
+
+    if (ec.name != null && ec.name !== "" && !isValidName(ec.name)) {
+      return "emergencyContact.name must be at least 2 letters and contain only letters";
+    }
+    if (ec.phoneNumber != null && ec.phoneNumber !== "" && !isValidPhoneNumber(ec.phoneNumber)) {
+      return "emergencyContact.phoneNumber is invalid";
+    }
+    if (ec.relationship != null && typeof ec.relationship !== "string") {
+      return "emergencyContact.relationship must be a string";
+    }
+  }
+
+  return null;
 }
 
 // POST /profile (create or update)
@@ -87,25 +190,23 @@ function postProfile(req, res) {
   const error = validateProfile(data);
   if (error) return res.status(400).json({ message: error });
 
-  const { firstName, lastName } = extractNames(data);
-
   const profile = {
-    // Personal Information
-    firstName,
-    lastName,
-    gender: data.gender || null,
-    dateOfBirth: data.dateOfBirth || null,
+    // Personal Information (required)
+    firstName: normalizeName(data.firstName),
+    lastName: normalizeName(data.lastName),
+    gender: normalizeGender(data.gender),
+    dateOfBirth: data.dateOfBirth.trim(),
 
-    // Medical Information
+    // Medical Information (required bloodType; others optional arrays)
     allergies: normalizeStringArray(data.allergies),
     chronicConditions: normalizeStringArray(data.chronicConditions),
-    bloodType: data.bloodType || null,
+    bloodType: normalizeBloodType(data.bloodType),
 
     // Contact Information
     phoneNumber: normalizePhoneNumber(data.phoneNumber),
-    email: normalizeEmail(data.email),
+    email: data.email != null ? normalizeEmail(data.email) : null,
 
-    // Emergency Contact
+    // Emergency Contact (optional)
     emergencyContact: normalizeEmergencyContact(data.emergencyContact),
 
     updatedAt: new Date().toISOString(),
