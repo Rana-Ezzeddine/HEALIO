@@ -3,7 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import sequelize, { testConnection } from './database.js';
 import Medication from './models/Medication.js';
-import medicationRoutes from './routes/medications.js'
+import medicationRoutes from './src/routes/medications.routes.js'
 
 dotenv.config();
 
