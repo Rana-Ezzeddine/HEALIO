@@ -1,20 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-<<<<<<< HEAD
 import { register as registerApi } from "../api/auth"; // adjust path if needed
 
 export default function SignupPage() {
-=======
-import bgImage from "../assets/bg-medical.png";
-
-export default function SignupPage({ embedded = false, onClose }) {
->>>>>>> frontend-roua
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [userType, setUserType] = useState("patient");
 
-<<<<<<< HEAD
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -59,51 +52,6 @@ export default function SignupPage({ embedded = false, onClose }) {
         <div className="text-center">
           <h1 className="text-4xl font-extrabold text-white">Healio</h1>
           <p className="mt-2 text-sm text-white">Create your account to get started.</p>
-=======
-  function handleCreateAccount() {
-    try {
-      localStorage.setItem("userRole", userType);
-    } catch (err) {
-      console.error("Failed to save role", err);
-    }
-    // if embedded, close modal instead of navigating away
-    if (embedded) onClose?.();
-    else navigate("/");
-  }
-
-  return (
-    <div
-      className={`flex items-center justify-center ${
-        embedded ? "" : "min-h-screen p-6"
-      }`}
-      style={
-        embedded
-          ? {}
-          : {
-              backgroundImage: `url(${bgImage})`,
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-            }
-      }
-    >
-      <div className="relative w-full max-w-md rounded-2xl bg-white/10 backdrop-blur-sm border border-white/10 shadow-lg p-10">
-        {/* Close button only in modal */}
-        {embedded && (
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 text-white text-xl hover:opacity-80"
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        )}
-
-        <div className="text-center">
-          <h1 className="text-4xl font-extrabold text-white">Healio</h1>
-          <p className="mt-2 text-sm text-white">
-            Create your account to get started.
-          </p>
->>>>>>> frontend-roua
         </div>
 
         <div className="mt-4 space-y-3">
@@ -142,7 +90,6 @@ export default function SignupPage({ embedded = false, onClose }) {
           </p>
         </div>
 
-<<<<<<< HEAD
         <form className="space-y-4 mt-4" onSubmit={handleCreateAccount}>
           <div className="flex gap-2">
             <div className="space-y-2 w-full">
@@ -152,17 +99,6 @@ export default function SignupPage({ embedded = false, onClose }) {
                 placeholder="First Name"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
-=======
-        <form className="space-y-4 mt-4">
-          <div className="flex gap-2">
-            <div className="space-y-2 w-full">
-              <label className="text-sm font-medium text-white">
-                First Name
-              </label>
-              <input
-                type="text"
-                placeholder="First Name"
->>>>>>> frontend-roua
                 className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-500 focus:ring-sky-500"
               />
             </div>
@@ -171,18 +107,14 @@ export default function SignupPage({ embedded = false, onClose }) {
               <input
                 type="text"
                 placeholder="Last Name"
-<<<<<<< HEAD
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
-=======
->>>>>>> frontend-roua
                 className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-500 focus:ring-sky-500"
               />
             </div>
           </div>
 
           <div className="space-y-2">
-<<<<<<< HEAD
             <label className="text-sm font-medium text-white">Email Address</label>
             <input
               type="email"
@@ -192,15 +124,6 @@ export default function SignupPage({ embedded = false, onClose }) {
               autoComplete="email"
               className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-500 focus:ring-sky-500"
               required
-=======
-            <label className="text-sm font-medium text-white">
-              Email Address
-            </label>
-            <input
-              type="email"
-              placeholder="username@gmail.com"
-              className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-500 focus:ring-sky-500"
->>>>>>> frontend-roua
             />
           </div>
 
@@ -210,15 +133,11 @@ export default function SignupPage({ embedded = false, onClose }) {
               <input
                 type={showPassword ? "text" : "password"}
                 placeholder="•••••••••"
-<<<<<<< HEAD
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="new-password"
                 className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-500 focus:ring-sky-500"
                 required
-=======
-                className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-500 focus:ring-sky-500"
->>>>>>> frontend-roua
               />
               <button
                 type="button"
@@ -228,7 +147,6 @@ export default function SignupPage({ embedded = false, onClose }) {
                 {showPassword ? "Hide" : "Show"}
               </button>
             </div>
-<<<<<<< HEAD
             <p className="text-xs text-sky-50">
               Password must be 10+ chars and include uppercase, lowercase, and a number.
             </p>
@@ -236,27 +154,15 @@ export default function SignupPage({ embedded = false, onClose }) {
 
           <div className="space-y-2">
             <label className="text-sm font-medium text-white">Confirm Password</label>
-=======
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-white">
-              Confirm Password
-            </label>
->>>>>>> frontend-roua
             <div className="relative">
               <input
                 type={showConfirm ? "text" : "password"}
                 placeholder="•••••••••"
-<<<<<<< HEAD
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 autoComplete="new-password"
                 className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-500 focus:ring-sky-500"
                 required
-=======
-                className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-500 focus:ring-sky-500"
->>>>>>> frontend-roua
               />
               <button
                 type="button"
@@ -268,7 +174,6 @@ export default function SignupPage({ embedded = false, onClose }) {
             </div>
           </div>
 
-<<<<<<< HEAD
           {error ? (
             <div className="text-sm text-red-100 bg-red-600/30 border border-red-200/30 rounded-lg p-2">
               {error}
@@ -287,26 +192,13 @@ export default function SignupPage({ embedded = false, onClose }) {
             className="mt-3 w-full h-11 bg-sky-700 rounded-lg text-white font-semibold hover:bg-[#1c84d4]/90 transition disabled:opacity-70"
           >
             {loading ? "Creating..." : "Create Account"}
-=======
-          <button
-            type="button"
-            onClick={handleCreateAccount}
-            className="mt-3 w-full h-11 bg-sky-700 rounded-lg text-white font-semibold hover:bg-[#1c84d4]/90 transition"
-          >
-            Create Account
->>>>>>> frontend-roua
           </button>
 
           <p className="text-center text-white text-sm">
             Already have an account?{" "}
             <span
-<<<<<<< HEAD
               onClick={() => navigate("/login")} // change if your login route is "/"
               className="text-sky-700 hover:underline cursor-pointer"
-=======
-              onClick={() => (embedded ? onClose?.() : navigate("/login"))}
-              className="text-sky-300 hover:underline cursor-pointer"
->>>>>>> frontend-roua
             >
               Login
             </span>
