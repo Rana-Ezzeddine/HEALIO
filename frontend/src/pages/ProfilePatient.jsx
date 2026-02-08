@@ -1,5 +1,18 @@
+import { apiUrl, authHeaders } from "../api/http";
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+function canonGender(g) {
+  if (!g) return "";
+  const s = String(g).trim().toLowerCase();
+  if (s === "male") return "Male";
+  if (s === "female") return "Female";
+  if (s === "prefer not to say" || s === "prefer-not-to-say" || s === "prefer_not_to_say") {
+    return "Prefer not to say";
+  }
+  return "";
+}
+
 
 function FormInput({ label, type="text", value, onChange, isEditing, options }) {
   return (
@@ -65,44 +78,100 @@ export default function ProfilePatient(){
     
 
     useEffect(() => {
-        try{
-            setFirstName(localStorage.getItem("firstName") || "");
-            setLastName(localStorage.getItem("lastName") || "");
-            setEmail(localStorage.getItem("email") || "");
-            setPhone(localStorage.getItem("phone") || "");
-            setGender(localStorage.getItem("gender") || "");
-            setDateOfBirth(localStorage.getItem("dateOfBirth") || "");
-            setAllergies(localStorage.getItem("allergies") || "");
-            setConditions(localStorage.getItem("conditions") || "");
-            setBloodType(localStorage.getItem("bloodType") || "");
-            setEmName(localStorage.getItem("emName") || "");
-            setRelationship(localStorage.getItem("relationship") || "");
-            setEmPhone(localStorage.getItem("emPhone") || "");
-        } catch(err){
-            console.error(err)
-        }
-    }, []);
+  (async () => {
+    try {
+      const res = await fetch(`${apiUrl}/api/profile`, {
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+      });
 
-    function handleSave() {
-        try {
-            localStorage.setItem("firstName", firstName);
-            localStorage.setItem("lastName", lastName);
-            localStorage.setItem("email", email);
-            localStorage.setItem("phone", phone);
-            localStorage.setItem("gender", gender);
-            localStorage.setItem("dateOfBirth", dateOfBirth);
-            localStorage.setItem("allergies", allergies);
-            localStorage.setItem("conditions", conditions);
-            localStorage.setItem("bloodType", bloodType);
-            localStorage.setItem("emName", emName);
-            localStorage.setItem("relationship", relationship);
-            localStorage.setItem("emPhone", emPhone);
+      if (res.status === 404) return; // no profile yet
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.error("Failed to load profile:", err);
+        return;
+      }
 
-            setIsEditing(false);
-        } catch(err) {
-            console.error(err);
-        }
+      const p = await res.json();
+
+      setFirstName(p.firstName || "");
+      setLastName(p.lastName || "");
+      setGender(p.gender || "");
+      setDateOfBirth(p.dateOfBirth || "");
+      setBloodType(p.bloodType || "");
+      setPhone(p.phoneNumber || "");
+      setEmail(p.email || "");
+
+      setAllergies((p.allergies || []).join(", "));
+      setConditions((p.chronicConditions || []).join(", "));
+
+      setEmName(p.emergencyContact?.name || "");
+      setRelationship(p.emergencyContact?.relationship || "");
+      setEmPhone(p.emergencyContact?.phoneNumber || "");
+    } catch (err) {
+      console.error(err);
     }
+  })();
+}, []);
+
+
+    async function handleSave() {
+  try {
+    const payload = {
+      firstName,
+      lastName,
+      gender,
+      dateOfBirth,
+      bloodType,
+      phoneNumber: phone,
+      email,
+      allergies: allergies
+        ? allergies.split(",").map((x) => x.trim()).filter(Boolean)
+        : [],
+      chronicConditions: conditions
+        ? conditions.split(",").map((x) => x.trim()).filter(Boolean)
+        : [],
+      emergencyContact: {
+        name: emName,
+        relationship,
+        phoneNumber: emPhone,
+      },
+    };
+
+    const res = await fetch(`${apiUrl}/api/profile`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      // IMPORTANT: don’t close edit mode if backend rejected
+      alert(data.message || "Failed to save profile");
+      return;
+    }
+
+    // Update UI from saved backend response
+    setFirstName(data.firstName || "");
+    setLastName(data.lastName || "");
+setGender(canonGender(data.gender));
+    setDateOfBirth(data.dateOfBirth || "");
+    setBloodType(data.bloodType || "");
+    setPhone(data.phoneNumber || "");
+    setEmail(data.email || "");
+    setAllergies((data.allergies || []).join(", "));
+    setConditions((data.chronicConditions || []).join(", "));
+    setEmName(data.emergencyContact?.name || "");
+    setRelationship(data.emergencyContact?.relationship || "");
+    setEmPhone(data.emergencyContact?.phoneNumber || "");
+
+    setIsEditing(false);
+  } catch (err) {
+    console.error(err);
+    alert("Network error while saving profile.");
+  }
+}
+
 
     function handleCancel() {
         setIsEditing(false);

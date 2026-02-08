@@ -4,6 +4,8 @@ node_modules/
 # Environment variables
 .env
 .env.local
+backend/.env
+
 
 # Logs
 npm-debug.log*
@@ -24,3 +26,5 @@ Thumbs.db
 
 # Coverage
 coverage/
+
+

@@ -1,214 +1,199 @@
+// backend/src/controllers/profileController.js
+
 const { saveProfile, getProfile } = require("../store/profileStore");
 
-// Letters-only (Unicode) + at least 2 chars. (Supports Arabic/Latin/etc letters)
-// If you truly want ONLY English letters, replace with: /^[A-Za-z]{2,}$/
-const NAME_REGEX = /^[\p{L}]{2,}$/u;
-
-const ALLOWED_GENDERS = new Set(["male", "female"]);
+// Allowed values
+const ALLOWED_GENDERS = new Set(["Male", "Female", "Prefer not to say"]);
 const ALLOWED_BLOOD_TYPES = new Set(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]);
 
-function normalizeName(value) {
-  if (typeof value !== "string") return null;
-  const v = value.trim();
-  if (!v) return null;
-  return v;
+// Simple validators / normalizers
+function normString(v) {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  return s.length ? s : null;
 }
 
+function isAlphaOnly(v) {
+  // Strict letters only (no spaces/hyphens). If you want to allow spaces/hyphens, tell me.
+  return /^[A-Za-z]+$/.test(v);
+}
+
+function normalizeName(value, fieldName) {
+  const s = normString(value);
+  if (!s) return { error: `${fieldName} is required` };
+  if (s.length < 2) return { error: `${fieldName} must be at least 2 characters` };
+  if (!isAlphaOnly(s)) return { error: `${fieldName} must contain letters only` };
+  return { value: s };
+}
+
+const GENDER_CANON = {
+  male: "Male",
+  female: "Female",
+  "prefer not to say": "Prefer not to say",
+  "prefer-not-to-say": "Prefer not to say",
+  "prefer_not_to_say": "Prefer not to say",
+};
+
 function normalizeGender(value) {
-  if (typeof value !== "string") return null;
-  const v = value.trim().toLowerCase();
-  if (!v) return null;
-  return v;
+  if (typeof value !== "string") return { error: "gender is required" };
+  const key = value.trim().toLowerCase();
+  const canon = GENDER_CANON[key];
+  if (!canon) return { error: "gender must be Male, Female, or Prefer not to say" };
+  return { value: canon };
+}
+
+function isValidYYYYMMDD(dateStr) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
+  const d = new Date(`${dateStr}T00:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) return false;
+
+  // Ensure it didn’t auto-correct (e.g., 2026-02-31 -> March)
+  const [y, m, day] = dateStr.split("-").map((x) => parseInt(x, 10));
+  return (
+    d.getUTCFullYear() === y &&
+    d.getUTCMonth() + 1 === m &&
+    d.getUTCDate() === day
+  );
+}
+
+function normalizeDateOfBirth(value) {
+  const s = normString(value);
+  if (!s) return { error: "dateOfBirth is required" };
+  if (!isValidYYYYMMDD(s)) return { error: "dateOfBirth must be in YYYY-MM-DD format and be a real date" };
+  return { value: s };
 }
 
 function normalizeBloodType(value) {
-  if (typeof value !== "string") return null;
-  const v = value.trim().toUpperCase();
-  if (!v) return null;
-  return v;
+  const s = normString(value);
+  if (!s) return { error: "bloodType is required" };
+  if (!ALLOWED_BLOOD_TYPES.has(s)) return { error: "bloodType must be one of: A+, A-, B+, B-, AB+, AB-, O+, O-" };
+  return { value: s };
 }
 
 function normalizeEmail(value) {
-  if (typeof value !== "string") return null;
-  const email = value.trim().toLowerCase();
-  if (!email) return null;
-  return email;
+  const s = normString(value);
+  if (!s) return { value: null }; // optional
+  const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+  if (!ok) return { error: "email must be a valid email address" };
+  return { value: s };
 }
 
-function normalizePhoneNumber(value) {
-  if (typeof value !== "string") return null;
-  const phone = value.trim();
-  if (!phone) return null;
-  return phone;
-}
+function normalizePhoneNumber(value, fieldName = "phoneNumber", required = true) {
+  const s = normString(value);
+  if (!s) return required ? { error: `${fieldName} is required` } : { value: null };
 
-function isValidName(value) {
-  if (typeof value !== "string") return false;
-  const v = value.trim();
-  return NAME_REGEX.test(v);
-}
+  // Allow +, spaces, -, (), and digits; then validate digit count
+  if (!/^[+\d\s()-]+$/.test(s)) return { error: `${fieldName} must contain only digits and optional +, spaces, (), -` };
 
-function isValidEmail(value) {
-  if (typeof value !== "string") return false;
-  const v = value.trim();
-  if (!v) return false;
-  // Simple practical email check (not perfect, but good enough for most apps)
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-}
+  const digits = s.replace(/[^\d]/g, "");
+  if (digits.length < 8 || digits.length > 15) return { error: `${fieldName} must have 8 to 15 digits` };
 
-function isValidPhoneNumber(value) {
-  if (typeof value !== "string") return false;
-  const v = value.trim();
-  if (!v) return false;
-
-  // Allow +, spaces, hyphens, parentheses. Reject other weird chars.
-  if (!/^[0-9+()\-\s]+$/.test(v)) return false;
-
-  // Must have enough digits to be a real number
-  const digits = v.replace(/\D/g, "");
-  return digits.length >= 7 && digits.length <= 15;
-}
-
-function isValidDateOfBirth(value) {
-  if (typeof value !== "string") return false;
-  const v = value.trim();
-
-  // Require YYYY-MM-DD
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
-
-  const [y, m, d] = v.split("-").map(Number);
-
-  // Basic sanity
-  if (m < 1 || m > 12) return false;
-  if (d < 1 || d > 31) return false;
-
-  // Validate it's an actual calendar date
-  const date = new Date(Date.UTC(y, m - 1, d));
-  if (
-    date.getUTCFullYear() !== y ||
-    date.getUTCMonth() !== m - 1 ||
-    date.getUTCDate() !== d
-  ) {
-    return false;
-  }
-
-  // Not in the future
-  const now = new Date();
-  if (date.getTime() > now.getTime()) return false;
-
-  return true;
+  // Normalize: keep leading + if user provided it, otherwise store digits only
+  const normalized = s.trim().startsWith("+") ? `+${digits}` : digits;
+  return { value: normalized };
 }
 
 function normalizeStringArray(value) {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((x) => typeof x === "string")
-    .map((x) => x.trim())
-    .filter((x) => x.length > 0);
+  // Accept array OR comma-separated string from UI
+  if (Array.isArray(value)) {
+    return value
+      .filter((x) => typeof x === "string")
+      .map((x) => x.trim())
+      .filter((x) => x.length > 0);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((x) => x.trim())
+      .filter((x) => x.length > 0);
+  }
+  return [];
 }
 
 function normalizeEmergencyContact(value) {
-  if (!value || typeof value !== "object") return null;
+  if (!value || typeof value !== "object") return { value: null };
 
-  // accept old key `phone` too
-  const rawPhone = value.phoneNumber ?? value.phone;
+  const name = normString(value.name);
+  const relationship = normString(value.relationship);
+  const phoneRes = normalizePhoneNumber(value.phoneNumber, "emergencyContact.phoneNumber", false);
+
+  // If user didn’t fill any emergency contact field, store null
+  const anyProvided = !!(name || relationship || phoneRes.value);
+  if (!anyProvided) return { value: null };
+
+  // If they started filling it, require all 3 to be valid
+  if (!name) return { error: "emergencyContact.name is required (if providing emergency contact)" };
+  if (!relationship) return { error: "emergencyContact.relationship is required (if providing emergency contact)" };
+  if (phoneRes.error) return { error: phoneRes.error };
+  if (!phoneRes.value) return { error: "emergencyContact.phoneNumber is required (if providing emergency contact)" };
 
   return {
-    name: typeof value.name === "string" ? value.name.trim() : null,
-    relationship: typeof value.relationship === "string" ? value.relationship.trim() : null,
-    phoneNumber: typeof rawPhone === "string" ? rawPhone.trim() : null,
+    value: {
+      name,
+      relationship,
+      phoneNumber: phoneRes.value,
+    },
   };
 }
 
 function validateProfile(data) {
-  // Required: firstName
-  if (data.firstName == null) return "firstName is required";
-  if (typeof data.firstName !== "string") return "firstName must be a string";
-  if (!isValidName(data.firstName)) return "firstName must be at least 2 letters and contain only letters";
+  const firstNameRes = normalizeName(data.firstName, "firstName");
+  if (firstNameRes.error) return { error: firstNameRes.error };
 
-  // Required: lastName
-  if (data.lastName == null) return "lastName is required";
-  if (typeof data.lastName !== "string") return "lastName must be a string";
-  if (!isValidName(data.lastName)) return "lastName must be at least 2 letters and contain only letters";
+  const lastNameRes = normalizeName(data.lastName, "lastName");
+  if (lastNameRes.error) return { error: lastNameRes.error };
 
-  // Required: gender (male/female)
-  if (data.gender == null) return "gender is required";
-  if (typeof data.gender !== "string") return "gender must be a string";
-  const gender = normalizeGender(data.gender);
-  if (!gender || !ALLOWED_GENDERS.has(gender)) return "gender must be either 'male' or 'female'";
+  const genderRes = normalizeGender(data.gender);
+  if (genderRes.error) return { error: genderRes.error };
 
-  // Required: dateOfBirth (YYYY-MM-DD)
-  if (data.dateOfBirth == null) return "dateOfBirth is required";
-  if (typeof data.dateOfBirth !== "string") return "dateOfBirth must be a string";
-  if (!isValidDateOfBirth(data.dateOfBirth)) return "dateOfBirth must be a valid date in YYYY-MM-DD format (not in the future)";
+  const dobRes = normalizeDateOfBirth(data.dateOfBirth);
+  if (dobRes.error) return { error: dobRes.error };
 
-  // Required: phoneNumber
-  if (data.phoneNumber == null) return "phoneNumber is required";
-  if (typeof data.phoneNumber !== "string") return "phoneNumber must be a string";
-  if (!isValidPhoneNumber(data.phoneNumber)) return "phoneNumber is invalid";
+  const phoneRes = normalizePhoneNumber(data.phoneNumber, "phoneNumber", true);
+  if (phoneRes.error) return { error: phoneRes.error };
 
-  // Required: bloodType
-  if (data.bloodType == null) return "bloodType is required";
-  if (typeof data.bloodType !== "string") return "bloodType must be a string";
-  const bloodType = normalizeBloodType(data.bloodType);
-  if (!bloodType || !ALLOWED_BLOOD_TYPES.has(bloodType)) {
-    return "bloodType must be one of: A+, A-, B+, B-, AB+, AB-, O+, O-";
-  }
+  const bloodRes = normalizeBloodType(data.bloodType);
+  if (bloodRes.error) return { error: bloodRes.error };
 
-  // Optional: email (if present, must be valid)
-  if (data.email != null) {
-    if (typeof data.email !== "string") return "email must be a string";
-    if (!isValidEmail(data.email)) return "email is invalid";
-  }
+  const emailRes = normalizeEmail(data.email);
+  if (emailRes.error) return { error: emailRes.error };
 
-  // Optional: emergencyContact (if present, validate fields)
-  if (data.emergencyContact != null) {
-    if (typeof data.emergencyContact !== "object") return "emergencyContact must be an object";
+  const emergencyRes = normalizeEmergencyContact(data.emergencyContact);
+  if (emergencyRes.error) return { error: emergencyRes.error };
 
-    const ec = normalizeEmergencyContact(data.emergencyContact);
-    if (!ec) return "emergencyContact is invalid";
+  return {
+    normalized: {
+      firstName: firstNameRes.value,
+      lastName: lastNameRes.value,
+      gender: genderRes.value,
+      dateOfBirth: dobRes.value,
 
-    if (ec.name != null && ec.name !== "" && !isValidName(ec.name)) {
-      return "emergencyContact.name must be at least 2 letters and contain only letters";
-    }
-    if (ec.phoneNumber != null && ec.phoneNumber !== "" && !isValidPhoneNumber(ec.phoneNumber)) {
-      return "emergencyContact.phoneNumber is invalid";
-    }
-    if (ec.relationship != null && typeof ec.relationship !== "string") {
-      return "emergencyContact.relationship must be a string";
-    }
-  }
+      // medical
+      allergies: normalizeStringArray(data.allergies),
+      chronicConditions: normalizeStringArray(data.chronicConditions),
+      bloodType: bloodRes.value,
 
-  return null;
+      // contact
+      phoneNumber: phoneRes.value,
+      email: emailRes.value, // optional (null if not provided)
+
+      // emergency
+      emergencyContact: emergencyRes.value, // null if not provided
+    },
+  };
 }
 
-// POST /profile (create or update)
+// POST /api/profile (create or update)
 function postProfile(req, res) {
-  const userId = req.userId;
-  const data = req.body;
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-  const error = validateProfile(data);
+  const data = req.body || {};
+  const { error, normalized } = validateProfile(data);
   if (error) return res.status(400).json({ message: error });
 
   const profile = {
-    // Personal Information (required)
-    firstName: normalizeName(data.firstName),
-    lastName: normalizeName(data.lastName),
-    gender: normalizeGender(data.gender),
-    dateOfBirth: data.dateOfBirth.trim(),
-
-    // Medical Information (required bloodType; others optional arrays)
-    allergies: normalizeStringArray(data.allergies),
-    chronicConditions: normalizeStringArray(data.chronicConditions),
-    bloodType: normalizeBloodType(data.bloodType),
-
-    // Contact Information
-    phoneNumber: normalizePhoneNumber(data.phoneNumber),
-    email: data.email != null ? normalizeEmail(data.email) : null,
-
-    // Emergency Contact (optional)
-    emergencyContact: normalizeEmergencyContact(data.emergencyContact),
-
+    ...normalized,
     updatedAt: new Date().toISOString(),
   };
 
@@ -216,28 +201,30 @@ function postProfile(req, res) {
   return res.status(200).json(saved);
 }
 
-// GET /profile
+// GET /api/profile
 function getMyProfile(req, res) {
-  const userId = req.userId;
-  const profile = getProfile(userId);
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
+  const profile = getProfile(userId);
   if (!profile) return res.status(404).json({ message: "Profile not found" });
 
   return res.status(200).json(profile);
 }
 
-// GET /profile/emergency-card
+// GET /api/profile/emergency-card
 function getEmergencyCard(req, res) {
-  const userId = req.userId;
-  const profile = getProfile(userId);
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
+  const profile = getProfile(userId);
   if (!profile) return res.status(404).json({ message: "Profile not found" });
 
-  const fullName = `${profile.firstName || ""} ${profile.lastName || ""}`.trim() || "Unknown";
+  const fullName = `${profile.firstName} ${profile.lastName}`;
 
   const allergiesText = profile.allergies?.length ? profile.allergies.join(", ") : "None";
   const conditionsText = profile.chronicConditions?.length ? profile.chronicConditions.join(", ") : "None";
-  const bloodText = profile.bloodType ? profile.bloodType : "Unknown";
+  const bloodText = profile.bloodType || "Unknown";
 
   const contact = profile.emergencyContact || {};
   const contactName = contact.name || "Unknown";
@@ -252,11 +239,17 @@ function getEmergencyCard(req, res) {
     `Contact: ${contactName} (${contactRel}) ${contactPhone}`;
 
   return res.status(200).json({
-    firstName: profile.firstName,
-    lastName: profile.lastName,
-    bloodType: profile.bloodType || null,
-    allergies: profile.allergies || [],
-    chronicConditions: profile.chronicConditions || [],
+    fullName,
+    gender: profile.gender,
+    dateOfBirth: profile.dateOfBirth,
+
+    bloodType: profile.bloodType,
+    allergies: profile.allergies,
+    chronicConditions: profile.chronicConditions,
+
+    phoneNumber: profile.phoneNumber,
+    email: profile.email,
+
     emergencyContact: profile.emergencyContact,
     shareText,
   });
