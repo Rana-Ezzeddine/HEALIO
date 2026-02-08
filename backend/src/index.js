@@ -13,6 +13,12 @@ app.get("/", (req, res) => {
   res.status(200).send("HEALIO backend is running ✅");
 });
 
+app.get("/health", (req, res) => {
+  res.status(200).send({data: {
+    status: "Backend up and running"
+  }});
+});
+
 app.use("/symptoms", symptomsRoutes);
 
 const PORT = process.env.PORT || 5050;

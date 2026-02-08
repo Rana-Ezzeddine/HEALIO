@@ -10,7 +10,7 @@ function App() {
   useEffect(() => {
     fetch("http://localhost:5050/health")
       .then((res) => res.json())
-      .then((data) => setMessage(Status: ${data.status}))
+      .then((data) => setMessage(`Status: ${data.status}`))
       .catch(() => setMessage("Backend not reachable"));
   }, []);
 
