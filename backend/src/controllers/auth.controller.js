@@ -1,9 +1,6 @@
-const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
-const validator = require("validator");
-const User = require("../models/User");
+import bcrypt from 'bcrypt';
 
-function isStrongPassword(pw) {
+const isStrongPassword = (pw) => {
   return (
     typeof pw === "string" &&
     pw.length >= 10 &&
@@ -13,7 +10,7 @@ function isStrongPassword(pw) {
   );
 }
 
-const register = async (req, res) => {
+export const register = async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -66,7 +63,7 @@ const register = async (req, res) => {
   }
 };
 
-const login = async (req, res) => {
+export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -117,9 +114,7 @@ const login = async (req, res) => {
   }
 };
 
-module.exports = { register, login };
-
-const me = async (req, res) => {
+export const me = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("email role isVerified createdAt");
     if (!user) return res.status(404).json({ message: "User not found." });
@@ -129,6 +124,4 @@ const me = async (req, res) => {
     return res.status(500).json({ message: "Server error." });
   }
 };
-    
-
-module.exports = { register, login, me };
+  

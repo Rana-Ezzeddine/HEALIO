@@ -1,6 +1,6 @@
-const { addSymptom, getSymptoms } = require("../store/symptoms.store");
+import { addSymptom, getSymptoms } from "../store/symptoms.store.js";
 
-function getUserKey(req) {
+export function getUserKey(req) {
     if (req.user && (req.user.sub || req.user.id)) {
         return req.user.sub || req.user.id;
     }
@@ -8,7 +8,7 @@ function getUserKey(req) {
     return "demo-user";
 }
 
-function createSymptom(req, res) {
+export function createSymptom(req, res) {
     const userKey = getUserKey(req);
 
     const { symptom, severity, date, notes } = req.body;
@@ -37,9 +37,7 @@ function createSymptom(req, res) {
     return res.status(201).json(entry);
 }
 
-function listSymptoms(req, res) {
+export function listSymptoms(req, res) {
     const userKey = getUserKey(req);
     return res.status(200).json(getSymptoms(userKey));
 }
-
-module.exports = { createSymptom, listSymptoms };

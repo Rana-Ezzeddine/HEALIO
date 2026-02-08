@@ -9,7 +9,7 @@ import DashboardDoctor from "./pages/DashboardDoctor";
 import ProfilePatient from "./pages/ProfilePatient";
 import Medication from "./pages/Medication";
 
-function App() {
+export default function App() {
   const [message, setMessage] = useState("Loading...");
 
   useEffect(() => {

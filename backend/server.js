@@ -26,10 +26,10 @@ import sequelize, { testConnection } from "./database.js";
 import Medication from "./models/Medication.js";
 
 // Routes
-import authRoutes from "./routes/auth.routes.js"; // from old index.js
-import profileRoutes from "./routes/profileRoutes.js"; // from old index.js
-import symptomsRoutes from "./routes/symptoms.routes.js"; // from old index.js
-import medicationRoutes from "./routes/medications.js"; // from server.js
+import authRoutes from "./src/routes/auth.routes.js"; // from old index.js
+import profileRoutes from "./src/routes/profileRoutes.js"; // from old index.js
+import symptomsRoutes from "./src/routes/symptoms.routes.js"; // from old index.js
+import medicationRoutes from "./src/routes/medications.routes.js"; // from server.js
 
 /////////////////////////////////////////////////
 // ✅ Initialize App

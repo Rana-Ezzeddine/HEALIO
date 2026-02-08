@@ -1,6 +1,6 @@
 const symptomsByUser = new Map();
 
-function addSymptom(userKey, symptomEntry) {
+export function addSymptom(userKey, symptomEntry) {
     if (!symptomsByUser.hasKey(userKey)) {
         symptomsByUser.set(userKey, []);
     }
@@ -8,8 +8,6 @@ function addSymptom(userKey, symptomEntry) {
     return symptomEntry;
 }
 
-function getSymptoms(userKey) {
+export function getSymptoms(userKey) {
     return symptomsByUser.get(userKey) || [];
 }
-
-module.exports = { addSymptom, getSymptoms };

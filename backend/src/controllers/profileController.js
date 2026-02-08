@@ -1,6 +1,6 @@
 // backend/src/controllers/profileController.js
 
-const { saveProfile, getProfile } = require("../store/profileStore");
+import { saveProfile, getProfile } from "../store/profileStore.js"; 
 
 // Allowed values
 const ALLOWED_GENDERS = new Set(["Male", "Female", "Prefer not to say"]);
@@ -184,7 +184,7 @@ function validateProfile(data) {
 }
 
 // POST /api/profile (create or update)
-function postProfile(req, res) {
+export function postProfile(req, res) {
   const userId = req.user?.id;
   if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
@@ -202,7 +202,7 @@ function postProfile(req, res) {
 }
 
 // GET /api/profile
-function getMyProfile(req, res) {
+export function getMyProfile(req, res) {
   const userId = req.user?.id;
   if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
@@ -213,7 +213,7 @@ function getMyProfile(req, res) {
 }
 
 // GET /api/profile/emergency-card
-function getEmergencyCard(req, res) {
+export function getEmergencyCard(req, res) {
   const userId = req.user?.id;
   if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
@@ -254,5 +254,3 @@ function getEmergencyCard(req, res) {
     shareText,
   });
 }
-
-module.exports = { postProfile, getMyProfile, getEmergencyCard };
