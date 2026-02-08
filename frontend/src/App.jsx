@@ -4,6 +4,7 @@ import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
 import DashboardPatient from "./pages/DashboardPatient";
 import DashboardDoctor from "./pages/DashboardDoctor";
+import Medication from "./pages/Medication";
 function App() {
   const [message, setMessage] = useState("Loading...");
 
@@ -22,6 +23,7 @@ function App() {
       <Route path="/signup" element={<SignupPage />}/>
       <Route path="/dashboardPatient" element={<DashboardPatient />}/>
       <Route path="/dashboardDoctor" element={<DashboardDoctor />}/>
+      <Route path="/medication" element={<Medication />}/>
       
       <Route path="*" element={<Navigate to="/" replace/>}/>
     </Routes>

@@ -67,7 +67,10 @@ const MedicationManager = () => {
         headers: { 'Content-Type': 'application/json' },
       });
 
+      console.debug(healthResponse)
+
       if (healthResponse.ok) {
+        console.debug("OK")
         setBackendAvailable(true);
         await fetchMedications();
       } else {
