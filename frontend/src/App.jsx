@@ -8,6 +8,7 @@ import DashboardPatient from "./pages/DashboardPatient";
 import DashboardDoctor from "./pages/DashboardDoctor";
 import ProfilePatient from "./pages/ProfilePatient";
 import Medication from "./pages/Medication";
+import LandingPage from "./pages/LandingPage";
 
 export default function App() {
   const [message, setMessage] = useState("Loading...");
@@ -41,11 +42,12 @@ useEffect(() => {
       </div>
 
       <Routes>
-        <Route path="/" element={<LoginPage />} />
+        <Route path="/" element={<LandingPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/dashboardPatient" element={<DashboardPatient />} />
         <Route path="/dashboardDoctor" element={<DashboardDoctor />} />
-      <Route path="/medication" element={<Medication />}/>
+         <Route path="/loginPage" element={<LoginPage />} />
+        <Route path="/medication" element={<Medication />}/>
         <Route path="/profilePatient" element={<ProfilePatient />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

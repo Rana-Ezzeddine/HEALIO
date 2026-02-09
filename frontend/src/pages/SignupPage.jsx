@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { register as registerApi } from "../api/auth"; // adjust path if needed
+import { register as registerApi } from "../api/auth";
+import bgImage from "../assets/landingBg.png";
 
-export default function SignupPage() {
+export default function SignupPage({ embedded = false, onClose, onSwitchToLogin }) {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -30,28 +31,56 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
-      // Backend currently registers everyone as patient for security.
-      // Keep userType in UI; later we’ll implement "request doctor role".
       await registerApi(email, password);
 
-      // Optional: store what they selected (frontend-only) so you can show it later
       localStorage.setItem("requestedRole", userType);
+      localStorage.setItem("firstName", firstName);
+      localStorage.setItem("lastName", lastName);
 
       setSuccess("Account created successfully. Please log in.");
-      navigate("/login"); // change if your login route is "/"
+
+      // if embedded, close modal instead of navigating away
+      if (embedded) onClose?.();
+      else navigate("/loginPage");
     } catch (err) {
-      setError(err.message || "Failed to create account.");
+      setError(err?.message || "Failed to create account.");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#A0D6FF] to-[#cce9ff] flex items-center justify-center p-6">
-      <div className="shadow-md shadow-white w-full max-w-md rounded-2xl bg-[#1B7AC3]/30 border border-[#5286AE]/10 p-10">
+    <div
+      className={`relative flex items-center justify-center ${
+        embedded ? "" : "min-h-screen px-6 py-10 sm:py-12"
+      }`}
+    >
+      {!embedded && (
+        <>
+          <img
+            src={bgImage}
+            alt="Healio background"
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+          <div className="absolute inset-0 bg-black/60" />
+        </>
+      )}
+      <div className="relative z-10 shadow-lg w-full max-w-md rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20 p-10">
+        {embedded && (
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 text-white text-xl hover:opacity-80"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        )}
+
         <div className="text-center">
           <h1 className="text-4xl font-extrabold text-white">Healio</h1>
-          <p className="mt-2 text-sm text-white">Create your account to get started.</p>
+          <p className="mt-2 text-sm text-white">
+            Create your account to get started.
+          </p>
         </div>
 
         <div className="mt-4 space-y-3">
@@ -142,7 +171,7 @@ export default function SignupPage() {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-sky-600 hover:text-sky-800"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-sky-700 hover:text-sky-900"
               >
                 {showPassword ? "Hide" : "Show"}
               </button>
@@ -167,7 +196,7 @@ export default function SignupPage() {
               <button
                 type="button"
                 onClick={() => setShowConfirm(!showConfirm)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-sky-600 hover:text-sky-800"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-sky-700 hover:text-sky-900"
               >
                 {showConfirm ? "Hide" : "Show"}
               </button>
@@ -189,19 +218,24 @@ export default function SignupPage() {
           <button
             type="submit"
             disabled={loading}
-            className="mt-3 w-full h-11 bg-sky-700 rounded-lg text-white font-semibold hover:bg-[#1c84d4]/90 transition disabled:opacity-70"
+            className="mt-3 w-full h-11 bg-sky-700 rounded-lg text-white font-semibold hover:bg-sky-600 transition disabled:opacity-70"
           >
             {loading ? "Creating..." : "Create Account"}
           </button>
 
           <p className="text-center text-white text-sm">
             Already have an account?{" "}
-            <span
-              onClick={() => navigate("/login")} // change if your login route is "/"
-              className="text-sky-700 hover:underline cursor-pointer"
+            <button
+              type="button"
+              onClick={() =>
+                embedded && onSwitchToLogin
+                  ? onSwitchToLogin()
+                  : navigate("/loginPage")
+              }
+              className="text-sky-200 hover:underline cursor-pointer"
             >
               Login
-            </span>
+            </button>
           </p>
         </form>
       </div>
