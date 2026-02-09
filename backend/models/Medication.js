@@ -1,48 +1,61 @@
-import { DataTypes } from 'sequelize';
-import sequelize from '../database.js';
+import mongoose from 'mongoose';
 
-const Medication = sequelize.define('Medication', {
-  id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-    autoIncrement: true
-  },
-  name: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    validate: {
-      notEmpty: true
+const medicationSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: [true, 'Medication name is required'],
+      trim: true
+    },
+    dosage: {
+      type: String,
+      required: [true, 'Dosage is required'],
+      trim: true
+    },
+    frequency: {
+      type: String,
+      required: [true, 'Frequency is required'],
+      trim: true
+    },
+    prescribedBy: {
+      type: String,
+      trim: true,
+      default: null
+    },
+    startDate: {
+      type: Date,
+      default: null
+    },
+    notes: {
+      type: String,
+      trim: true,
+      default: null
     }
   },
-  dosage: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    validate: {
-      notEmpty: true
-    }
-  },
-  frequency: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    validate: {
-      notEmpty: true
-    }
-  },
-  prescribedBy: {
-    type: DataTypes.STRING,
-    allowNull: true
-  },
-  startDate: {
-    type: DataTypes.DATEONLY,
-    allowNull: true
-  },
-  notes: {
-    type: DataTypes.TEXT,
-    allowNull: true
+  {
+    timestamps: true, // Automatically adds createdAt and updatedAt
+    collection: 'medications'
   }
-}, {
-  tableName: 'medications',
-  timestamps: true
-});
+);
+
+// Add indexes for better query performance
+medicationSchema.index({ name: 1 });
+medicationSchema.index({ prescribedBy: 1 });
+medicationSchema.index({ createdAt: -1 });
+
+// Instance method example (optional)
+medicationSchema.methods.getFormattedDate = function() {
+  if (this.startDate) {
+    return this.startDate.toLocaleDateString();
+  }
+  return null;
+};
+
+// Static method example (optional)
+medicationSchema.statics.findByDoctor = function(doctorName) {
+  return this.find({ prescribedBy: new RegExp(doctorName, 'i') });
+};
+
+const Medication = mongoose.model('Medication', medicationSchema);
 
 export default Medication;
