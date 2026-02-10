@@ -1,5 +1,5 @@
 import { apiUrl, authHeaders } from "../api/http";
-
+import Navbar from "../components/Navbar";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 function canonGender(g) {
@@ -14,7 +14,11 @@ function canonGender(g) {
 }
 
 
-function FormInput({ label, type="text", value, onChange, isEditing, options }) {
+function FormInput({ label, type = "text", value, onChange, isEditing, options }) {
+  const baseField =
+    "w-full px-3 py-2 rounded-lg border transition focus:ring-2 focus:outline-none focus:border-sky-500 focus:ring-sky-500";
+  const editableField = "bg-white border-slate-300 text-slate-900";
+  const readonlyField = "bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed";
   return (
     <div className="w-full flex flex-col gap-1">
       <label className="text-sm font-medium text-slate-700">{label}</label>
@@ -24,9 +28,9 @@ function FormInput({ label, type="text", value, onChange, isEditing, options }) 
                 value={value}
                 onChange={onChange}
                 disabled={!isEditing}
-                className="w-full px-3 py-2 pr-10 border border-slate-100 rounded-lg bg-slate-100 hover:bg-slate-200 transition text-slate-600
-            focus:ring-2 focus:outline-none focus:border-sky-500 focus:ring-sky-500 focus:text-sky-700
-            appearance-none"
+                className={`appearance-none pr-10 ${baseField} ${
+                  isEditing ? editableField : readonlyField
+                }`}
             >
                 <option value="">Select</option>
                 {options.map((opt) => (
@@ -38,15 +42,24 @@ function FormInput({ label, type="text", value, onChange, isEditing, options }) 
             </span>
         </div>
       ) : 
-
       (
-      <input
-        type={type}
-        value={value}
-        onChange={onChange}
-        disabled={!isEditing}
-        className="w-full px-3 py-2 border border-slate-100 rounded-lg bg-slate-100 text-slate-600 focus:ring-2 focus:outline-none focus:border-sky-500 focus:ring-sky-500 focus:text-sky-700"
-      />
+        type === "textarea" ? (
+          <textarea
+            rows={3}
+            value={value}
+            onChange={onChange}
+            disabled={!isEditing}
+            className={`${baseField} ${isEditing ? editableField : readonlyField}`}
+          />
+        ) : (
+          <input
+            type={type}
+            value={value}
+            onChange={onChange}
+            disabled={!isEditing}
+            className={`${baseField} ${isEditing ? editableField : readonlyField}`}
+          />
+        )
       )}
     </div>
   );
@@ -154,7 +167,7 @@ export default function ProfilePatient(){
     // Update UI from saved backend response
     setFirstName(data.firstName || "");
     setLastName(data.lastName || "");
-setGender(canonGender(data.gender));
+    setGender(canonGender(data.gender));
     setDateOfBirth(data.dateOfBirth || "");
     setBloodType(data.bloodType || "");
     setPhone(data.phoneNumber || "");
@@ -190,77 +203,93 @@ setGender(canonGender(data.gender));
     }
 
     return(
-        <div className="min-h-screen bg-[#e6f7ff] p-4">
-            <header className="max-w-6xl mx-auto mb-6">
-                <button 
-                    onClick={() => navigate('/dashboardPatient')}
-                    className="text-slate-700 hover:underline cursor-pointer font-semibold mb-3">
-                    ← Back
+      <div className="min-h-screen bg-gradient-to-br pt-20 from-sky-50 via-white to-indigo-50">
+        <Navbar
+          onLogin={() => setAuthView("login")}
+          onSignup={() => setAuthView("signup")}
+        />
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <button
+              onClick={() => navigate("/dashboardPatient")}
+              className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900 font-semibold"
+            >
+              <span className="text-xl">←</span> Back to Dashboard
+            </button>
+
+            {!isEditing ? (
+              <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                className="px-4 py-2 bg-gradient-to-b from-cyan-400 to-blue-500 hover:from-cyan-500 hover:to-blue-600 transition text-white rounded-lg hover:bg-sky-500 shadow"
+              >
+                Edit Profile
+              </button>
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-500 shadow"
+                >
+                  Save Changes
                 </button>
-                <h1 className="text-3xl font-bold text-center text-slate-600">My Profile</h1>
-            </header>
-            <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-md p-6">
-                <div className="flex justify-between items-center mb-3">
-                    <h2 className="text-xl font-semibold text-slate-800">Personal Information</h2>
-                    {!isEditing ? (
-                        <button
-                            type="button"
-                            onClick={() => setIsEditing(true)}
-                            className="px-4 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-500">
-                            Edit
-                        </button>
-                    ) : (
-                        <div className="flex gap-2">
-                            <button
-                                type="button"
-                                onClick={handleSave}
-                                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-500">
-                                Save
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleCancel}
-                                className="px-4 py-2 bg-slate-400 text-white rounded-lg hover:bg-slate-300">
-                                Cancel
-                            </button>
-                        </div>
-                    )}
-                </div>
-                <div className="flex flex-col gap-3">
-                    <div className="flex gap-3">
-                        <FormInput label="First Name" type="text" value={firstName} onChange={(e)=>setFirstName(e.target.value)} isEditing={isEditing} />
-                        <FormInput label="Last Name" type="text" value={lastName} onChange={(e)=>setLastName(e.target.value)} isEditing={isEditing} />  
-                    </div>
-                    <div className="flex gap-3">
-                        <FormInput label="Gender" type="text" value={gender} onChange={(e)=>setGender(e.target.value)} isEditing={isEditing} options={["Male", "Female", "Prefer not to say"]} />
-                        <FormInput label="Date of Birth" type="text" value={dateOfBirth} onChange={(e)=>setDateOfBirth(e.target.value)} isEditing={isEditing} />  
-                    </div>
-                </div>
-            </div>
-            <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-md p-6 mt-6">
-                <h2 className="max-w-6xl mx-auto mb-6 text-xl font-semibold text-slate-800">Medical Information</h2>
-                <div className="flex flex-col gap-3"> 
-                    <FormInput label="Allergies" type="textarea" value={allergies} onChange={(e)=>setAllergies(e.target.value)} isEditing={isEditing} />
-                    <FormInput label="Chronic Conditions" type="textarea" value={conditions} onChange={(e)=>setConditions(e.target.value)} isEditing={isEditing} />
-                    <FormInput label="Blood Type" type="text" value={bloodType} onChange={(e)=>setBloodType(e.target.value)} isEditing={isEditing} options={["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]} />
-                </div>
-            </div>
-            <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-md p-6 mt-6">
-                <h2 className="max-w-6xl mx-auto mb-6 text-xl font-semibold text-slate-800">Contact Information</h2>
-                <div className="flex flex-col gap-3"> 
-                    <FormInput label="Phone Number" type="text" value={phone} onChange={(e)=>setPhone(e.target.value)} isEditing={isEditing} />
-                    <FormInput label="Email" type="text" value={email} onChange={(e)=>setEmail(e.target.value)} isEditing={isEditing} />
-                    
-                </div>
-            </div>
-            <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-md p-6 mt-6">
-                <h2 className="max-w-6xl mx-auto mb-6 text-xl font-semibold text-slate-800">Emergency Contact</h2>
-                <div className="flex flex-col gap-3"> 
-                    <FormInput label="Emergency Contact Name" type="textarea" value={emName} onChange={(e)=>setEmName(e.target.value)} isEditing={isEditing} />
-                    <FormInput label="Relationship" type="textarea" value={relationship} onChange={(e)=>setRelationship(e.target.value)} isEditing={isEditing} />
-                    <FormInput label="Phone Number" type="text" value={emPhone} onChange={(e)=>setEmPhone(e.target.value)} isEditing={isEditing} />
-                </div>
-            </div>
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  className="px-4 py-2 bg-slate-400 text-white rounded-lg hover:bg-slate-300 shadow"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-white/60 text-center" >
+            <h1 className="text-5xl mb-3 text-3xl font-bold leading-[1.2] pb-1 bg-gradient-to-r from-cyan-400 to-blue-500 text-transparent bg-clip-text inline-block">My Profile</h1>
+            <p className="mt-2 text-slate-600 mb-10">
+              Review and update your personal, medical, and contact information.
+            </p>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-6">
+            <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
+              <h2 className="text-xl font-semibold text-slate-800 mb-4">Personal Information</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormInput label="First Name" type="text" value={firstName} onChange={(e)=>setFirstName(e.target.value)} isEditing={isEditing} />
+                <FormInput label="Last Name" type="text" value={lastName} onChange={(e)=>setLastName(e.target.value)} isEditing={isEditing} />  
+                <FormInput label="Gender" type="text" value={gender} onChange={(e)=>setGender(e.target.value)} isEditing={isEditing} options={["Male", "Female", "Prefer not to say"]} />
+                <FormInput label="Date of Birth" type="date" value={dateOfBirth} onChange={(e)=>setDateOfBirth(e.target.value)} isEditing={isEditing} />  
+              </div>
+            </section>
+
+            <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
+              <h2 className="text-xl font-semibold text-slate-800 mb-4">Medical Information</h2>
+              <div className="grid grid-cols-1 gap-4"> 
+                <FormInput label="Allergies" type="textarea" value={allergies} onChange={(e)=>setAllergies(e.target.value)} isEditing={isEditing} />
+                <FormInput label="Chronic Conditions" type="textarea" value={conditions} onChange={(e)=>setConditions(e.target.value)} isEditing={isEditing} />
+                <FormInput label="Blood Type" type="text" value={bloodType} onChange={(e)=>setBloodType(e.target.value)} isEditing={isEditing} options={["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]} />
+              </div>
+            </section>
+
+            <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
+              <h2 className="text-xl font-semibold text-slate-800 mb-4">Contact Information</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> 
+                <FormInput label="Phone Number" type="text" value={phone} onChange={(e)=>setPhone(e.target.value)} isEditing={isEditing} />
+                <FormInput label="Email" type="text" value={email} onChange={(e)=>setEmail(e.target.value)} isEditing={isEditing} />
+              </div>
+            </section>
+
+            <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
+              <h2 className="text-xl font-semibold text-slate-800 mb-4">Emergency Contact</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> 
+                <FormInput label="Emergency Contact Name" type="text" value={emName} onChange={(e)=>setEmName(e.target.value)} isEditing={isEditing} />
+                <FormInput label="Relationship" type="text" value={relationship} onChange={(e)=>setRelationship(e.target.value)} isEditing={isEditing} />
+                <FormInput label="Phone Number" type="text" value={emPhone} onChange={(e)=>setEmPhone(e.target.value)} isEditing={isEditing} />
+              </div>
+            </section>
+          </div>
         </div>
+      </div>
     );
 }
