@@ -39,7 +39,7 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
 
       setSuccess("Account created successfully. Please log in.");
 
-      // if embedded, close modal instead of navigating away
+      
       if (embedded) onClose?.();
       else navigate("/loginPage");
     } catch (err) {
@@ -51,10 +51,10 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
 
   return (
     <div
-  className={`relative flex items-center justify-center hide-scrollbar ${
-    embedded ? "w-full" : "min-h-screen px-6 bg-slate-50 overflow-y-auto"
-  }`}
->
+      className={`relative flex items-center justify-center hide-scrollbar ${
+        embedded ? "w-full" : "min-h-screen px-6 bg-slate-50 overflow-y-auto"
+      }`}
+    >
       {!embedded && (
         <>
           <div className="absolute inset-0 bg-sky-100/10" />

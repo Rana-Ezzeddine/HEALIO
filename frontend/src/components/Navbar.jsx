@@ -3,13 +3,13 @@ import logo from "../assets/logo.png";
 
 export default function Navbar() {
     const location = useLocation();
-  const navigate = useNavigate();
+    const navigate = useNavigate();
 
-  const path = location.pathname;
+    const path = location.pathname;
 
-  const isDashboard = path.startsWith("/dashboard");
-  const isProfile = path.startsWith("/profile");
-  const isLanding = path === "/";
+    const isDashboard = path.startsWith("/dashboard");
+    const isProfile = path.startsWith("/profile");
+    const isLanding = path === "/";
 
     function handleLogout() {
     localStorage.clear();
@@ -23,7 +23,7 @@ export default function Navbar() {
                      bg-white/70 backdrop-blur-md border border-white/60
                      shadow-sm px-6 py-3"
         >
-          {/* Logo */}
+          
           <button
             onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
             className="flex items-center gap-2"

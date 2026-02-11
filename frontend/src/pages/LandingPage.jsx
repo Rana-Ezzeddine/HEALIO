@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import logo from "../assets/logo.png";
 import Navbar from "../components/Navbar";
-
 import LoginPage from "./LoginPage";
 import SignupPage from "./SignupPage";
 
@@ -26,13 +25,11 @@ export default function LandingPage() {
         onSignup={() => setAuthView("signup")}
       />
 
-      {/* Soft background accents */}
+      
       <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-sky-200/60 blur-3xl" />
       <div className="absolute top-1/2 -right-40 h-96 w-96 rounded-full bg-indigo-200/60 blur-3xl" />
 
-      {/* CONTENT */}
       <div className="relative z-10">
-        {/* HERO */}
         <section className="min-h-screen pt-15 flex items-center justify-center px-6 text-center">
 
           <div className="max-w-2xl">
@@ -74,13 +71,9 @@ export default function LandingPage() {
                   I already have an account
                 </button>
               </div>
-           
-
-            
             </div>
         </section>
 
-        {/* FEATURES */}
         <section className="py-24 ">
           <div className="max-w-6xl mx-auto px-6">
             <h2 className="text-3xl md:text-4xl font-bold text-center mb-16">
@@ -104,7 +97,6 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* CTA */}
         <section className="py-24">
           <div className="max-w-4xl mx-auto px-6">
             <div className="rounded-3xl bg-gradient-to-br from-sky-400 to-indigo-400 p-1">
@@ -119,7 +111,7 @@ export default function LandingPage() {
                 <button
                   onClick={() => setAuthView("signup")}
                   className="mt-8 rounded-xl bg-gradient-to-b from-cyan-400 to-blue-500 px-10 py-3 font-semibold text-white
-                             hover:from-cyan-500 hover:to-blue-600 transition shadowtransition-transform duration-200 hover:-translate-y-1 hover:shadow-lg"
+                             hover:from-cyan-500 hover:to-blue-600 transition shadow transition-transform duration-200 hover:-translate-y-1 hover:shadow-lg"
                 >
                   Create your account
                 </button>
@@ -128,7 +120,6 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* FOOTER */}
         <footer className="border-t border-slate-200 py-6 bg-white/70">
           <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-slate-500">
             <span>© 2026 Healio</span>

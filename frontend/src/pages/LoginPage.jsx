@@ -7,7 +7,6 @@ import logo from "../assets/logo.png";
 export default function LoginPage({ embedded = false, onClose, onSwitchToSignup }) {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -42,16 +41,7 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
         embedded ? "w-full" : "min-h-screen px-6 bg-slate-50 overflow-hidden"
       }`}
     >
-      {/* Optional backdrop blur when embedded is false */}
-      {!embedded && (
-        <>
-          <div className="absolute inset-0 bg-sky-100/10" />
-          <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-sky-200/40 blur-3xl" />
-          <div className="absolute top-1/2 -right-40 h-96 w-96 rounded-full bg-indigo-200/40 blur-3xl" />
-        </>
-      )}
 
-      {/* Form Card */}
       <div className="relative z-10 w-full max-w-md rounded-3xl bg-white/80 backdrop-blur-md border border-white/60 shadow-xl p-12">
         <button
           onClick={() => (embedded ? onClose?.() : navigate("/"))}
@@ -61,14 +51,14 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
           ✕
         </button>
 
-        {/* Logo */}
+        
         <div className="text-center">
-          <img src={logo} alt="Healio logo" className="mx-auto h-16 w-auto mb-4" />
+          <img src={logo} alt="Healio logo" className="mx-auto h-16 w-auto mb-2" />
           <h1 className="text-3xl font-extrabold text-slate-900">Welcome Back</h1>
           <p className="mt-2 text-sm text-slate-600">Log in to continue managing your health</p>
         </div>
 
-        {/* Form */}
+        
         <form className="space-y-4 mt-8" onSubmit={handleLogin}>
           <div className="space-y-2">
             <label className="text-sm font-medium text-slate-700">Email Address</label>
@@ -92,7 +82,7 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
-                className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-400 focus:ring-sky-400 transition"
+                className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-400 focus:ring-sky-400 transition pr-6"
                 required
               />
               <button
