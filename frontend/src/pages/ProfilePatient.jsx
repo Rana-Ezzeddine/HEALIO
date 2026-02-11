@@ -159,12 +159,10 @@ export default function ProfilePatient(){
     const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
-      // IMPORTANT: don’t close edit mode if backend rejected
       alert(data.message || "Failed to save profile");
       return;
     }
 
-    // Update UI from saved backend response
     setFirstName(data.firstName || "");
     setLastName(data.lastName || "");
     setGender(canonGender(data.gender));

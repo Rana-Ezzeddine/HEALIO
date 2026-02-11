@@ -33,16 +33,14 @@ export default function DashboardPatient() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* HEADER / NAVBAR */}
       <Navbar
         onLogin={() => setAuthView("login")}
         onSignup={() => setAuthView("signup")}
       />
 
-      {/* MAIN CONTENT */}
       <main className="pt-25 max-w-6xl mx-auto px-6 py-8">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Upcoming Appointments */}
+          
           <section className="md:col-span-2 bg-white rounded-3xl shadow-lg p-6">
             <h2 className="text-xl font-semibold text-slate-800 mb-4">
               Upcoming Appointments
@@ -53,7 +51,6 @@ export default function DashboardPatient() {
             </div>
           </section>
 
-          {/* Quick Actions */}
           <aside className="bg-white rounded-3xl shadow-lg p-6">
             <h2 className="text-lg font-semibold text-slate-800 mb-4">
               Quick Actions
