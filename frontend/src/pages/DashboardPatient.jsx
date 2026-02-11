@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
+import Navbar from "../components/Navbar";
 import { useNavigate } from "react-router-dom";
 
 export default function DashboardPatient() {
   const navigate = useNavigate();
-  const [role, setRole] = useState(null);
+  const [role, setRole] = useState("Patient");
   const [name, setName] = useState("Patient");
 
   useEffect(() => {
     try {
       const r = localStorage.getItem("userRole");
-      setRole(r || "patient");
+      setRole(r || "Patient");
+
       const firstName = localStorage.getItem("firstName") || "Patient";
       setName(firstName);
     } catch (err) {
@@ -17,51 +19,67 @@ export default function DashboardPatient() {
     }
   }, []);
 
-function handleLogout() {
-  try {
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("user");
-
-    localStorage.removeItem("userRole");
-    localStorage.removeItem("firstName");
-  } catch (err) {
-    console.error(err);
+  function handleLogout() {
+    try {
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("user");
+      localStorage.removeItem("userRole");
+      localStorage.removeItem("firstName");
+    } catch (err) {
+      console.error(err);
+    }
+    navigate("/");
   }
-  navigate("/");
-}
-
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-sky-100 to-white">
-      <header className="max-w-6xl flex p-6 items-center justify-between mx-auto">
-        <div>
-          <h1 className="font-bold text-slate-800 text-3xl">Welcome, {name}</h1>
-          <p className="text-sm font-semibold text-slate-600">Role: {role || 'Patient'}</p>
+    <div className="min-h-screen bg-slate-50">
+      {/* HEADER / NAVBAR */}
+      <Navbar
+        onLogin={() => setAuthView("login")}
+        onSignup={() => setAuthView("signup")}
+      />
+
+      {/* MAIN CONTENT */}
+      <main className="pt-25 max-w-6xl mx-auto px-6 py-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Upcoming Appointments */}
+          <section className="md:col-span-2 bg-white rounded-3xl shadow-lg p-6">
+            <h2 className="text-xl font-semibold text-slate-800 mb-4">
+              Upcoming Appointments
+            </h2>
+
+            <div className="text-slate-500 text-sm">
+              No upcoming appointments yet.
+            </div>
+          </section>
+
+          {/* Quick Actions */}
+          <aside className="bg-white rounded-3xl shadow-lg p-6">
+            <h2 className="text-lg font-semibold text-slate-800 mb-4">
+              Quick Actions
+            </h2>
+
+            <div className="flex flex-col gap-3">
+              <button
+                className="w-full px-4 py-2 rounded-xl bg-sky-100 text-sky-700 font-medium hover:bg-sky-200 transition"
+              >
+                Book Appointment
+              </button>
+
+              <button
+                className="w-full px-4 py-2 rounded-xl bg-indigo-100 text-indigo-700 font-medium hover:bg-indigo-200 transition"
+              >
+                View Records
+              </button>
+
+              <button
+                className="w-full px-4 py-2 rounded-xl bg-emerald-100 text-emerald-700 font-medium hover:bg-emerald-200 transition"
+              >
+                Message Doctor
+              </button>
+            </div>
+          </aside>
         </div>
-        <div className="flex gap-3">
-          <button
-            type="button"
-            className="bg-sky-600 px-4 py-2 text-white rounded-lg px-4 py-2 hover:bg-sky-500">
-            Notifications
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate("/profilePatient")}
-            className="bg-sky-600 px-4 py-2 text-white rounded-lg px-4 py-2 hover:bg-sky-500">
-            Profile
-          </button>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="bg-white px-4 py-2 text-slate-800 border border-slate-800 rounded-lg px-4 py-2 hover:bg-sky-50">
-            Logout
-          </button>
-        </div>
-      </header>
-      <main className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 ">
-        <section className="col-span-2 bg-white">
-          <h2>Upcoming appointments</h2>
-        </section>
       </main>
     </div>
   );
