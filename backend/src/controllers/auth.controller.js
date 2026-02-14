@@ -1,4 +1,7 @@
 import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import validator from 'validator';
+import User from '../models/User.js';
 
 const isStrongPassword = (pw) => {
   return (
@@ -30,8 +33,8 @@ export const register = async (req, res) => {
 
     const cleanEmail = String(email || "").toLowerCase().trim();
 
-    // light UX pre-check
-    const existing = await User.exists({ email: cleanEmail });
+    // Check if user already exists
+    const existing = await User.findOne({ where: { email: cleanEmail } });
     if (existing) {
       return res.status(409).json({ message: "Email already registered." });
     }
@@ -48,14 +51,14 @@ export const register = async (req, res) => {
     return res.status(201).json({
       message: "Registered successfully. Please verify your email.",
       user: {
-        id: user._id,
+        id: user.id,
         email: user.email,
         role: user.role,
         isVerified: user.isVerified,
       },
     });
   } catch (err) {
-    if (err && err.code === 11000) {
+    if (err.name === 'SequelizeUniqueConstraintError') {
       return res.status(409).json({ message: "Email already registered." });
     }
     console.error(err);
@@ -77,7 +80,7 @@ export const login = async (req, res) => {
 
     const cleanEmail = String(email || "").toLowerCase().trim();
 
-    const user = await User.findOne({ email: cleanEmail }).select("+passwordHash");
+    const user = await User.scope('withPassword').findOne({ where: { email: cleanEmail } });
     if (!user) {
       return res.status(401).json({ message: "Invalid credentials." });
     }
@@ -93,7 +96,7 @@ export const login = async (req, res) => {
     }
 
     const token = jwt.sign(
-      { sub: user._id.toString(), role: user.role, isVerified: user.isVerified },
+      { sub: user.id, role: user.role, isVerified: user.isVerified },
       secret,
       { expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || "15m" }
     );
@@ -101,7 +104,7 @@ export const login = async (req, res) => {
     return res.json({
       token,
       user: {
-        id: user._id,
+        id: user.id,
         email: user.email,
         role: user.role,
         isVerified: user.isVerified,
@@ -116,7 +119,9 @@ export const login = async (req, res) => {
 
 export const me = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select("email role isVerified createdAt");
+    const user = await User.findByPk(req.user.id, {
+      attributes: ['id', 'email', 'role', 'isVerified', 'createdAt']
+    });
     if (!user) return res.status(404).json({ message: "User not found." });
     return res.json({ user });
   } catch (err) {
@@ -124,4 +129,3 @@ export const me = async (req, res) => {
     return res.status(500).json({ message: "Server error." });
   }
 };
-  

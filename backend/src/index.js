@@ -16,7 +16,7 @@ dotenv.config({
 /////////////////////////////////////////////////
 // ✅ Fail-fast env validation (production habit)
 /////////////////////////////////////////////////
-const requiredEnv = ["MONGO_URI", "JWT_ACCESS_SECRET"];
+const requiredEnv = ["DB_NAME", "DB_USER", "DB_PASSWORD", "JWT_ACCESS_SECRET"];
 for (const key of requiredEnv) {
   if (!process.env[key]) {
     throw new Error(`Missing required environment variable: ${key}`);
@@ -30,7 +30,7 @@ import express from "express";
 import cors from "cors";
 
 // Database
-import connectDB from "./config/db.js";
+import sequelize, { testConnection } from "../database.js";
 
 // Routes
 import authRoutes from "./routes/auth.routes.js";
@@ -85,8 +85,22 @@ app.use((err, req, res, next) => {
 /////////////////////////////////////////////////
 const PORT = process.env.PORT || 5050;
 
-connectDB().then(() => {
-  app.listen(PORT, () => {
-    console.log(`🚀 Server running on http://localhost:${PORT}`);
-  });
-});
+const startServer = async () => {
+  try {
+    const connected = await testConnection();
+    if (!connected) throw new Error("PostgreSQL connection failed");
+
+    // Auto-sync Sequelize models
+    await sequelize.sync({ alter: true });
+    console.log("✅ PostgreSQL models synchronized");
+
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on http://localhost:${PORT}`);
+    });
+  } catch (error) {
+    console.error("Failed to start server:", error);
+    process.exit(1);
+  }
+};
+
+startServer();

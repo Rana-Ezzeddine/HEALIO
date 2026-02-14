@@ -1,61 +1,87 @@
-import mongoose from 'mongoose';
+import { DataTypes } from 'sequelize';
+import sequelize from '../../database.js';
 
-const medicationSchema = new mongoose.Schema(
-  {
-    name: {
-      type: String,
-      required: [true, 'Medication name is required'],
-      trim: true
-    },
-    dosage: {
-      type: String,
-      required: [true, 'Dosage is required'],
-      trim: true
-    },
-    frequency: {
-      type: String,
-      required: [true, 'Frequency is required'],
-      trim: true
-    },
-    prescribedBy: {
-      type: String,
-      trim: true,
-      default: null
-    },
-    startDate: {
-      type: Date,
-      default: null
-    },
-    notes: {
-      type: String,
-      trim: true,
-      default: null
+const Medication = sequelize.define('Medication', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  name: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      notEmpty: {
+        msg: 'Medication name is required'
+      }
     }
   },
-  {
-    timestamps: true, // Automatically adds createdAt and updatedAt
-    collection: 'medications'
+  dosage: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      notEmpty: {
+        msg: 'Dosage is required'
+      }
+    }
+  },
+  frequency: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      notEmpty: {
+        msg: 'Frequency is required'
+      }
+    }
+  },
+  prescribedBy: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    defaultValue: null
+  },
+  startDate: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    defaultValue: null
+  },
+  notes: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    defaultValue: null
   }
-);
+}, {
+  tableName: 'medications',
+  timestamps: true,
+  indexes: [
+    {
+      fields: ['name']
+    },
+    {
+      fields: ['prescribedBy']
+    },
+    {
+      fields: ['createdAt']
+    }
+  ]
+});
 
-// Add indexes for better query performance
-medicationSchema.index({ name: 1 });
-medicationSchema.index({ prescribedBy: 1 });
-medicationSchema.index({ createdAt: -1 });
-
-// Instance method example (optional)
-medicationSchema.methods.getFormattedDate = function() {
+// Instance method
+Medication.prototype.getFormattedDate = function() {
   if (this.startDate) {
     return this.startDate.toLocaleDateString();
   }
   return null;
 };
 
-// Static method example (optional)
-medicationSchema.statics.findByDoctor = function(doctorName) {
-  return this.find({ prescribedBy: new RegExp(doctorName, 'i') });
+// Static method
+Medication.findByDoctor = function(doctorName) {
+  return this.findAll({
+    where: {
+      prescribedBy: {
+        [sequelize.Sequelize.Op.iLike]: `%${doctorName}%`
+      }
+    }
+  });
 };
-
-const Medication = mongoose.model('Medication', medicationSchema);
 
 export default Medication;

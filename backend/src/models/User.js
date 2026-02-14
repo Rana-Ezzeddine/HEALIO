@@ -1,34 +1,54 @@
-const mongoose = require("mongoose");
+import { DataTypes } from 'sequelize';
+import sequelize from '../../database.js';
 
-const userSchema = new mongoose.Schema(
-  {
-    email: {
-      type: String,
-      required: true,
-      unique: true,
-      lowercase: true,
-      trim: true,
-      index: true,
-    },
-
-    passwordHash: {
-      type: String,
-      required: true,
-      select: false,
-    },
-
-    role: {
-      type: String,
-      enum: ["patient", "doctor", "caregiver"],
-      default: "patient",
-    },
-
-    isVerified: {
-      type: Boolean,
-      default: false,
-    },
+const User = sequelize.define('User', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
   },
-  { timestamps: true, versionKey: false }
-);
+  email: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+    validate: {
+      isEmail: true
+    },
+    set(value) {
+      this.setDataValue('email', value.toLowerCase().trim());
+    }
+  },
+  passwordHash: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  role: {
+    type: DataTypes.ENUM('patient', 'doctor', 'caregiver'),
+    defaultValue: 'patient',
+    allowNull: false
+  },
+  isVerified: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false
+  }
+}, {
+  tableName: 'users',
+  timestamps: true,
+  indexes: [
+    {
+      unique: true,
+      fields: ['email']
+    }
+  ],
+  defaultScope: {
+    attributes: { exclude: ['passwordHash'] }
+  },
+  scopes: {
+    withPassword: {
+      attributes: { include: ['passwordHash'] }
+    }
+  }
+});
 
-module.exports = mongoose.model("User", userSchema);
+export default User;

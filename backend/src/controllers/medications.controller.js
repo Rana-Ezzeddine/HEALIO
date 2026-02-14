@@ -1,11 +1,12 @@
 import Medication from '../models/Medication.js';
+import { Op } from 'sequelize';
 
 // Get all medications
 export const getAllMedications = async (req, res) => {
   try {
-    const medications = await Medication.find()
-      .sort({ createdAt: -1 })
-      .lean();
+    const medications = await Medication.findAll({
+      order: [['createdAt', 'DESC']]
+    });
 
     res.json(medications);
   } catch (error) {
@@ -17,7 +18,7 @@ export const getAllMedications = async (req, res) => {
 // Get single medication by ID
 export const getMedicationById = async (req, res) => {
   try {
-    const medication = await Medication.findById(req.params.id);
+    const medication = await Medication.findByPk(req.params.id);
 
     if (!medication) {
       return res.status(404).json({ error: 'Medication not found' });
@@ -25,9 +26,6 @@ export const getMedicationById = async (req, res) => {
 
     res.json(medication);
   } catch (error) {
-    if (error.name === 'CastError') {
-      return res.status(400).json({ error: 'Invalid medication ID format' });
-    }
     console.error('Error fetching medication:', error);
     res.status(500).json({ error: 'Failed to fetch medication' });
   }
@@ -44,7 +42,7 @@ export const createMedication = async (req, res) => {
       });
     }
 
-    const medication = new Medication({
+    const medication = await Medication.create({
       name,
       dosage,
       frequency,
@@ -53,12 +51,10 @@ export const createMedication = async (req, res) => {
       notes
     });
 
-    await medication.save();
-
     res.status(201).json(medication);
   } catch (error) {
-    if (error.name === 'ValidationError') {
-      const messages = Object.values(error.errors).map(err => err.message);
+    if (error.name === 'SequelizeValidationError') {
+      const messages = error.errors.map(err => err.message);
       return res.status(400).json({ error: messages.join(', ') });
     }
     console.error('Error creating medication:', error);
@@ -77,23 +73,25 @@ export const updateMedication = async (req, res) => {
       });
     }
 
-    const medication = await Medication.findByIdAndUpdate(
-      req.params.id,
-      { name, dosage, frequency, prescribedBy, startDate, notes },
-      { new: true, runValidators: true }
-    );
+    const medication = await Medication.findByPk(req.params.id);
 
     if (!medication) {
       return res.status(404).json({ error: 'Medication not found' });
     }
 
+    await medication.update({
+      name,
+      dosage,
+      frequency,
+      prescribedBy,
+      startDate,
+      notes
+    });
+
     res.json(medication);
   } catch (error) {
-    if (error.name === 'CastError') {
-      return res.status(400).json({ error: 'Invalid medication ID format' });
-    }
-    if (error.name === 'ValidationError') {
-      const messages = Object.values(error.errors).map(err => err.message);
+    if (error.name === 'SequelizeValidationError') {
+      const messages = error.errors.map(err => err.message);
       return res.status(400).json({ error: messages.join(', ') });
     }
     console.error('Error updating medication:', error);
@@ -104,17 +102,16 @@ export const updateMedication = async (req, res) => {
 // Delete medication
 export const deleteMedication = async (req, res) => {
   try {
-    const medication = await Medication.findByIdAndDelete(req.params.id);
+    const medication = await Medication.findByPk(req.params.id);
 
     if (!medication) {
       return res.status(404).json({ error: 'Medication not found' });
     }
 
+    await medication.destroy();
+
     res.status(204).send();
   } catch (error) {
-    if (error.name === 'CastError') {
-      return res.status(400).json({ error: 'Invalid medication ID format' });
-    }
     console.error('Error deleting medication:', error);
     res.status(500).json({ error: 'Failed to delete medication' });
   }
@@ -125,12 +122,15 @@ export const searchMedications = async (req, res) => {
   try {
     const { query } = req.params;
 
-    const medications = await Medication.find({
-      $or: [
-        { name: new RegExp(query, 'i') },
-        { prescribedBy: new RegExp(query, 'i') }
-      ]
-    }).sort({ createdAt: -1 });
+    const medications = await Medication.findAll({
+      where: {
+        [Op.or]: [
+          { name: { [Op.iLike]: `%${query}%` } },
+          { prescribedBy: { [Op.iLike]: `%${query}%` } }
+        ]
+      },
+      order: [['createdAt', 'DESC']]
+    });
 
     res.json(medications);
   } catch (error) {

@@ -8,7 +8,7 @@ dotenv.config({ path: path.join(path.resolve(), "../.env") });
 /////////////////////////////////////////////////
 // ✅ Fail-fast env validation (production habit)
 /////////////////////////////////////////////////
-const requiredEnv = ["DB_NAME", "DB_USER", "DB_PASSWORD"];
+const requiredEnv = ["DB_NAME", "DB_USER", "DB_PASSWORD", "JWT_ACCESS_SECRET"];
 for (const key of requiredEnv) {
   if (!process.env[key]) {
     throw new Error(`Missing required environment variable: ${key}`);
@@ -23,7 +23,6 @@ import cors from "cors";
 
 // Sequelize (PostgreSQL)
 import sequelize, { testConnection } from "./database.js";
-import Medication from "./models/Medication.js";
 
 // Routes
 import authRoutes from "./src/routes/auth.routes.js"; // from old index.js
