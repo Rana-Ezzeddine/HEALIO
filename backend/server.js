@@ -3,7 +3,7 @@
 /////////////////////////////////////////////////
 import path from "path";
 import dotenv from "dotenv";
-dotenv.config({ path: path.join(path.resolve(), "../.env") });
+dotenv.config({ path: path.join(path.resolve(), ".env") });
 
 /////////////////////////////////////////////////
 // ✅ Fail-fast env validation (production habit)
@@ -21,14 +21,17 @@ for (const key of requiredEnv) {
 import express from "express";
 import cors from "cors";
 
-// Sequelize (PostgreSQL)
+// Sequelize (PostgreSQL) - Connection only, NO sync()
 import sequelize, { testConnection } from "./database.js";
 
+// Import models to register associations
+import './src/models/index.js';
+
 // Routes
-import authRoutes from "./src/routes/auth.routes.js"; // from old index.js
-import profileRoutes from "./src/routes/profileRoutes.js"; // from old index.js
-import symptomsRoutes from "./src/routes/symptoms.routes.js"; // from old index.js
-import medicationRoutes from "./src/routes/medications.routes.js"; // from server.js
+import authRoutes from "./src/routes/auth.routes.js";
+import profileRoutes from "./src/routes/profileRoutes.js";
+import symptomsRoutes from "./src/routes/symptoms.routes.js";
+import medicationRoutes from "./src/routes/medications.routes.js";
 
 /////////////////////////////////////////////////
 // ✅ Initialize App
@@ -97,23 +100,24 @@ app.use((err, req, res, next) => {
 
 /////////////////////////////////////////////////
 // ✅ Initialize PostgreSQL & Start Server
+// NOTE: NO sequelize.sync() - use migrations instead!
 /////////////////////////////////////////////////
 const startServer = async () => {
   try {
+    // Test database connection
     const connected = await testConnection();
     if (!connected) throw new Error("PostgreSQL connection failed");
 
-    // Auto-sync Sequelize models
-    await sequelize.sync({ alter: true });
-    console.log("✓ PostgreSQL models synchronized");
+    console.log("✓ PostgreSQL connected");
+    console.log("⚠️  Run 'npm run db:migrate' to set up database tables");
 
     // Start Express server
     app.listen(PORT, () => {
       console.log(`
 ╔═══════════════════════════════════════╗
-║   Healio Backend Server Running      ║
-║   Port: ${PORT}                        ║
-║   Environment: ${process.env.NODE_ENV || "development"} ║
+║   HEALIO Backend Server Running      ║
+║   Port: ${PORT.toString().padEnd(30)}║
+║   Environment: ${(process.env.NODE_ENV || "development").padEnd(23)}║
 ║   Database: PostgreSQL                ║
 ╚═══════════════════════════════════════╝
       `);

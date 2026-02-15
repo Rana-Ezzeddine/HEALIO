@@ -1,17 +1,8 @@
-require('dotenv').config();
+const path = require('path');
 
 module.exports = {
-  config: {
-    development: {
-      username: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME,
-      host: process.env.DB_HOST,
-      dialect: 'postgres'
-    }
-  },
-  migrationStorageTableName: 'sequelize_migrations',
-  migrationsPath: 'migrations',
-  modelsPath: 'models',
-  seedersPath: 'seeders'
+  'config': path.resolve('config', 'config.json'),
+  'models-path': path.resolve('src', 'models'),
+  'seeders-path': path.resolve('seeders'),
+  'migrations-path': path.resolve('migrations')
 };

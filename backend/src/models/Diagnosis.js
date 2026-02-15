@@ -1,7 +1,7 @@
 import { DataTypes } from 'sequelize';
 import sequelize from '../../database.js';
 
-const Symptom = sequelize.define('Symptom', {
+const Diagnosis = sequelize.define('Diagnosis', {
   id: {
     type: DataTypes.UUID,
     defaultValue: DataTypes.UUIDV4,
@@ -17,48 +17,47 @@ const Symptom = sequelize.define('Symptom', {
     onDelete: 'CASCADE',
     onUpdate: 'CASCADE'
   },
-  name: {
-    type: DataTypes.STRING,
+  doctorId: {
+    type: DataTypes.UUID,
     allowNull: false,
-    validate: {
-      notEmpty: {
-        msg: 'Symptom name is required'
-      }
-    }
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    onDelete: 'CASCADE',
+    onUpdate: 'CASCADE'
   },
-  severity: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    validate: {
-      min: 0,
-      max: 10,
-      isInt: true
-    }
-  },
-  notes: {
+  diagnosisText: {
     type: DataTypes.TEXT,
-    allowNull: true,
-    defaultValue: ''
+    allowNull: false
   },
-  loggedAt: {
+  diagnosedAt: {
     type: DataTypes.DATE,
     allowNull: false,
     defaultValue: DataTypes.NOW
+  },
+  status: {
+    type: DataTypes.ENUM('active', 'resolved'),
+    allowNull: false,
+    defaultValue: 'active'
   }
 }, {
-  tableName: 'symptoms',
+  tableName: 'diagnoses',
   timestamps: true,
   indexes: [
     {
       fields: ['patientId']
     },
     {
-      fields: ['loggedAt']
+      fields: ['doctorId']
     },
     {
-      fields: ['severity']
+      fields: ['status']
+    },
+    {
+      fields: ['diagnosedAt']
     }
   ]
 });
 
-export default Symptom;
+export default Diagnosis;

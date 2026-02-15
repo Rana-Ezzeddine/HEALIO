@@ -7,6 +7,16 @@ const Medication = sequelize.define('Medication', {
     defaultValue: DataTypes.UUIDV4,
     primaryKey: true
   },
+  patientId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    onDelete: 'CASCADE',
+    onUpdate: 'CASCADE'
+  },
   name: {
     type: DataTypes.STRING,
     allowNull: false,
@@ -15,6 +25,14 @@ const Medication = sequelize.define('Medication', {
         msg: 'Medication name is required'
       }
     }
+  },
+  doseAmount: {
+    type: DataTypes.FLOAT,
+    allowNull: true
+  },
+  doseUnit: {
+    type: DataTypes.STRING,
+    allowNull: true
   },
   dosage: {
     type: DataTypes.STRING,
@@ -34,13 +52,17 @@ const Medication = sequelize.define('Medication', {
       }
     }
   },
-  prescribedBy: {
-    type: DataTypes.STRING,
+  scheduleJson: {
+    type: DataTypes.JSONB,
+    allowNull: true
+  },
+  startDate: {
+    type: DataTypes.DATEONLY,
     allowNull: true,
     defaultValue: null
   },
-  startDate: {
-    type: DataTypes.DATE,
+  endDate: {
+    type: DataTypes.DATEONLY,
     allowNull: true,
     defaultValue: null
   },
@@ -54,10 +76,13 @@ const Medication = sequelize.define('Medication', {
   timestamps: true,
   indexes: [
     {
+      fields: ['patientId']
+    },
+    {
       fields: ['name']
     },
     {
-      fields: ['prescribedBy']
+      fields: ['startDate']
     },
     {
       fields: ['createdAt']
@@ -73,14 +98,11 @@ Medication.prototype.getFormattedDate = function() {
   return null;
 };
 
-// Static method
-Medication.findByDoctor = function(doctorName) {
+// Static method - find by patient
+Medication.findByPatient = function(patientId) {
   return this.findAll({
-    where: {
-      prescribedBy: {
-        [sequelize.Sequelize.Op.iLike]: `%${doctorName}%`
-      }
-    }
+    where: { patientId },
+    order: [['startDate', 'DESC']]
   });
 };
 
