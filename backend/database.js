@@ -1,11 +1,8 @@
 import { Sequelize } from 'sequelize';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 // Create Sequelize instance
 const sequelize = new Sequelize(
-  process.env.DB_NAME || 'healio',
+  process.env.DB_NAME || 'healio_dev',
   process.env.DB_USER || 'postgres',
   process.env.DB_PASSWORD || 'postgres',
   {
