@@ -1,0 +1,255 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model SequelizeMeta {
+  name String @id @db.VarChar(255)
+}
+
+model appointments {
+  id                                  String                   @id @db.Uuid
+  patientId                           String                   @db.Uuid
+  doctorId                            String                   @db.Uuid
+  startsAt                            DateTime                 @db.Timestamptz(6)
+  endsAt                              DateTime                 @db.Timestamptz(6)
+  location                            String?                  @db.VarChar(255)
+  status                              enum_appointments_status @default(scheduled)
+  notes                               String?
+  createdAt                           DateTime                 @default(now()) @db.Timestamptz(6)
+  updatedAt                           DateTime                 @default(now()) @db.Timestamptz(6)
+  users_appointments_doctorIdTousers  users                    @relation("appointments_doctorIdTousers", fields: [doctorId], references: [id], onDelete: Cascade)
+  users_appointments_patientIdTousers users                    @relation("appointments_patientIdTousers", fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([doctorId], map: "appointments_doctor_id_idx")
+  @@index([patientId], map: "appointments_patient_id_idx")
+  @@index([startsAt], map: "appointments_starts_at_idx")
+  @@index([status])
+}
+
+model caregiver_patient_permissions {
+  caregiverId                                            String   @db.Uuid
+  patientId                                              String   @db.Uuid
+  canViewMedications                                     Boolean  @default(false)
+  canViewSymptoms                                        Boolean  @default(false)
+  canViewAppointments                                    Boolean  @default(false)
+  canMessageDoctor                                       Boolean  @default(false)
+  canReceiveReminders                                    Boolean  @default(false)
+  createdAt                                              DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt                                              DateTime @default(now()) @db.Timestamptz(6)
+  users_caregiver_patient_permissions_caregiverIdTousers users    @relation("caregiver_patient_permissions_caregiverIdTousers", fields: [caregiverId], references: [id], onDelete: Cascade)
+  users_caregiver_patient_permissions_patientIdTousers   users    @relation("caregiver_patient_permissions_patientIdTousers", fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@id([caregiverId, patientId])
+  @@index([caregiverId], map: "caregiver_patient_permissions_caregiver_id_idx")
+  @@index([patientId], map: "caregiver_patient_permissions_patient_id_idx")
+}
+
+model conversation_participants {
+  conversationId String        @db.Uuid
+  userId         String        @db.Uuid
+  conversations  conversations @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  users          users         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, userId])
+  @@index([conversationId], map: "conversation_participants_conversation_id_idx")
+  @@index([userId], map: "conversation_participants_user_id_idx")
+}
+
+model conversations {
+  id                        String                      @id @db.Uuid
+  createdAt                 DateTime                    @default(now()) @db.Timestamptz(6)
+  updatedAt                 DateTime                    @default(now()) @db.Timestamptz(6)
+  conversation_participants conversation_participants[]
+  messages                  messages[]
+}
+
+model diagnoses {
+  id                               String                @id @db.Uuid
+  patientId                        String                @db.Uuid
+  doctorId                         String                @db.Uuid
+  diagnosisText                    String
+  diagnosedAt                      DateTime              @default(now()) @db.Timestamptz(6)
+  status                           enum_diagnoses_status @default(active)
+  createdAt                        DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt                        DateTime              @default(now()) @db.Timestamptz(6)
+  users_diagnoses_doctorIdTousers  users                 @relation("diagnoses_doctorIdTousers", fields: [doctorId], references: [id], onDelete: Cascade)
+  users_diagnoses_patientIdTousers users                 @relation("diagnoses_patientIdTousers", fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([diagnosedAt], map: "diagnoses_diagnosed_at_idx")
+  @@index([doctorId], map: "diagnoses_doctor_id_idx")
+  @@index([patientId], map: "diagnoses_patient_id_idx")
+  @@index([status])
+}
+
+model doctor_patient_assignments {
+  doctorId                                          String                                 @db.Uuid
+  patientId                                         String                                 @db.Uuid
+  status                                            enum_doctor_patient_assignments_status @default(active)
+  createdAt                                         DateTime                               @default(now()) @db.Timestamptz(6)
+  updatedAt                                         DateTime                               @default(now()) @db.Timestamptz(6)
+  users_doctor_patient_assignments_doctorIdTousers  users                                  @relation("doctor_patient_assignments_doctorIdTousers", fields: [doctorId], references: [id], onDelete: Cascade)
+  users_doctor_patient_assignments_patientIdTousers users                                  @relation("doctor_patient_assignments_patientIdTousers", fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@id([doctorId, patientId])
+  @@index([doctorId], map: "doctor_patient_assignments_doctor_id_idx")
+  @@index([patientId], map: "doctor_patient_assignments_patient_id_idx")
+  @@index([status])
+}
+
+model medical_notes {
+  id                                   String   @id @db.Uuid
+  patientId                            String   @db.Uuid
+  doctorId                             String   @db.Uuid
+  note                                 String
+  createdAt                            DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt                            DateTime @default(now()) @db.Timestamptz(6)
+  users_medical_notes_doctorIdTousers  users    @relation("medical_notes_doctorIdTousers", fields: [doctorId], references: [id], onDelete: Cascade)
+  users_medical_notes_patientIdTousers users    @relation("medical_notes_patientIdTousers", fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt], map: "medical_notes_created_at_idx")
+  @@index([doctorId], map: "medical_notes_doctor_id_idx")
+  @@index([patientId], map: "medical_notes_patient_id_idx")
+}
+
+model medications {
+  id           String    @id @db.Uuid
+  name         String    @db.VarChar(255)
+  dosage       String    @db.VarChar(255)
+  frequency    String    @db.VarChar(255)
+  prescribedBy String?   @db.VarChar(255)
+  startDate    DateTime? @db.Timestamptz(6)
+  notes        String?
+  createdAt    DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([createdAt], map: "medications_created_at_idx")
+  @@index([name])
+  @@index([prescribedBy], map: "medications_prescribed_by_idx")
+}
+
+model messages {
+  id             String        @id @db.Uuid
+  conversationId String        @db.Uuid
+  senderId       String        @db.Uuid
+  body           String
+  sentAt         DateTime      @default(now()) @db.Timestamptz(6)
+  conversations  conversations @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  users          users         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId], map: "messages_conversation_id_idx")
+  @@index([senderId], map: "messages_sender_id_idx")
+  @@index([sentAt], map: "messages_sent_at_idx")
+}
+
+model patient_profiles {
+  userId            String    @id @db.Uuid
+  firstName         String?   @db.VarChar(255)
+  lastName          String?   @db.VarChar(255)
+  dateOfBirth       DateTime? @db.Date
+  sex               String?   @db.VarChar(255)
+  bloodType         String?   @db.VarChar(255)
+  allergies         String?
+  medicalConditions String?
+  createdAt         DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @db.Timestamptz(6)
+  users             users     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "patient_profiles_user_id_idx")
+}
+
+model reminders {
+  id          String                @id @db.Uuid
+  userId      String                @db.Uuid
+  type        enum_reminders_type
+  relatedId   String?               @db.Uuid
+  scheduledAt DateTime              @db.Timestamptz(6)
+  sentAt      DateTime?             @db.Timestamptz(6)
+  status      enum_reminders_status @default(pending)
+  createdAt   DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime              @default(now()) @db.Timestamptz(6)
+  users       users                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([scheduledAt], map: "reminders_scheduled_at_idx")
+  @@index([status])
+  @@index([type])
+  @@index([userId], map: "reminders_user_id_idx")
+}
+
+model symptoms {
+  id        String   @id @db.Uuid
+  userId    String   @db.Uuid
+  symptom   String   @db.VarChar(255)
+  severity  Int
+  date      DateTime @default(dbgenerated("CURRENT_DATE")) @db.Date
+  notes     String?  @default("")
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @db.Timestamptz(6)
+  users     users    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([date])
+  @@index([severity])
+  @@index([userId], map: "symptoms_user_id_idx")
+}
+
+model users {
+  id                                                                             String                          @id @db.Uuid
+  email                                                                          String                          @unique @db.VarChar(255)
+  passwordHash                                                                   String                          @db.VarChar(255)
+  role                                                                           enum_users_role                 @default(patient)
+  isVerified                                                                     Boolean                         @default(false)
+  createdAt                                                                      DateTime                        @default(now()) @db.Timestamptz(6)
+  updatedAt                                                                      DateTime                        @default(now()) @db.Timestamptz(6)
+  appointments_appointments_doctorIdTousers                                      appointments[]                  @relation("appointments_doctorIdTousers")
+  appointments_appointments_patientIdTousers                                     appointments[]                  @relation("appointments_patientIdTousers")
+  caregiver_patient_permissions_caregiver_patient_permissions_caregiverIdTousers caregiver_patient_permissions[] @relation("caregiver_patient_permissions_caregiverIdTousers")
+  caregiver_patient_permissions_caregiver_patient_permissions_patientIdTousers   caregiver_patient_permissions[] @relation("caregiver_patient_permissions_patientIdTousers")
+  conversation_participants                                                      conversation_participants[]
+  diagnoses_diagnoses_doctorIdTousers                                            diagnoses[]                     @relation("diagnoses_doctorIdTousers")
+  diagnoses_diagnoses_patientIdTousers                                           diagnoses[]                     @relation("diagnoses_patientIdTousers")
+  doctor_patient_assignments_doctor_patient_assignments_doctorIdTousers          doctor_patient_assignments[]    @relation("doctor_patient_assignments_doctorIdTousers")
+  doctor_patient_assignments_doctor_patient_assignments_patientIdTousers         doctor_patient_assignments[]    @relation("doctor_patient_assignments_patientIdTousers")
+  medical_notes_medical_notes_doctorIdTousers                                    medical_notes[]                 @relation("medical_notes_doctorIdTousers")
+  medical_notes_medical_notes_patientIdTousers                                   medical_notes[]                 @relation("medical_notes_patientIdTousers")
+  messages                                                                       messages[]
+  patient_profiles                                                               patient_profiles?
+  reminders                                                                      reminders[]
+  symptoms                                                                       symptoms[]
+}
+
+enum enum_appointments_status {
+  scheduled
+  cancelled
+  completed
+}
+
+enum enum_diagnoses_status {
+  active
+  resolved
+}
+
+enum enum_doctor_patient_assignments_status {
+  active
+  inactive
+}
+
+enum enum_reminders_status {
+  pending
+  sent
+  dismissed
+}
+
+enum enum_reminders_type {
+  medication
+  appointment
+  custom
+}
+
+enum enum_users_role {
+  patient
+  doctor
+  caregiver
+}

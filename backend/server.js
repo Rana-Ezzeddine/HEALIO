@@ -3,6 +3,7 @@
 /////////////////////////////////////////////////
 import path from "path";
 import dotenv from "dotenv";
+import prisma from "./prismaClient.js";
 
 dotenv.config({
   path: path.join(path.resolve(), ".env"),
@@ -117,6 +118,9 @@ const startServer = async () => {
 
     console.log("✓ PostgreSQL connected");
 
+    await prisma.$connect();
+    await prisma.$queryRaw`SELECT 1`;
+    console.log("Prisma connected");
     /////////////////////////////////////////////////////////
     // Check if migrations were applied (SequelizeMeta exists)
     /////////////////////////////////////////////////////////
@@ -162,7 +166,10 @@ startServer();
 const shutdown = async () => {
   console.log("\nShutting down gracefully...");
 
+
   try {
+    await prisma.$disconnect();
+    console.log("Prisma disconnected");
     await sequelize.close();
     console.log("PostgreSQL connection closed");
     process.exit(0);
