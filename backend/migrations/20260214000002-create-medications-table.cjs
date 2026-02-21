@@ -10,9 +10,27 @@ module.exports = {
         primaryKey: true,
         allowNull: false
       },
+      patientId: {
+        type: Sequelize.UUID,
+        allowNull: false,
+        references: {
+          model: 'users',
+          key: 'id'
+        },
+        onDelete: 'CASCADE',
+        onUpdate: 'CASCADE'
+      },
       name: {
         type: Sequelize.STRING,
         allowNull: false
+      },
+      doseAmount: {
+        type: Sequelize.FLOAT,
+        allowNull: true
+      },
+      doseUnit: {
+        type: Sequelize.STRING,
+        allowNull: true
       },
       dosage: {
         type: Sequelize.STRING,
@@ -22,13 +40,17 @@ module.exports = {
         type: Sequelize.STRING,
         allowNull: false
       },
-      prescribedBy: {
-        type: Sequelize.STRING,
+      scheduleJson: {
+        type: Sequelize.JSONB,
+        allowNull: true
+      },
+      startDate: {
+        type: Sequelize.DATEONLY,
         allowNull: true,
         defaultValue: null
       },
-      startDate: {
-        type: Sequelize.DATE,
+      endDate: {
+        type: Sequelize.DATEONLY,
         allowNull: true,
         defaultValue: null
       },
@@ -49,12 +71,16 @@ module.exports = {
       }
     });
 
+    await queryInterface.addIndex('medications', ['patientId'], {
+      name: 'medications_patient_id_idx'
+    });
+
     await queryInterface.addIndex('medications', ['name'], {
       name: 'medications_name_idx'
     });
 
-    await queryInterface.addIndex('medications', ['prescribedBy'], {
-      name: 'medications_prescribed_by_idx'
+    await queryInterface.addIndex('medications', ['startDate'], {
+      name: 'medications_start_date_idx'
     });
 
     await queryInterface.addIndex('medications', ['createdAt'], {

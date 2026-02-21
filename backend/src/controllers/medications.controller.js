@@ -1,9 +1,17 @@
 import Medication from '../models/Medication.js';
 
-// Get all medications
+function getPatientId(req) {
+  return req.user?.id || req.user?.sub || null;
+}
+
+// Get all medications for the authenticated patient
 export const getAllMedications = async (req, res) => {
   try {
+    const patientId = getPatientId(req);
+    if (!patientId) return res.status(401).json({ error: 'Not authenticated' });
+
     const medications = await Medication.findAll({
+      where: { patientId },
       order: [['createdAt', 'DESC']]
     });
     res.json(medications);
@@ -13,11 +21,16 @@ export const getAllMedications = async (req, res) => {
   }
 };
 
-// Get single medication by ID
+// Get single medication by ID (must belong to authenticated patient)
 export const getMedicationById = async (req, res) => {
   try {
-    const medication = await Medication.findByPk(req.params.id);
-    
+    const patientId = getPatientId(req);
+    if (!patientId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const medication = await Medication.findOne({
+      where: { id: req.params.id, patientId }
+    });
+
     if (!medication) {
       return res.status(404).json({ error: 'Medication not found' });
     }
@@ -29,12 +42,14 @@ export const getMedicationById = async (req, res) => {
   }
 };
 
-// Create new medication
+// Create new medication for the authenticated patient
 export const createMedication = async (req, res) => {
   try {
-    const { name, dosage, frequency, prescribedBy, startDate, endDate, notes } = req.body;
-    
-    // Validation
+    const patientId = getPatientId(req);
+    if (!patientId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { name, dosage, frequency, doseAmount, doseUnit, scheduleJson, startDate, endDate, notes } = req.body;
+
     if (!name || !dosage || !frequency) {
       return res.status(400).json({ 
         error: 'Missing required fields: name, dosage, and frequency are required' 
@@ -42,13 +57,16 @@ export const createMedication = async (req, res) => {
     }
     
     const medication = await Medication.create({
+      patientId,
       name,
       dosage,
       frequency,
-      prescribedBy,
-      startDate,
-      endDate,
-      notes
+      doseAmount: doseAmount ?? null,
+      doseUnit: doseUnit ?? null,
+      scheduleJson: scheduleJson ?? null,
+      startDate: startDate ?? null,
+      endDate: endDate ?? null,
+      notes: notes ?? null
     });
     
     res.status(201).json(medication);
@@ -58,14 +76,24 @@ export const createMedication = async (req, res) => {
   }
 };
 
-// Update medication
+// Update medication (must belong to authenticated patient)
 export const updateMedication = async (req, res) => {
   try {
-    const { name, dosage, frequency, prescribedBy, startDate, endDate, notes } = req.body;
-    const { id } = req.params;
-    
-    const medication = await Medication.findByPk(id);
-    
+    const patientId = getPatientId(req);
+    if (!patientId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { name, dosage, frequency, doseAmount, doseUnit, scheduleJson, startDate, endDate, notes } = req.body;
+
+    if (!name || !dosage || !frequency) {
+      return res.status(400).json({
+        error: 'Missing required fields: name, dosage, and frequency are required'
+      });
+    }
+
+    const medication = await Medication.findOne({
+      where: { id: req.params.id, patientId }
+    });
+
     if (!medication) {
       return res.status(404).json({ error: 'Medication not found' });
     }
@@ -81,10 +109,12 @@ export const updateMedication = async (req, res) => {
       name,
       dosage,
       frequency,
-      prescribedBy,
-      startDate,
-      endDate,
-      notes
+      doseAmount: doseAmount ?? null,
+      doseUnit: doseUnit ?? null,
+      scheduleJson: scheduleJson ?? null,
+      startDate: startDate ?? null,
+      endDate: endDate ?? null,
+      notes: notes ?? null
     });
     
     res.json(medication);
@@ -94,11 +124,16 @@ export const updateMedication = async (req, res) => {
   }
 };
 
-// Delete medication
+// Delete medication (must belong to authenticated patient)
 export const deleteMedication = async (req, res) => {
   try {
-    const medication = await Medication.findByPk(req.params.id);
-    
+    const patientId = getPatientId(req);
+    if (!patientId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const medication = await Medication.findOne({
+      where: { id: req.params.id, patientId }
+    });
+
     if (!medication) {
       return res.status(404).json({ error: 'Medication not found' });
     }
@@ -109,5 +144,31 @@ export const deleteMedication = async (req, res) => {
   } catch (error) {
     console.error('Error deleting medication:', error);
     res.status(500).json({ error: 'Failed to delete medication' });
+  }
+};
+
+// Search medications for the authenticated patient
+export const searchMedications = async (req, res) => {
+  try {
+    const patientId = getPatientId(req);
+    if (!patientId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { query } = req.params;
+
+    const medications = await Medication.findAll({
+      where: {
+        patientId,
+        [Op.or]: [
+          { name: { [Op.iLike]: `%${query}%` } },
+          { notes: { [Op.iLike]: `%${query}%` } }
+        ]
+      },
+      order: [['createdAt', 'DESC']]
+    });
+
+    res.json(medications);
+  } catch (error) {
+    console.error('Error searching medications:', error);
+    res.status(500).json({ error: 'Failed to search medications' });
   }
 };
