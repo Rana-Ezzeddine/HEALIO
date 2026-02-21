@@ -32,8 +32,7 @@ for (const key of requiredEnv) {
 import express from "express";
 import cors from "cors";
 
-// Sequelize connection (NO sync)
-import sequelize, { testConnection } from "./database.js";
+
 
 // Register models and associations
 import "./src/models/index.js";
