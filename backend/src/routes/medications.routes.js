@@ -5,9 +5,8 @@ import {
   getMedicationById,
   createMedication,
   updateMedication,
-  deleteMedication,
-  searchMedications
-} from '../controllers/medications.controller.js';
+  deleteMedication
+} from '../controllers/medicationController.js';
 
 const router = express.Router();
 

@@ -1,5 +1,4 @@
 import Medication from '../models/Medication.js';
-import { Op } from 'sequelize';
 
 function getPatientId(req) {
   return req.user?.id || req.user?.sub || null;
@@ -15,7 +14,6 @@ export const getAllMedications = async (req, res) => {
       where: { patientId },
       order: [['createdAt', 'DESC']]
     });
-
     res.json(medications);
   } catch (error) {
     console.error('Error fetching medications:', error);
@@ -36,7 +34,7 @@ export const getMedicationById = async (req, res) => {
     if (!medication) {
       return res.status(404).json({ error: 'Medication not found' });
     }
-
+    
     res.json(medication);
   } catch (error) {
     console.error('Error fetching medication:', error);
@@ -53,11 +51,11 @@ export const createMedication = async (req, res) => {
     const { name, dosage, frequency, doseAmount, doseUnit, scheduleJson, startDate, endDate, notes } = req.body;
 
     if (!name || !dosage || !frequency) {
-      return res.status(400).json({
-        error: 'Missing required fields: name, dosage, and frequency are required'
+      return res.status(400).json({ 
+        error: 'Missing required fields: name, dosage, and frequency are required' 
       });
     }
-
+    
     const medication = await Medication.create({
       patientId,
       name,
@@ -70,13 +68,9 @@ export const createMedication = async (req, res) => {
       endDate: endDate ?? null,
       notes: notes ?? null
     });
-
+    
     res.status(201).json(medication);
   } catch (error) {
-    if (error.name === 'SequelizeValidationError') {
-      const messages = error.errors.map(err => err.message);
-      return res.status(400).json({ error: messages.join(', ') });
-    }
     console.error('Error creating medication:', error);
     res.status(500).json({ error: 'Failed to create medication' });
   }
@@ -103,7 +97,14 @@ export const updateMedication = async (req, res) => {
     if (!medication) {
       return res.status(404).json({ error: 'Medication not found' });
     }
-
+    
+    // Validation
+    if (!name || !dosage || !frequency) {
+      return res.status(400).json({ 
+        error: 'Missing required fields: name, dosage, and frequency are required' 
+      });
+    }
+    
     await medication.update({
       name,
       dosage,
@@ -115,13 +116,9 @@ export const updateMedication = async (req, res) => {
       endDate: endDate ?? null,
       notes: notes ?? null
     });
-
+    
     res.json(medication);
   } catch (error) {
-    if (error.name === 'SequelizeValidationError') {
-      const messages = error.errors.map(err => err.message);
-      return res.status(400).json({ error: messages.join(', ') });
-    }
     console.error('Error updating medication:', error);
     res.status(500).json({ error: 'Failed to update medication' });
   }
@@ -140,9 +137,9 @@ export const deleteMedication = async (req, res) => {
     if (!medication) {
       return res.status(404).json({ error: 'Medication not found' });
     }
-
+    
     await medication.destroy();
-
+    
     res.status(204).send();
   } catch (error) {
     console.error('Error deleting medication:', error);

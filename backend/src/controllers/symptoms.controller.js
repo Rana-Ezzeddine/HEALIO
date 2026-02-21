@@ -44,7 +44,6 @@ export async function createSymptom(req, res) {
         console.error("Error creating symptom:", error);
         return res.status(500).json({ message: "Failed to create symptom" });
     }
-}
 
 export async function listSymptoms(req, res) {
     try {
