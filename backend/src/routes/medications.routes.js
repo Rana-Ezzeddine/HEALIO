@@ -1,4 +1,5 @@
 import express from 'express';
+import requireUser from '../middleware/requireUser.js';
 import {
   getAllMedications,
   getMedicationById,
@@ -10,11 +11,13 @@ import {
 
 const router = express.Router();
 
+router.use(requireUser);
+
 router.get('/search/:query', searchMedications);
-router.get('/',              getAllMedications);
-router.get('/:id',           getMedicationById);
-router.post('/',             createMedication);
-router.put('/:id',           updateMedication);
-router.delete('/:id',        deleteMedication);
+router.get('/', getAllMedications);
+router.get('/:id', getMedicationById);
+router.post('/', createMedication);
+router.put('/:id', updateMedication);
+router.delete('/:id', deleteMedication);
 
 export default router;
