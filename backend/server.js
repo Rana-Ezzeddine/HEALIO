@@ -2,13 +2,18 @@
 // Load environment variables FIRST
 /////////////////////////////////////////////////
 import path from "path";
+import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import sequelize, { testConnection } from './database.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 dotenv.config({
-  path: path.join(path.resolve(), ".env"),
-  quiet: true,
+  path: path.join(__dirname, ".env"),
 });
+
+
 
 /////////////////////////////////////////////////
 // Fail-fast env validation (production habit)
@@ -38,7 +43,8 @@ import authRoutes from "./src/routes/auth.routes.js";
 import profileRoutes from "./src/routes/profileRoutes.js";
 import symptomsRoutes from "./src/routes/symptoms.routes.js";
 import medicationRoutes from "./src/routes/medications.routes.js";
-
+import doctorRoutes from "./src/routes/doctor.routes.js";
+import medicalHistoryRoutes from "./src/routes/medicalHistory.routes.js";
 /////////////////////////////////////////////////
 // Initialize App
 /////////////////////////////////////////////////
@@ -85,6 +91,9 @@ app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/symptoms", symptomsRoutes);
 app.use("/api/medications", medicationRoutes);
+app.use("/api/doctors", doctorRoutes);
+app.use("/api/medical-history", medicalHistoryRoutes)
+
 
 /////////////////////////////////////////////////
 // 404 Handler
