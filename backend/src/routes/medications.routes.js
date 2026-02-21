@@ -1,4 +1,6 @@
 import express from 'express';
+import requireUser from "../middleware/requireUser.js"; // ADD
+
 import {
   getAllMedications,
   getMedicationById,
@@ -9,6 +11,8 @@ import {
 } from '../controllers/medications.controller.js';
 
 const router = express.Router();
+
+router.use(requireUser); // ADD (so req.user exists)
 
 router.get('/search/:query', searchMedications);
 router.get('/',              getAllMedications);

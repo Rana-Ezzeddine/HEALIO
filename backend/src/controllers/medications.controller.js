@@ -34,6 +34,11 @@ export const getMedicationById = async (req, res) => {
 // Create new medication
 export const createMedication = async (req, res) => {
   try {
+    const patientId = req.user?.id || req.user?.sub;
+    if (!patientId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
     const { name, dosage, frequency, prescribedBy, startDate, notes } = req.body;
 
     if (!name || !dosage || !frequency) {
@@ -43,6 +48,7 @@ export const createMedication = async (req, res) => {
     }
 
     const medication = await Medication.create({
+      patientId,            // ✅ ADD THIS
       name,
       dosage,
       frequency,
