@@ -1,4 +1,5 @@
 import requireUser from "../middleware/requireUser.js";
+import requireRole from "../middleware/rbac.js";
 import express from "express";
 
 import {
@@ -8,6 +9,7 @@ import {
 
 const router = express.Router();
 router.use(requireUser);
+router.use(requireRole("patient"));
 
 router.post("/", createSymptom);
 router.get("/", listSymptoms);

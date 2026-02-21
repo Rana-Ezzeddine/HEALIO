@@ -10,7 +10,7 @@ module.exports = {
         primaryKey: true,
         allowNull: false
       },
-      userId: {
+      patientId: {
         type: Sequelize.UUID,
         allowNull: false,
         references: {
@@ -20,7 +20,7 @@ module.exports = {
         onDelete: 'CASCADE',
         onUpdate: 'CASCADE'
       },
-      symptom: {
+      name: {
         type: Sequelize.STRING,
         allowNull: false
       },
@@ -28,10 +28,10 @@ module.exports = {
         type: Sequelize.INTEGER,
         allowNull: false
       },
-      date: {
-        type: Sequelize.DATEONLY,
+      loggedAt: {
+        type: Sequelize.DATE,
         allowNull: false,
-        defaultValue: Sequelize.literal('CURRENT_DATE')
+        defaultValue: Sequelize.literal('CURRENT_TIMESTAMP')
       },
       notes: {
         type: Sequelize.TEXT,
@@ -50,12 +50,12 @@ module.exports = {
       }
     });
 
-    await queryInterface.addIndex('symptoms', ['userId'], {
-      name: 'symptoms_user_id_idx'
+    await queryInterface.addIndex('symptoms', ['patientId'], {
+      name: 'symptoms_patient_id_idx'
     });
 
-    await queryInterface.addIndex('symptoms', ['date'], {
-      name: 'symptoms_date_idx'
+    await queryInterface.addIndex('symptoms', ['loggedAt'], {
+      name: 'symptoms_logged_at_idx'
     });
 
     await queryInterface.addIndex('symptoms', ['severity'], {

@@ -4,6 +4,7 @@
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
+import sequelize, { testConnection } from './database.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -170,6 +171,7 @@ startServer();
 /////////////////////////////////////////////////
 const shutdown = async () => {
   console.log("\nShutting down gracefully...");
+
 
   try {
     await sequelize.close();
