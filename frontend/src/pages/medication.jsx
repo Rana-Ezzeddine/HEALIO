@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Pencil, Trash2, X, Check, Search, AlertCircle } from 'lucide-react';
+import { useNavigate } from "react-router-dom";
+import Navbar from "../components/Navbar"
+import { Plus, Clock, Pencil, Pill, Trash2, X, Check, Search, AlertCircle } from 'lucide-react';
 
 const API_BASE_URL = 'http://localhost:5050';
 
 const MedicationManager = () => {
+  const navigate = useNavigate();
   const [medications, setMedications] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingMed, setEditingMed] = useState(null);
@@ -17,6 +20,7 @@ const MedicationManager = () => {
     frequency: '',
     prescribedBy: '',
     startDate: '',
+    endDate: '',
     notes: ''
   });
 
@@ -29,6 +33,7 @@ const MedicationManager = () => {
       frequency: 'Once daily', 
       prescribedBy: 'Dr. Smith',
       startDate: '2024-01-15',
+      endDate: '2025-01-15',
       notes: 'Take with food' 
     },
     { 
@@ -120,6 +125,7 @@ const MedicationManager = () => {
         frequency: '', 
         prescribedBy: '',
         startDate: '',
+        endDate: '',
         notes: '' 
       });
     }
@@ -135,6 +141,7 @@ const MedicationManager = () => {
       frequency: '', 
       prescribedBy: '',
       startDate: '',
+      endDate: '',
       notes: '' 
     });
   };
@@ -242,20 +249,24 @@ const MedicationManager = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-          <p className="text-gray-600">Loading medications...</p>
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-sky-600 mb-4"></div>
+          <p className="text-slate-600">Loading medications...</p>
         </div>
       </div>
     );
   }
-
+  
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-indigo-50 p-6">
+      <Navbar
+        onLogin={() => setAuthView("login")}
+        onSignup={() => setAuthView("signup")}
+      />
+      <div className="pt-20 max-w-6xl mx-auto">
         {/* Backend Status Alert */}
-        {!backendAvailable && (
+        {/* {!backendAvailable && (
           <div className="mb-6 bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg">
             <div className="flex items-center">
               <AlertCircle className="text-yellow-600 mr-3" size={24} />
@@ -267,14 +278,36 @@ const MedicationManager = () => {
               </div>
             </div>
           </div>
-        )}
+        )} */}
+        
 
+        <div className="bg-sky-50 rounded-2xl shadow-md p-5 mb-6 flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <div className="bg-indigo-100 w-12 h-12 flex items-center justify-center rounded-full">
+              <Clock className="text-indigo-600"/>
+            </div>
+            <div>
+              <p className="text-slate-600 text-sm">
+                Next Dose
+              </p>
+              <p className="text-lg text-slate-800 font-semibold">
+                Paracetamol - 8:00 PM
+              </p>
+            </div>
+          </div>
+          <button className="text-white font-medium shadow bg-indigo-500 px-4 py-2 rounded-2xl hover:bg-indigo-600 transition">
+            Mark as Taken
+          </button>
+        </div>
         {/* Header */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+        <div className="bg-white rounded-2xl shadow-md p-6 mb-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-semibold text-gray-900">Medication Management</h1>
-              <p className="text-sm text-gray-600 mt-1">
+              <div className="flex items-center gap-3">
+                <Pill className="text-sky-500" size={24} />
+                <h1 className="text-2xl font-bold text-slate-800">Medication Management</h1>
+              </div>
+              <p className="text-sm text-slate-600 mt-1">
                 Track and manage your prescriptions
                 {backendAvailable && (
                   <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
@@ -285,7 +318,7 @@ const MedicationManager = () => {
             </div>
             <button
               onClick={() => openModal()}
-              className="inline-flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm"
+              className="inline-flex items-center justify-center gap-2 bg-sky-500 text-white px-4 py-2.5 rounded-2xl shadow-md hover:bg-sky-600 hover:shadow-lg transition font-medium"
             >
               <Plus size={20} />
               Add Medication
@@ -293,86 +326,92 @@ const MedicationManager = () => {
           </div>
 
           {/* Search Bar */}
-          <div className="mt-4 relative">
+          <div className="mb-4 mt-4 relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="text-gray-400" size={20} />
+              <Search className="text-slate-400" size={20} />
             </div>
             <input
               type="text"
               placeholder="Search medications by name or doctor..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
             />
           </div>
-        </div>
+        
 
-        {/* Table */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          {filteredMedications.length === 0 ? (
+        {filteredMedications.length === 0 ? (
             <div className="p-12 text-center">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
-                <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
+                <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-1">
+              <h3 className="text-lg font-medium text-slate-900 mb-1">
                 {searchTerm ? 'No medications found' : 'No medications added'}
               </h3>
-              <p className="text-gray-500">
+              <p className="text-slate-500">
                 {searchTerm ? 'Try a different search term' : 'Click "Add Medication" to get started'}
               </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
+              <table className="w-full ">
+                <thead className="bg-slate-50 ">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                       Medication Name
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                       Dosage
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                       Frequency
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                       Prescribed By
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                       Start Date
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                      End Date
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                       Notes
                     </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white divide-y divide-slate-100">
                   {filteredMedications.map((med) => (
-                    <tr key={med.id} className="hover:bg-gray-50 transition-colors">
+                    <tr key={med.id} className="hover:bg-slate-50 transition duration-150">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{med.name}</div>
+                        <div className="text-sm font-medium text-slate-900">{med.name}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-700">{med.dosage}</div>
+                        <div className="text-sm text-slate-700">{med.dosage}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-700">{med.frequency}</div>
+                        <div className="text-sm text-slate-700">{med.frequency}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-700">{med.prescribedBy || '-'}</div>
+                        <div className="text-sm text-slate-700">{med.prescribedBy || '-'}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-700">
+                        <div className="text-sm text-slate-700">
                           {med.startDate ? new Date(med.startDate).toLocaleDateString() : '-'}
                         </div>
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-slate-700">
+                          {med.endDate ? new Date(med.endDate).toLocaleDateString() : '-'}
+                        </div>
+                      </td>
                       <td className="px-6 py-4">
-                        <div className="text-sm text-gray-700 max-w-xs truncate" title={med.notes}>
+                        <div className="text-sm text-slate-700 max-w-xs truncate" title={med.notes}>
                           {med.notes || '-'}
                         </div>
                       </td>
@@ -380,7 +419,7 @@ const MedicationManager = () => {
                         <div className="flex items-center justify-end gap-3">
                           <button
                             onClick={() => openModal(med)}
-                            className="text-blue-600 hover:text-blue-800 transition-colors"
+                            className="text-sky-600 hover:text-sky-800 transition-colors"
                             title="Edit"
                           >
                             <Pencil size={18} />
@@ -403,8 +442,8 @@ const MedicationManager = () => {
 
           {/* Table Footer */}
           {filteredMedications.length > 0 && (
-            <div className="bg-gray-50 px-6 py-3 border-t border-gray-200">
-              <p className="text-sm text-gray-600">
+            <div className="bg-slate-50 px-6 py-3 ">
+              <p className="text-sm text-slate-600">
                 Showing {filteredMedications.length} of {medications.length} medication{medications.length !== 1 ? 's' : ''}
               </p>
             </div>
@@ -413,15 +452,15 @@ const MedicationManager = () => {
 
         {/* Modal */}
         {isModalOpen && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="flex justify-between items-center p-6 border-b border-gray-200 sticky top-0 bg-white">
-                <h2 className="text-xl font-semibold text-gray-900">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center p-6 border-b border-slate-200 sticky top-0 bg-white">
+                <h2 className="text-xl font-semibold text-slate-900">
                   {editingMed ? 'Edit Medication' : 'Add New Medication'}
                 </h2>
                 <button
                   onClick={closeModal}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  className="text-slate-400 hover:text-slate-600 transition-colors"
                 >
                   <X size={24} />
                 </button>
@@ -430,7 +469,7 @@ const MedicationManager = () => {
               <form onSubmit={handleSubmit} className="p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
                       Medication Name <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -439,13 +478,13 @@ const MedicationManager = () => {
                       value={formData.name}
                       onChange={handleInputChange}
                       required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                       placeholder="e.g., Aspirin"
                     />
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
                       Dosage <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -454,13 +493,13 @@ const MedicationManager = () => {
                       value={formData.dosage}
                       onChange={handleInputChange}
                       required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                       placeholder="e.g., 100mg"
                     />
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
                       Frequency <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -469,13 +508,13 @@ const MedicationManager = () => {
                       value={formData.frequency}
                       onChange={handleInputChange}
                       required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                       placeholder="e.g., Twice daily"
                     />
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
                       Prescribed By
                     </label>
                     <input
@@ -483,13 +522,13 @@ const MedicationManager = () => {
                       name="prescribedBy"
                       value={formData.prescribedBy}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                       placeholder="e.g., Dr. Smith"
                     />
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
                       Start Date
                     </label>
                     <input
@@ -497,12 +536,25 @@ const MedicationManager = () => {
                       name="startDate"
                       value={formData.startDate}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                      End Date
+                    </label>
+                    <input
+                      type="date"
+                      name="endDate"
+                      value={formData.endDate}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                     />
                   </div>
                   
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
                       Notes
                     </label>
                     <textarea
@@ -510,23 +562,23 @@ const MedicationManager = () => {
                       value={formData.notes}
                       onChange={handleInputChange}
                       rows="3"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                       placeholder="Additional instructions or reminders"
                     />
                   </div>
                 </div>
                 
-                <div className="flex gap-3 mt-6 pt-6 border-t border-gray-200">
+                <div className="flex gap-3 mt-6 pt-6 border-t border-slate-200">
                   <button
                     type="button"
                     onClick={closeModal}
-                    className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                    className="flex-1 px-4 py-2.5 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center justify-center gap-2"
+                    className="flex-1 px-4 py-2.5 bg-sky-600 text-white rounded-lg hover:bg-sky-700 transition-colors font-medium flex items-center justify-center gap-2"
                   >
                     <Check size={18} />
                     {editingMed ? 'Update Medication' : 'Add Medication'}

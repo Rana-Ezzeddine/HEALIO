@@ -12,6 +12,7 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
+  const [licenseNb, setLicenseNb] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
@@ -36,6 +37,7 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
       localStorage.setItem("requestedRole", userType);
       localStorage.setItem("firstName", firstName);
       localStorage.setItem("lastName", lastName);
+      localStorage.setItem("licenseNb", licenseNb);
 
       setSuccess("Account created successfully. Please log in.");
 
@@ -146,6 +148,19 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
               placeholder="username@gmail.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-400 focus:ring-sky-400 transition"
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-700">License Number</label>
+            <input
+              type="number"
+              placeholder="License Number"
+              value={licenseNb}
+              onChange={(e) => setLicenseNb(e.target.value)}
               autoComplete="email"
               className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-400 focus:ring-sky-400 transition"
               required
