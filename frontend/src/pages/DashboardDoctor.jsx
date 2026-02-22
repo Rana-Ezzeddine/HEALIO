@@ -65,7 +65,6 @@ export default function DashboarDoctor() {
             title="🗓 Today's Appointments" 
             mainText="8 Apointments"
             subText="Next: 2:30 - Sarah Khalil"
-            navPage="/medication"
           />
           <DashboardCard
             title="📩 New Messages"
