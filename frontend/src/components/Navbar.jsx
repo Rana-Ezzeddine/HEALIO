@@ -59,7 +59,7 @@ export default function Navbar() {
               {!isDoctor && (
                 <>
                   <button
-                    onClick={() => navigate("/dashboardPatient")}
+                    onClick={() => navigate("/DashboardPatient")}
                     className={`text-sm font-medium transition ${
                     isDashboard ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
                   }`}>
@@ -75,7 +75,7 @@ export default function Navbar() {
                 </>
               )}
               <button
-                onClick={() => navigate(isDoctor ? "/profileDoctor" : "/profilePatient")}
+                onClick={() => navigate(isDoctor ? "/ProfileDoctor" : "/ProfilePatient")}
                 className={`text-sm font-medium transition ${
                 isProfile ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
               }`}>
