@@ -1,6 +1,6 @@
 // backend/src/controllers/profileController.js
 
-import { saveProfile, getProfile } from "../store/profileStore.js"; 
+import { saveProfile, getProfile } from "../store/profileStore.js";
 
 // Allowed values
 const ALLOWED_GENDERS = new Set(["Male", "Female", "Prefer not to say"]);
