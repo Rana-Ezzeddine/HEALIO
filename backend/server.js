@@ -44,7 +44,7 @@ import symptomsRoutes from "./src/routes/symptoms.routes.js";
 import medicationRoutes from "./src/routes/medications.routes.js";
 import doctorRoutes from "./src/routes/doctor.routes.js";
 import medicalHistoryRoutes from "./src/routes/medicalHistory.routes.js";
-import dashboardRoutes from './routes/patientDashboard.routes.js';
+import dashboardRoutes from './src/routes/patientDashboard.routes.js';
 /////////////////////////////////////////////////
 // Initialize App
 /////////////////////////////////////////////////
