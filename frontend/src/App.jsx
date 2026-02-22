@@ -43,7 +43,7 @@ useEffect(() => {
       </div>
       
       <Routes>
-        <Route path="/" element={<DashboardDoctor />} />
+        <Route path="/" element={<LandingPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/dashboardPatient" element={<DashboardPatient />} />
         <Route path="/dashboardDoctor" element={<DashboardDoctor />} />

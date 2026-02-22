@@ -20,6 +20,7 @@ const MedicationManager = () => {
     frequency: '',
     prescribedBy: '',
     startDate: '',
+    endDate: '',
     notes: ''
   });
 
@@ -291,9 +292,6 @@ const MedicationManager = () => {
               </p>
               <p className="text-lg text-slate-800 font-semibold">
                 Paracetamol - 8:00 PM
-              </p>
-              <p className="text-slate-600 text-sm">
-                Today • In 2 hours
               </p>
             </div>
           </div>

@@ -53,16 +53,14 @@ export default function DashboardPatient() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <Navbar
-        onLogin={() => setAuthView("login")}
-        onSignup={() => setAuthView("signup")}
-      />
+      <Navbar/>
 
       <main className="pt-28 max-w-6xl mx-auto px-6 py-8">
         <div className="mb-6">
           <h1 className="text-3xl text-slate-800 font-bold">Welcome Back, {name} 👋</h1>
           <p className="text-slate-500 mt-1">Here's a quick overview of your health</p>
         </div>
+        
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
           <DashboardCard
             title="💊 Active Medications"
