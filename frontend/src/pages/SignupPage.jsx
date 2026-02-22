@@ -12,6 +12,7 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
+  const [licenseNb, setLicenseNb] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
@@ -33,15 +34,17 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
     try {
       await registerApi(email, password);
 
+      const dashboardPath = userType === "doctor" ? "/DashboardDoctor" : "/DashboardPatient";
+
       localStorage.setItem("requestedRole", userType);
       localStorage.setItem("firstName", firstName);
       localStorage.setItem("lastName", lastName);
+      localStorage.setItem("licenseNb", licenseNb);
 
-      setSuccess("Account created successfully. Please log in.");
+      setSuccess("Account created successfully.");
 
-      
       if (embedded) onClose?.();
-      else navigate("/loginPage");
+      navigate(dashboardPath);
     } catch (err) {
       setError(err?.message || "Failed to create account.");
     } finally {
@@ -84,7 +87,10 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setUserType("patient")}
+              onClick={() => {
+                setUserType("patient");
+                setLicenseNb("");
+              }}
               className={`flex-1 h-10 rounded-lg font-medium transition ${
                 userType === "patient"
                   ? "bg-sky-500 text-white"
@@ -151,6 +157,22 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
               required
             />
           </div>
+
+          {userType === "doctor" && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-700">
+              License Number
+            </label>
+            <input
+              type="text"
+              placeholder="Enter your medical license number"
+              value={licenseNb}
+              onChange={(e) => setLicenseNb(e.target.value)}
+              className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-400 focus:ring-sky-400 transition"
+              required
+            />
+          </div>
+        )}
 
           <div className="space-y-2">
             <label className="text-sm font-medium text-slate-700">Password</label>

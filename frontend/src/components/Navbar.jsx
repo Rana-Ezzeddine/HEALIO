@@ -6,9 +6,12 @@ export default function Navbar() {
     const navigate = useNavigate();
 
     const path = location.pathname;
+  const userRole = localStorage.getItem("userRole")?.toLowerCase();
+  const isDoctor = userRole === "doctor";
 
-    const isDashboard = path.startsWith("/dashboard");
-    const isProfile = path.startsWith("/profile");
+  const isDashboard = path.toLowerCase().startsWith("/dashboard");
+  const isProfile = path.toLowerCase().startsWith("/profile");
+    const isMedication = path === "/medication"
     const isLanding = path === "/";
 
     function handleLogout() {
@@ -34,57 +37,58 @@ export default function Navbar() {
 
           {/* Actions */}
           <div className="flex items-center gap-6">
-            {isLanding && (
+            {isLanding ? (
               <>
                 <button
-                  onClick={() => navigate("/loginPage")}
+                  onClick={() => navigate("/LoginPage")}
                   className="text-sm font-medium text-slate-600 hover:text-slate-900 transition"
                 >
                   Login
                 </button>
+
                 <button
                   onClick={() => navigate("/signup")}
                   className="rounded-lg bg-sky-500 px-5 py-2 text-sm font-semibold text-white
-                             hover:bg-sky-600 transition shadow"
+                            hover:bg-sky-600 transition shadow"
                 >
                   Sign Up
                 </button>
               </>
-            )}
-
-            {isProfile && (
+            ) : (
               <>
-                <button
-                  onClick={() => navigate("/dashboardPatient")}
-                  className="text-sm font-medium text-slate-600 hover:text-slate-900 transition"
-                >
-                  Dashboard
-                </button>
-                <button
-                  onClick={handleLogout}
-                  className="rounded-lg bg-sky-500 px-5 py-2 text-sm font-semibold text-white
-                             hover:bg-sky-600 transition shadow"
-                >
-                  Logout
-                </button>
-              </>
-            )}
-
-            {isDashboard && (
-              <>
-                <button
-                  onClick={() => navigate("/profilePatient")}
-                  className="text-sm font-medium text-slate-600 hover:text-slate-900 transition"
-                >
-                  Profile
-                </button>
-                <button
-                  onClick={handleLogout}
-                  className="rounded-lg bg-sky-500 px-5 py-2 text-sm font-semibold text-white
-                             hover:bg-sky-600 transition shadow"
-                >
-                  Logout
-                </button>
+              {!isDoctor && (
+                <>
+                  <button
+                    onClick={() => navigate("/DashboardPatient")}
+                    className={`text-sm font-medium transition ${
+                    isDashboard ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                  }`}>
+                    Dashboard
+                  </button>
+                  <button
+                    onClick={() => navigate("/medication")}
+                    className={`text-sm font-medium transition ${
+                    isMedication ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                  }`}>
+                    Medications
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() => navigate(isDoctor ? "/ProfileDoctor" : "/ProfilePatient")}
+                className={`text-sm font-medium transition ${
+                isProfile ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+              }`}>
+                Profile
+              </button>
+              
+              <button
+                onClick={handleLogout}
+                className="rounded-lg bg-sky-500 px-5 py-2 text-sm font-semibold text-white
+                            hover:bg-sky-600 transition shadow"
+              >
+                Logout
+              </button>
               </>
             )}
           </div>

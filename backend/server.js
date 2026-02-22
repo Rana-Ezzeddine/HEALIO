@@ -2,13 +2,18 @@
 // Load environment variables FIRST
 /////////////////////////////////////////////////
 import path from "path";
+import { fileURLToPath } from "url";
 import dotenv from "dotenv";
-import prisma from "./prismaClient.js";
+import sequelize, { testConnection } from './database.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config({
-  path: path.join(path.resolve(), ".env"),
-  quiet: true,
+  path: path.join(__dirname, ".env"),
 });
+
+
 
 /////////////////////////////////////////////////
 // Fail-fast env validation (production habit)
@@ -27,8 +32,7 @@ for (const key of requiredEnv) {
 import express from "express";
 import cors from "cors";
 
-// Sequelize connection (NO sync)
-import sequelize, { testConnection } from "./database.js";
+
 
 // Register models and associations
 import "./src/models/index.js";
@@ -38,7 +42,9 @@ import authRoutes from "./src/routes/auth.routes.js";
 import profileRoutes from "./src/routes/profileRoutes.js";
 import symptomsRoutes from "./src/routes/symptoms.routes.js";
 import medicationRoutes from "./src/routes/medications.routes.js";
-
+import doctorRoutes from "./src/routes/doctor.routes.js";
+import medicalHistoryRoutes from "./src/routes/medicalHistory.routes.js";
+import dashboardRoutes from './src/routes/patientDashboard.routes.js';
 /////////////////////////////////////////////////
 // Initialize App
 /////////////////////////////////////////////////
@@ -85,6 +91,10 @@ app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/symptoms", symptomsRoutes);
 app.use("/api/medications", medicationRoutes);
+app.use("/api/doctors", doctorRoutes);
+app.use("/api/medical-history", medicalHistoryRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+
 
 /////////////////////////////////////////////////
 // 404 Handler
@@ -118,9 +128,6 @@ const startServer = async () => {
 
     console.log("✓ PostgreSQL connected");
 
-    await prisma.$connect();
-    await prisma.$queryRaw`SELECT 1`;
-    console.log("Prisma connected");
     /////////////////////////////////////////////////////////
     // Check if migrations were applied (SequelizeMeta exists)
     /////////////////////////////////////////////////////////
@@ -168,8 +175,6 @@ const shutdown = async () => {
 
 
   try {
-    await prisma.$disconnect();
-    console.log("Prisma disconnected");
     await sequelize.close();
     console.log("PostgreSQL connection closed");
     process.exit(0);

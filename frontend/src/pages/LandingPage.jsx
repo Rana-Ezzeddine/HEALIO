@@ -25,12 +25,11 @@ export default function LandingPage() {
         onSignup={() => setAuthView("signup")}
       />
 
-      
       <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-sky-200/60 blur-3xl" />
       <div className="absolute top-1/2 -right-40 h-96 w-96 rounded-full bg-indigo-200/60 blur-3xl" />
 
       <div className="relative z-10">
-        <section className="min-h-screen pt-15 flex items-center justify-center px-6 text-center">
+        <section className="min-h-screen pt-12 flex items-center justify-center px-6 text-center">
 
           <div className="max-w-2xl">
             <img
