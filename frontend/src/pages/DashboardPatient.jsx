@@ -78,6 +78,7 @@ export default function DashboardPatient() {
           <DashboardCard
             title="🤒 Last Symptom Logged"
             mainText="Yesterday"
+            navPage="/symptoms"
           />
           
         </div>

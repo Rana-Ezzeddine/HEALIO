@@ -10,7 +10,7 @@ import ProfilePatient from "./pages/ProfilePatient";
 import ProfileDoctor from "./pages/ProfileDoctor";
 import Medication from "./pages/medication";
 import LandingPage from "./pages/LandingPage";
-
+import Symptoms from "./pages/Symptoms";
 
 export default function App() {
   const [message, setMessage] = useState("Loading...");
@@ -38,13 +38,12 @@ useEffect(() => {
 
   return (
     <BrowserRouter>
-      {/* Debug banner (optional) */}
       <div className="fixed bottom-3 right-3 rounded-xl bg-black/80 px-3 py-2 text-sm text-white">
         {message}
       </div>
       
       <Routes>
-        <Route path="/" element={<DashboardPatient />} />
+        <Route path="/" element={<DashboardDoctor />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/dashboardPatient" element={<DashboardPatient />} />
         <Route path="/dashboardDoctor" element={<DashboardDoctor />} />
@@ -52,6 +51,7 @@ useEffect(() => {
         <Route path="/medication" element={<Medication />}/>
         <Route path="/profilePatient" element={<ProfilePatient />} />
         <Route path="/profileDoctor" element={<ProfileDoctor />} />
+        <Route path="/symptoms" element={<Symptoms />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

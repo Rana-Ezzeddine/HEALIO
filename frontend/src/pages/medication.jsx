@@ -32,6 +32,7 @@ const MedicationManager = () => {
       frequency: 'Once daily', 
       prescribedBy: 'Dr. Smith',
       startDate: '2024-01-15',
+      endDate: '2025-01-15',
       notes: 'Take with food' 
     },
     { 
@@ -123,6 +124,7 @@ const MedicationManager = () => {
         frequency: '', 
         prescribedBy: '',
         startDate: '',
+        endDate: '',
         notes: '' 
       });
     }
@@ -138,6 +140,7 @@ const MedicationManager = () => {
       frequency: '', 
       prescribedBy: '',
       startDate: '',
+      endDate: '',
       notes: '' 
     });
   };
@@ -374,6 +377,9 @@ const MedicationManager = () => {
                       Start Date
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                      End Date
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                       Notes
                     </th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
@@ -399,6 +405,11 @@ const MedicationManager = () => {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-slate-700">
                           {med.startDate ? new Date(med.startDate).toLocaleDateString() : '-'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-slate-700">
+                          {med.endDate ? new Date(med.endDate).toLocaleDateString() : '-'}
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -526,6 +537,19 @@ const MedicationManager = () => {
                       type="date"
                       name="startDate"
                       value={formData.startDate}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                      End Date
+                    </label>
+                    <input
+                      type="date"
+                      name="endDate"
+                      value={formData.endDate}
                       onChange={handleInputChange}
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                     />
