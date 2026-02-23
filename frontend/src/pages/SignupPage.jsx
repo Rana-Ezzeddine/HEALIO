@@ -32,7 +32,8 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
 
     setLoading(true);
     try {
-      await registerApi(email, password);
+      // Backend-dependent account creation (re-enable when backend is ready)
+      // await registerApi(email, password);
 
       const dashboardPath = userType === "doctor" ? "/dashboardDoctor" : "/dashboardPatient";
 
