@@ -1,23 +1,34 @@
 import { useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
 import logo from "../assets/logo.png";
 
 export default function Navbar() {
-    const location = useLocation();
-    const navigate = useNavigate();
+  const location = useLocation();
+  const navigate = useNavigate();
 
-    const path = location.pathname;
-  const userRole = localStorage.getItem("userRole")?.toLowerCase();
+  const [userRole, setUserRole] = useState(
+    localStorage.getItem("userRole")?.toLowerCase()
+  );
+
+  useEffect(() => {
+    const role = localStorage.getItem("userRole")?.toLowerCase();
+    setUserRole(role);
+  }, [location]); // re-check role when route changes
+
   const isDoctor = userRole === "doctor";
 
+  const path = location.pathname;
   const isDashboard = path.toLowerCase().startsWith("/dashboard");
   const isProfile = path.toLowerCase().startsWith("/profile");
-    const isMedication = path === "/medication"
-    const isLanding = path === "/";
+  const isMedication = path.toLowerCase().startsWith("/medication");
+  const isLanding = path === "/";
 
-    function handleLogout() {
+  function handleLogout() {
     localStorage.clear();
+    setUserRole(null);
     navigate("/");
   }
+
   return (
     <header className="fixed top-0 left-0 w-full z-40">
       <div className="mx-auto max-w-7xl px-6 py-4">
@@ -40,7 +51,7 @@ export default function Navbar() {
             {isLanding ? (
               <>
                 <button
-                  onClick={() => navigate("/LoginPage")}
+                  onClick={() => navigate("/loginPage")}
                   className="text-sm font-medium text-slate-600 hover:text-slate-900 transition"
                 >
                   Login
@@ -59,7 +70,7 @@ export default function Navbar() {
               {!isDoctor && (
                 <>
                   <button
-                    onClick={() => navigate("/DashboardPatient")}
+                    onClick={() => navigate("/dashboardPatient")}
                     className={`text-sm font-medium transition ${
                     isDashboard ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
                   }`}>
@@ -75,7 +86,14 @@ export default function Navbar() {
                 </>
               )}
               <button
-                onClick={() => navigate(isDoctor ? "/ProfileDoctor" : "/ProfilePatient")}
+                onClick={() => navigate(isDoctor ? "/dashboardDoctor" : "/dashboardPatient")}
+                className={`text-sm font-medium transition ${
+                isDashboard ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+              }`}>
+                Dashboard
+              </button>
+              <button
+                onClick={() => navigate(isDoctor ? "/profileDoctor" : "/profilePatient")}
                 className={`text-sm font-medium transition ${
                 isProfile ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
               }`}>

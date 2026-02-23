@@ -34,9 +34,10 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
     try {
       await registerApi(email, password);
 
-      const dashboardPath = userType === "doctor" ? "/DashboardDoctor" : "/DashboardPatient";
+      const dashboardPath = userType === "doctor" ? "/dashboardDoctor" : "/dashboardPatient";
 
       localStorage.setItem("requestedRole", userType);
+      localStorage.setItem("userRole", userType);
       localStorage.setItem("firstName", firstName);
       localStorage.setItem("lastName", lastName);
       localStorage.setItem("licenseNb", licenseNb);
