@@ -15,7 +15,7 @@ const isStrongPassword = (pw) => {
 
 export const register = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, role } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ message: "Email and password are required." });
@@ -31,6 +31,9 @@ export const register = async (req, res) => {
       });
     }
 
+    const validRoles = ["patient", "doctor", "caregiver"];
+    const userRole = (role && validRoles.includes(role)) ? role : "patient";
+
     const cleanEmail = String(email || "").toLowerCase().trim();
 
     // Check if user already exists
@@ -44,7 +47,7 @@ export const register = async (req, res) => {
     const user = await User.create({
       email: cleanEmail,
       passwordHash,
-      role: "patient",
+      role: userRole,
       isVerified: false,
     });
 
