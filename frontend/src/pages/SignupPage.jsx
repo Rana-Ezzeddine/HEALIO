@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { register as registerApi } from "../api/auth";
+import { login as loginApi } from "../api/auth";
 import logo from "../assets/logo.png";
 
 export default function SignupPage({ embedded = false, onClose, onSwitchToLogin }) {
@@ -21,22 +22,47 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  const roleDescriptionByType = {
+    patient: "Track your health records, book appointments, and communicate with doctors.",
+    doctor: "Manage patient records, schedule appointments, and provide healthcare services.",
+    caregiver: "Support loved ones by tracking care updates, appointments, and medications.",
+  };
   const dashboardPathByRole = {
     doctor: "/dashboardDoctor",
     patient: "/dashboardPatient",
     caregiver: "/dashboardCaregiver",
   };
 
-  const roleDescriptionByType = {
-    patient: "Track your health records, book appointments, and communicate with doctors.",
-    doctor: "Manage patient records, schedule appointments, and provide healthcare services.",
-    caregiver: "Support loved ones by tracking care updates, appointments, and medications.",
-  };
+  const isNameValid = (value) => /^[A-Za-z]{2,}$/.test(value.trim());
+  const isStrongPassword = (value) =>
+    value.length >= 10 &&
+    /[A-Z]/.test(value) &&
+    /[a-z]/.test(value) &&
+    /[0-9]/.test(value);
 
   async function handleCreateAccount(e) {
     e.preventDefault();
     setError("");
     setSuccess("");
+
+    const cleanFirstName = firstName.trim();
+    const cleanLastName = lastName.trim();
+    const cleanEmail = email.trim();
+
+    if (!isNameValid(cleanFirstName)) {
+      setError("First name must be at least 2 characters and contain letters only.");
+      return;
+    }
+
+    if (!isNameValid(cleanLastName)) {
+      setError("Last name must be at least 2 characters and contain letters only.");
+      return;
+    }
+
+    if (!isStrongPassword(password)) {
+      setError("Password must be 10+ chars and include uppercase, lowercase, and a number.");
+      return;
+    }
 
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
@@ -50,15 +76,23 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
 
     setLoading(true);
     try {
-      // Backend-dependent account creation (re-enable when backend is ready)
-      // await registerApi(email, password);
+      await registerApi({
+        firstName: cleanFirstName,
+        lastName: cleanLastName,
+        email: cleanEmail,
+        password,
+        role: userType,
+      });
 
-      const dashboardPath = dashboardPathByRole[userType] || "/dashboardPatient";
+      const { token, user } = await loginApi(cleanEmail, password);
 
       localStorage.setItem("requestedRole", userType);
       localStorage.setItem("userRole", userType);
-      localStorage.setItem("firstName", firstName);
-      localStorage.setItem("lastName", lastName);
+      localStorage.setItem("firstName", cleanFirstName);
+      localStorage.setItem("lastName", cleanLastName);
+      localStorage.setItem("email", cleanEmail);
+      localStorage.setItem("accessToken", token);
+      localStorage.setItem("user", JSON.stringify(user));
       localStorage.setItem("licenseNb", licenseNb);
       if (userType === "caregiver") {
         localStorage.setItem("pendingPatientLinkCode", patientLinkCode.trim());
@@ -66,6 +100,7 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
         localStorage.removeItem("pendingPatientLinkCode");
       }
 
+      const dashboardPath = dashboardPathByRole[userType] || "/dashboardPatient";
       setSuccess("Account created successfully.");
 
       if (embedded) onClose?.();
@@ -171,6 +206,9 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
                 placeholder="First Name"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
+                minLength={2}
+                pattern="[A-Za-z]{2,}"
+                required
                 className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-400 focus:ring-sky-400 transition"
               />
             </div>
@@ -181,6 +219,9 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
                 placeholder="Last Name"
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
+                minLength={2}
+                pattern="[A-Za-z]{2,}"
+                required
                 className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-400 focus:ring-sky-400 transition"
               />
             </div>
@@ -240,6 +281,7 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="new-password"
+                minLength={10}
                 className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-400 focus:ring-sky-400 transition"
                 required
               />

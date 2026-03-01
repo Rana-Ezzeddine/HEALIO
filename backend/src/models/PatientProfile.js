@@ -40,6 +40,38 @@ const PatientProfile = sequelize.define('PatientProfile', {
   medicalConditions: {
     type: DataTypes.TEXT,
     allowNull: true
+  },
+  phoneNumber: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  email: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  emergencyContact: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  specialization: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  yearsOfExperience: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  licenseNb: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  clinicName: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  clinicAddress: {
+    type: DataTypes.STRING,
+    allowNull: true
   }
 }, {
   tableName: 'patient_profiles',

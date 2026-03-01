@@ -1,6 +1,7 @@
 // backend/src/controllers/profileController.js
 
 import PatientProfile from "../models/PatientProfile.js";
+import User from "../models/User.js";
 
 // Allowed values
 const ALLOWED_GENDERS = new Set(["Male", "Female", "Prefer not to say"]);
@@ -15,6 +16,10 @@ function normString(v) {
 
 function isAlphaOnly(v) {
   return /^[A-Za-z]+$/.test(v);
+}
+
+function isWordsOnly(v) {
+  return /^[A-Za-z][A-Za-z\s'-]*$/.test(v);
 }
 
 function normalizeName(value, fieldName) {
@@ -34,7 +39,8 @@ const GENDER_CANON = {
 };
 
 function normalizeGender(value) {
-  if (typeof value !== "string") return { error: "gender is required" };
+  if (value == null || value === "") return { value: null };
+  if (typeof value !== "string") return { error: "gender must be Male, Female, or Prefer not to say" };
   const key = value.trim().toLowerCase();
   const canon = GENDER_CANON[key];
   if (!canon) return { error: "gender must be Male, Female, or Prefer not to say" };
@@ -55,14 +61,14 @@ function isValidYYYYMMDD(dateStr) {
 
 function normalizeDateOfBirth(value) {
   const s = normString(value);
-  if (!s) return { error: "dateOfBirth is required" };
+  if (!s) return { value: null };
   if (!isValidYYYYMMDD(s)) return { error: "dateOfBirth must be in YYYY-MM-DD format and be a real date" };
   return { value: s };
 }
 
 function normalizeBloodType(value) {
   const s = normString(value);
-  if (!s) return { error: "bloodType is required" };
+  if (!s) return { value: null };
   if (!ALLOWED_BLOOD_TYPES.has(s)) return { error: "bloodType must be one of: A+, A-, B+, B-, AB+, AB-, O+, O-" };
   return { value: s };
 }
@@ -85,28 +91,51 @@ function normalizePhoneNumber(value, fieldName = "phoneNumber", required = true)
   return { value: normalized };
 }
 
-function normalizeStringArray(value) {
+function normalizeStringArray(value, fieldLabel) {
+  let items = [];
   if (Array.isArray(value)) {
-    return value.filter((x) => typeof x === "string").map((x) => x.trim()).filter((x) => x.length > 0);
+    items = value.filter((x) => typeof x === "string").map((x) => x.trim()).filter((x) => x.length > 0);
+  } else if (typeof value === "string") {
+    items = value.split(",").map((x) => x.trim()).filter((x) => x.length > 0);
   }
-  if (typeof value === "string") {
-    return value.split(",").map((x) => x.trim()).filter((x) => x.length > 0);
+
+  for (const item of items) {
+    if (!isWordsOnly(item)) {
+      return { error: `${fieldLabel} must contain words only (letters, spaces, apostrophes, or hyphens).` };
+    }
   }
-  return [];
+
+  return { value: items };
 }
 
 function normalizeEmergencyContact(value) {
   if (!value || typeof value !== "object") return { value: null };
   const name = normString(value.name);
   const relationship = normString(value.relationship);
-  const phoneRes = normalizePhoneNumber(value.phoneNumber, "emergencyContact.phoneNumber", false);
+  const phoneRes = normalizePhoneNumber(value.phoneNumber, "Emergency contact phone number", false);
   const anyProvided = !!(name || relationship || phoneRes.value);
   if (!anyProvided) return { value: null };
-  if (!name) return { error: "emergencyContact.name is required (if providing emergency contact)" };
-  if (!relationship) return { error: "emergencyContact.relationship is required (if providing emergency contact)" };
+  if (!name) return { error: "Emergency contact name is required." };
+  if (!relationship) return { error: "Emergency contact relationship is required." };
+  if (!isWordsOnly(name)) return { error: "Emergency contact name must contain words only." };
+  if (!isWordsOnly(relationship)) return { error: "Emergency contact relationship must contain words only." };
   if (phoneRes.error) return { error: phoneRes.error };
-  if (!phoneRes.value) return { error: "emergencyContact.phoneNumber is required (if providing emergency contact)" };
+  if (!phoneRes.value) return { error: "Emergency contact phone number is required." };
   return { value: { name, relationship, phoneNumber: phoneRes.value } };
+}
+
+function normalizeOptionalString(value) {
+  const s = normString(value);
+  return { value: s ?? null };
+}
+
+function normalizeOptionalInteger(value, fieldName) {
+  if (value == null || value === "") return { value: null };
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0) {
+    return { error: `${fieldName} must be a valid non-negative integer` };
+  }
+  return { value: n };
 }
 
 function validateProfile(data) {
@@ -122,7 +151,7 @@ function validateProfile(data) {
   const dobRes = normalizeDateOfBirth(data.dateOfBirth);
   if (dobRes.error) return { error: dobRes.error };
 
-  const phoneRes = normalizePhoneNumber(data.phoneNumber, "phoneNumber", true);
+  const phoneRes = normalizePhoneNumber(data.phoneNumber, "phoneNumber", false);
   if (phoneRes.error) return { error: phoneRes.error };
 
   const bloodRes = normalizeBloodType(data.bloodType);
@@ -131,8 +160,29 @@ function validateProfile(data) {
   const emailRes = normalizeEmail(data.email);
   if (emailRes.error) return { error: emailRes.error };
 
+  const allergiesRes = normalizeStringArray(data.allergies, "Allergies");
+  if (allergiesRes.error) return { error: allergiesRes.error };
+
+  const conditionsRes = normalizeStringArray(data.chronicConditions, "Chronic conditions");
+  if (conditionsRes.error) return { error: conditionsRes.error };
+
   const emergencyRes = normalizeEmergencyContact(data.emergencyContact);
   if (emergencyRes.error) return { error: emergencyRes.error };
+
+  const specializationRes = normalizeOptionalString(data.specialization);
+  const yearsOfExperienceRes = normalizeOptionalInteger(data.yearsOfExperience, "yearsOfExperience");
+  if (yearsOfExperienceRes.error) return { error: yearsOfExperienceRes.error };
+  const licenseNbRes = normalizeOptionalString(data.licenseNb);
+  const clinicNameRes = normalizeOptionalString(data.clinicName);
+  const clinicAddressRes = normalizeOptionalString(data.clinicAddress);
+
+  if (phoneRes.value && emergencyRes.value && emergencyRes.value.phoneNumber) {
+    const userDigits = String(phoneRes.value).replace(/[^\d]/g, "");
+    const emergencyDigits = String(emergencyRes.value.phoneNumber).replace(/[^\d]/g, "");
+    if (userDigits && emergencyDigits && userDigits === emergencyDigits) {
+      return { error: "Emergency contact phone number must be different from your phone number." };
+    }
+  }
 
   return {
     normalized: {
@@ -140,15 +190,37 @@ function validateProfile(data) {
       lastName: lastNameRes.value,
       sex: genderRes.value,                               // mapped to 'sex' to match PatientProfile model
       dateOfBirth: dobRes.value,
-      allergies: normalizeStringArray(data.allergies).join(", "),         // stored as TEXT
-      medicalConditions: normalizeStringArray(data.chronicConditions).join(", "), // stored as TEXT
+      allergies: allergiesRes.value.join(", "),         // stored as TEXT
+      medicalConditions: conditionsRes.value.join(", "), // stored as TEXT
       bloodType: bloodRes.value,
       phoneNumber: phoneRes.value,
       email: emailRes.value,
       emergencyContact: emergencyRes.value
         ? JSON.stringify(emergencyRes.value)
         : null,                                            // stored as JSON string in TEXT column
+      specialization: specializationRes.value,
+      yearsOfExperience: yearsOfExperienceRes.value,
+      licenseNb: licenseNbRes.value,
+      clinicName: clinicNameRes.value,
+      clinicAddress: clinicAddressRes.value,
     },
+  };
+}
+
+function toProfileResponse(profileData, userEmail) {
+  let parsedEmergencyContact = null;
+  if (profileData?.emergencyContact) {
+    try {
+      parsedEmergencyContact = JSON.parse(profileData.emergencyContact);
+    } catch {
+      parsedEmergencyContact = null;
+    }
+  }
+
+  return {
+    ...profileData,
+    email: userEmail || null,
+    emergencyContact: parsedEmergencyContact,
   };
 }
 
@@ -167,7 +239,9 @@ export async function postProfile(req, res) {
       ...normalized,
     });
 
-    return res.status(200).json(profile);
+    const user = await User.findByPk(userId);
+    const profileData = typeof profile.toJSON === "function" ? profile.toJSON() : profile;
+    return res.status(200).json(toProfileResponse(profileData, user?.email || null));
   } catch (err) {
     console.error("postProfile error:", err);
     return res.status(500).json({ message: "Internal server error" });
@@ -182,8 +256,10 @@ export async function getMyProfile(req, res) {
   try {
     const profile = await PatientProfile.findOne({ where: { userId } });
     if (!profile) return res.status(404).json({ message: "Profile not found" });
+    const user = await User.findByPk(userId);
 
-    return res.status(200).json(profile);
+    const profileData = typeof profile.toJSON === "function" ? profile.toJSON() : profile;
+    return res.status(200).json(toProfileResponse(profileData, user?.email || null));
   } catch (err) {
     console.error("getMyProfile error:", err);
     return res.status(500).json({ message: "Internal server error" });

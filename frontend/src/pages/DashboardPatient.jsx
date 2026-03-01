@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
 import { useNavigate } from "react-router-dom";
+import { apiUrl, authHeaders } from "../api/http";
 
 function DashboardCard({title, mainText, subText, navPage}){
   const navigate = useNavigate();
@@ -26,6 +27,9 @@ export default function DashboardPatient() {
   const navigate = useNavigate();
   const [role, setRole] = useState("Patient");
   const [name, setName] = useState("Patient");
+  const [medicationCount, setMedicationCount] = useState(0);
+  const [medicationSubText, setMedicationSubText] = useState("No medications added yet");
+  const [lastSymptomText, setLastSymptomText] = useState("No logs");
 
   useEffect(() => {
     try {
@@ -37,6 +41,72 @@ export default function DashboardPatient() {
     } catch (err) {
       console.error(err);
     }
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${apiUrl}/api/medications`, {
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+        });
+
+        if (!res.ok) {
+          setMedicationCount(0);
+          setMedicationSubText("No medications added yet");
+          return;
+        }
+
+        const meds = await res.json().catch(() => []);
+        const list = Array.isArray(meds) ? meds : [];
+        setMedicationCount(list.length);
+        setMedicationSubText(
+          list.length > 0 ? `Latest: ${list[0]?.name || "Medication"}` : "No medications added yet"
+        );
+      } catch (err) {
+        setMedicationCount(0);
+        setMedicationSubText("No medications added yet");
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${apiUrl}/api/symptoms`, {
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+        });
+
+        if (!res.ok) {
+          setLastSymptomText("No logs");
+          return;
+        }
+
+        const symptoms = await res.json().catch(() => []);
+        const list = Array.isArray(symptoms) ? symptoms : [];
+        if (list.length === 0) {
+          setLastSymptomText("No logs");
+          return;
+        }
+
+        const rawDate = list[0]?.loggedAt;
+        if (!rawDate) {
+          setLastSymptomText("No logs");
+          return;
+        }
+
+        const loggedDate = new Date(rawDate);
+        const today = new Date();
+        const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const startOfLogged = new Date(loggedDate.getFullYear(), loggedDate.getMonth(), loggedDate.getDate());
+        const diffDays = Math.round((startOfToday - startOfLogged) / (1000 * 60 * 60 * 24));
+
+        if (diffDays === 0) setLastSymptomText("Today");
+        else if (diffDays === 1) setLastSymptomText("Yesterday");
+        else setLastSymptomText(loggedDate.toLocaleDateString(undefined, { month: "short", day: "numeric" }));
+      } catch (err) {
+        setLastSymptomText("No logs");
+      }
+    })();
   }, []);
 
   function handleLogout() {
@@ -64,8 +134,8 @@ export default function DashboardPatient() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
           <DashboardCard
             title="💊 Active Medications"
-            mainText="3 Medications"
-            subText="Next dose: Paracetamol - 8:00 PM"
+            mainText={`${medicationCount} Medication${medicationCount === 1 ? "" : "s"}`}
+            subText={medicationSubText}
             navPage="/medication"
           />
           <DashboardCard
@@ -75,7 +145,7 @@ export default function DashboardPatient() {
           />
           <DashboardCard
             title="🤒 Last Symptom Logged"
-            mainText="Yesterday"
+            mainText={lastSymptomText}
             navPage="/symptoms"
           />
           

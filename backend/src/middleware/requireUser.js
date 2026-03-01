@@ -11,7 +11,10 @@ export default function requireUser(req, res, next) {
     const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
     req.user = { id: payload.sub, role: payload.role, isVerified: payload.isVerified };
     return next();
-  } catch {
-    return res.status(401).json({ message: "Invalid or expired token." });
+  } catch (err) {
+    if (err?.name === "TokenExpiredError") {
+      return res.status(401).json({ message: "Session expired. Please log in again." });
+    }
+    return res.status(401).json({ message: "Invalid token. Please log in again." });
   }
 };

@@ -3,6 +3,14 @@ import jwt from 'jsonwebtoken';
 import validator from 'validator';
 import User from '../models/User.js';
 
+const isValidName = (name) => {
+  return (
+    typeof name === "string" &&
+    /^[A-Za-z]+$/.test(name.trim()) &&
+    name.trim().length >= 2
+  );
+};
+
 const isStrongPassword = (pw) => {
   return (
     typeof pw === "string" &&
@@ -15,10 +23,24 @@ const isStrongPassword = (pw) => {
 
 export const register = async (req, res) => {
   try {
-    const { email, password, role } = req.body;
+    const { firstName, lastName, email, password, role } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required." });
+    if (!firstName || !lastName || !email || !password) {
+      return res.status(400).json({
+        message: "First name, last name, email, and password are required.",
+      });
+    }
+
+    if (!isValidName(firstName)) {
+      return res.status(400).json({
+        message: "First name must be at least 2 characters and contain letters only.",
+      });
+    }
+
+    if (!isValidName(lastName)) {
+      return res.status(400).json({
+        message: "Last name must be at least 2 characters and contain letters only.",
+      });
     }
 
     if (!validator.isEmail(String(email))) {

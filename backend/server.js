@@ -56,7 +56,21 @@ const PORT = process.env.PORT || 5050;
 /////////////////////////////////////////////////
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin(origin, callback) {
+      // Allow server-to-server/no-origin requests (e.g., curl, Postman)
+      if (!origin) return callback(null, true);
+
+      const allowed = [
+        process.env.FRONTEND_URL || "http://localhost:5173",
+      ];
+
+      const isLocalhostDev = /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
+      if (allowed.includes(origin) || isLocalhostDev) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Not allowed by CORS"));
+    },
     credentials: true,
   })
 );

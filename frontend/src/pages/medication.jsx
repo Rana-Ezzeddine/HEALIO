@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar"
 import { Plus, Clock, Pencil, Pill, Trash2, X, Check, Search, AlertCircle } from 'lucide-react';
+import { apiUrl, authHeaders } from "../api/http";
 
-const API_BASE_URL = 'http://localhost:5050';
+const API_BASE_URL = apiUrl;
 
 const MedicationManager = () => {
   const navigate = useNavigate();
@@ -90,8 +91,15 @@ const MedicationManager = () => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/medications`, {
         method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
       });
+
+      if (response.status === 401 || response.status === 403) {
+        setBackendAvailable(true);
+        setMedications([]);
+        setError("Your session expired. Please log in again.");
+        return;
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -100,6 +108,7 @@ const MedicationManager = () => {
       const data = await response.json();
       setMedications(data);
       setBackendAvailable(true);
+      setError(null);
     } catch (err) {
       console.error('Error fetching medications:', err);
       setBackendAvailable(false);
@@ -143,22 +152,9 @@ const MedicationManager = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    if (!backendAvailable) {
-      alert('Backend unavailable. Changes will not be saved.');
-      // Still update local state for demo purposes
-      if (editingMed) {
-        setMedications(medications.map(med => 
-          med.id === editingMed.id ? { ...formData, id: med.id } : med
-        ));
-      } else {
-        const newMed = {
-          ...formData,
-          id: Math.max(0, ...medications.map(m => m.id)) + 1
-        };
-        setMedications([...medications, newMed]);
-      }
-      closeModal();
+    if (!authHeaders().Authorization) {
+      alert("Your session expired. Please log in again.");
+      navigate("/loginPage");
       return;
     }
 
@@ -167,12 +163,18 @@ const MedicationManager = () => {
         // Update existing medication
         const response = await fetch(`${API_BASE_URL}/api/medications/${editingMed.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
           body: JSON.stringify(formData),
         });
 
         if (!response.ok) {
-          throw new Error('Failed to update medication');
+          if (response.status === 401 || response.status === 403) {
+            alert("Your session expired. Please log in again.");
+            navigate("/loginPage");
+            return;
+          }
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData?.error || errData?.message || 'Failed to update medication');
         }
 
         const updatedMed = await response.json();
@@ -183,12 +185,18 @@ const MedicationManager = () => {
         // Create new medication
         const response = await fetch(`${API_BASE_URL}/api/medications`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
           body: JSON.stringify(formData),
         });
 
         if (!response.ok) {
-          throw new Error('Failed to create medication');
+          if (response.status === 401 || response.status === 403) {
+            alert("Your session expired. Please log in again.");
+            navigate("/loginPage");
+            return;
+          }
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData?.error || errData?.message || 'Failed to create medication');
         }
 
         const newMed = await response.json();
@@ -196,9 +204,11 @@ const MedicationManager = () => {
       }
 
       closeModal();
+      setBackendAvailable(true);
+      setError(null);
     } catch (err) {
       console.error('Error saving medication:', err);
-      alert('Failed to save medication. Please try again.');
+      alert(err?.message || 'Failed to save medication.');
     }
   };
 
@@ -207,26 +217,28 @@ const MedicationManager = () => {
       return;
     }
 
-    if (!backendAvailable) {
-      alert('Backend unavailable. Changes will not be saved.');
-      setMedications(medications.filter(med => med.id !== id));
-      return;
-    }
-
     try {
       const response = await fetch(`${API_BASE_URL}/api/medications/${id}`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
       });
 
       if (!response.ok) {
-        throw new Error('Failed to delete medication');
+        if (response.status === 401 || response.status === 403) {
+          alert("Your session expired. Please log in again.");
+          navigate("/loginPage");
+          return;
+        }
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData?.error || errData?.message || 'Failed to delete medication');
       }
 
       setMedications(medications.filter(med => med.id !== id));
+      setBackendAvailable(true);
+      setError(null);
     } catch (err) {
       console.error('Error deleting medication:', err);
-      alert('Failed to delete medication. Please try again.');
+      alert(err?.message || 'Failed to delete medication.');
     }
   };
 

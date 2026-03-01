@@ -3,9 +3,14 @@ import sequelize from '../../database.js';
 
 const Medication = sequelize.define('Medication', {
   id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
     primaryKey: true,
-    autoIncrement: true
+    allowNull: false
+  },
+  patientId: {
+    type: DataTypes.UUID,
+    allowNull: false
   },
   name: {
     type: DataTypes.STRING,
@@ -30,6 +35,18 @@ const Medication = sequelize.define('Medication', {
   },
   prescribedBy: {
     type: DataTypes.STRING,
+    allowNull: true
+  },
+  doseAmount: {
+    type: DataTypes.FLOAT,
+    allowNull: true
+  },
+  doseUnit: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  scheduleJson: {
+    type: DataTypes.JSONB,
     allowNull: true
   },
   startDate: {

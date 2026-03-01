@@ -1,10 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Navbar from "../components/Navbar";
 import { X, Check, Sparkles, Activity, CalendarDays, Plus, HeartPulse } from 'lucide-react';
+import { apiUrl, authHeaders } from "../api/http";
 
 export default function Symptoms() {
   const [logs, setLogs] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [error, setError] = useState("");
 
   const [currentSymptom, setCurrentSymptom] = useState(null);
   const [currentSeverity, setCurrentSeverity] = useState(null);
@@ -36,21 +38,77 @@ export default function Symptoms() {
 
   const intenseDays = logs.filter((log) => (log.severity ?? 0) >= 7).length;
 
-  function handleSave() {
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${apiUrl}/api/symptoms`, {
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+        });
+
+        const data = await res.json().catch(() => ([]));
+        if (!res.ok) {
+          setError(data?.message || "Failed to load symptoms.");
+          return;
+        }
+
+        const normalized = Array.isArray(data)
+          ? data.map((item) => ({
+              id: item.id,
+              date: item.loggedAt,
+              symptom: item.name,
+              severity: item.severity,
+              notes: item.notes,
+            }))
+          : [];
+        setLogs(normalized);
+      } catch (err) {
+        setError("Failed to load symptoms.");
+      }
+    })();
+  }, []);
+
+  async function handleSave() {
     if (!currentSymptom) {
       alert("Please select symptom.");
       return;
     }
+    if (currentSeverity === null) {
+      alert("Please select severity.");
+      return;
+    }
 
-    const newLog = {
-      id: Date.now(),
-      date: new Date().toLocaleDateString(),
-      symptom: currentSymptom,
-      severity: currentSeverity,
-      notes: currentNotes,
-    };
+    try {
+      const payload = {
+        symptom: currentSymptom,
+        severity: currentSeverity,
+        notes: currentNotes,
+      };
 
-    setLogs([newLog, ...logs]);
+      const res = await fetch(`${apiUrl}/api/symptoms`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data?.message || "Failed to save symptom.");
+        return;
+      }
+
+      const newLog = {
+        id: data.id,
+        date: data.loggedAt,
+        symptom: data.name,
+        severity: data.severity,
+        notes: data.notes,
+      };
+      setLogs([newLog, ...logs]);
+      setError("");
+    } catch (err) {
+      alert("Failed to save symptom.");
+      return;
+    }
 
     // reset modal
     setCurrentSymptom(null);
@@ -145,6 +203,7 @@ export default function Symptoms() {
         </div>
 
         <h2 className="text-lg font-semibold text-slate-700 mb-3">Recent Logs</h2>
+        {error ? <p className="mb-3 text-sm text-red-600">{error}</p> : null}
         <div className="flex flex-col gap-4">
           {logs.length === 0 && (
             <div className="mt-8 rounded-3xl border border-dashed border-sky-200 bg-white/80 p-10 text-center">

@@ -88,6 +88,15 @@ export default function ProfileDoctor(){
     //contact info
     const[email, setEmail] = useState("");
     const[phone, setPhone] = useState("");
+    const sessionUser = JSON.parse(localStorage.getItem("user") || "null");
+    const accountEmail = sessionUser?.email || localStorage.getItem("email") || "";
+
+    function hydrateFromSession() {
+      setFirstName(localStorage.getItem("firstName") || "");
+      setLastName(localStorage.getItem("lastName") || "");
+      setEmail(accountEmail);
+      setLicenseNb(localStorage.getItem("licenseNb") || "");
+    }
 
     useEffect(() => {
   (async () => {
@@ -96,10 +105,14 @@ export default function ProfileDoctor(){
         headers: { "Content-Type": "application/json", ...authHeaders() },
       });
 
-      if (res.status === 404) return; // no profile yet
+      if (res.status === 404) {
+        hydrateFromSession();
+        return; // no profile yet
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         console.error("Failed to load profile:", err);
+        hydrateFromSession();
         return;
       }
 
@@ -107,20 +120,21 @@ export default function ProfileDoctor(){
 
       setFirstName(p.firstName || "");
       setLastName(p.lastName || "");
-      setGender(p.gender || "");
+      setGender(p.gender || p.sex || "");
       setDateOfBirth(p.dateOfBirth || "");
 
       setSpecialization(p.specialization || "");
       setYearsOfExperience(p.yearsOfExperience || "");
-      setLicenseNb(p.licenseNb || "");
+      setLicenseNb(p.licenseNb || localStorage.getItem("licenseNb") || "");
       setClinicName(p.clinicName || "");
-      setClinicAddress(p.ClinicAddress || "");
+      setClinicAddress(p.clinicAddress || "");
 
       setPhone(p.phoneNumber || "");
-      setEmail(p.email || "");
+      setEmail(p.email || accountEmail);
 
     } catch (err) {
       console.error(err);
+      hydrateFromSession();
     }
   })();
 }, []);
@@ -135,7 +149,7 @@ export default function ProfileDoctor(){
       dateOfBirth,
 
       phoneNumber: phone,
-      email,
+      email: accountEmail,
 
       specialization,
       yearsOfExperience,
@@ -160,17 +174,22 @@ export default function ProfileDoctor(){
 
     setFirstName(data.firstName || "");
     setLastName(data.lastName || "");
-    setGender(canonGender(data.gender));
+    setGender(canonGender(data.gender || data.sex));
     setDateOfBirth(data.dateOfBirth || "");
 
     setSpecialization(data.specialization || "");
     setYearsOfExperience(data.yearsOfExperience || "");
-    setLicenseNb(data.licenseNb || "");
+    setLicenseNb(data.licenseNb || licenseNb);
     setClinicName(data.clinicName || "");
-    setClinicAddress(data.clinicAddress || "");
+    setClinicAddress(data.clinicAddress || clinicAddress);
     
-    setPhone(data.phoneNumber || "");
-    setEmail(data.email || "");
+    setPhone(data.phoneNumber || phone);
+    setEmail(accountEmail);
+
+    // Keep dashboard/session name in sync with profile edits
+    localStorage.setItem("firstName", data.firstName || firstName);
+    localStorage.setItem("lastName", data.lastName || lastName);
+    localStorage.setItem("licenseNb", data.licenseNb || licenseNb);
 
     setIsEditing(false);
   } catch (err) {
@@ -262,7 +281,7 @@ export default function ProfileDoctor(){
                     <FormInput label="Specialization" type="text" value={specialization} onChange={(e)=>setSpecialization(e.target.value)} isEditing={isEditing} />
                 </div>
                 <FormInput label="Years of experience" type="number" value={yearsOfExperience} onChange={(e)=>setYearsOfExperience(e.target.value)} isEditing={isEditing} />
-                <FormInput label="License Number" type="number" value={licenseNb} onChange={(e)=>setLicenseNb(e.target.value)} isEditing={isEditing} />
+                <FormInput label="License Number" type="text" value={licenseNb} onChange={(e)=>setLicenseNb(e.target.value)} isEditing={false} />
                 <FormInput label="Clinic/Hospital Name" type="text" value={clinicName} onChange={(e)=>setClinicName(e.target.value)} isEditing={isEditing} />
                 <FormInput label="Clinic/Hospital Address" type="text" value={clinicAddress} onChange={(e)=>setClinicAddress(e.target.value)} isEditing={isEditing} />
               </div>
@@ -272,7 +291,7 @@ export default function ProfileDoctor(){
               <h2 className="text-xl font-semibold text-slate-800 mb-4">Contact Information</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> 
                 <FormInput label="Phone Number" type="text" value={phone} onChange={(e)=>setPhone(e.target.value)} isEditing={isEditing} />
-                <FormInput label="Email" type="text" value={email} onChange={(e)=>setEmail(e.target.value)} isEditing={isEditing} />
+                <FormInput label="Email" type="text" value={email} onChange={(e)=>setEmail(e.target.value)} isEditing={false} />
               </div>
             </section>
           </div>

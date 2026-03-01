@@ -2,6 +2,15 @@ import Medication from "../models/Medication.js";
 import { Op } from "sequelize";
 
 const getPatientId = (req) => req.user?.id || req.user?.sub || null;
+const cleanString = (v) => (typeof v === "string" ? v.trim() : v);
+const nullIfEmpty = (v) => {
+  if (v == null) return null;
+  if (typeof v === "string") {
+    const s = v.trim();
+    return s.length ? s : null;
+  }
+  return v;
+};
 
 // Get all medications for the authenticated patient
 export const getAllMedications = async (req, res) => {
@@ -59,7 +68,11 @@ export const createMedication = async (req, res) => {
       notes,
     } = req.body;
 
-    if (!name || !dosage || !frequency) {
+    const cleanName = cleanString(name);
+    const cleanDosage = cleanString(dosage);
+    const cleanFrequency = cleanString(frequency);
+
+    if (!cleanName || !cleanDosage || !cleanFrequency) {
       return res.status(400).json({
         error: "Missing required fields: name, dosage, and frequency are required",
       });
@@ -67,22 +80,25 @@ export const createMedication = async (req, res) => {
 
     const medication = await Medication.create({
       patientId,
-      name,
-      dosage,
-      frequency,
-      prescribedBy: prescribedBy ?? null,
+      name: cleanName,
+      dosage: cleanDosage,
+      frequency: cleanFrequency,
+      prescribedBy: nullIfEmpty(prescribedBy),
       doseAmount: doseAmount ?? null,
-      doseUnit: doseUnit ?? null,
+      doseUnit: nullIfEmpty(doseUnit),
       scheduleJson: scheduleJson ?? null,
-      startDate: startDate ?? null,
-      endDate: endDate ?? null,
-      notes: notes ?? null,
+      startDate: nullIfEmpty(startDate),
+      endDate: nullIfEmpty(endDate),
+      notes: nullIfEmpty(notes),
     });
 
     return res.status(201).json(medication);
   } catch (error) {
     console.error("Error creating medication:", error);
-    return res.status(500).json({ error: "Failed to create medication" });
+    return res.status(500).json({
+      error: "Failed to create medication",
+      details: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
   }
 };
 
@@ -105,7 +121,11 @@ export const updateMedication = async (req, res) => {
       notes,
     } = req.body;
 
-    if (!name || !dosage || !frequency) {
+    const cleanName = cleanString(name);
+    const cleanDosage = cleanString(dosage);
+    const cleanFrequency = cleanString(frequency);
+
+    if (!cleanName || !cleanDosage || !cleanFrequency) {
       return res.status(400).json({
         error: "Missing required fields: name, dosage, and frequency are required",
       });
@@ -118,22 +138,25 @@ export const updateMedication = async (req, res) => {
     if (!medication) return res.status(404).json({ error: "Medication not found" });
 
     await medication.update({
-      name,
-      dosage,
-      frequency,
-      prescribedBy: prescribedBy ?? null,
+      name: cleanName,
+      dosage: cleanDosage,
+      frequency: cleanFrequency,
+      prescribedBy: nullIfEmpty(prescribedBy),
       doseAmount: doseAmount ?? null,
-      doseUnit: doseUnit ?? null,
+      doseUnit: nullIfEmpty(doseUnit),
       scheduleJson: scheduleJson ?? null,
-      startDate: startDate ?? null,
-      endDate: endDate ?? null,
-      notes: notes ?? null,
+      startDate: nullIfEmpty(startDate),
+      endDate: nullIfEmpty(endDate),
+      notes: nullIfEmpty(notes),
     });
 
     return res.json(medication);
   } catch (error) {
     console.error("Error updating medication:", error);
-    return res.status(500).json({ error: "Failed to update medication" });
+    return res.status(500).json({
+      error: "Failed to update medication",
+      details: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
   }
 };
 
