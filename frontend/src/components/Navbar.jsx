@@ -16,6 +16,12 @@ export default function Navbar() {
   }, [location]); // re-check role when route changes
 
   const isDoctor = userRole === "doctor";
+  const isCaregiver = userRole === "caregiver";
+  const dashboardPath = isDoctor
+    ? "/dashboardDoctor"
+    : isCaregiver
+      ? "/dashboardCaregiver"
+      : "/dashboardPatient";
 
   const path = location.pathname;
   const isDashboard = path.toLowerCase().startsWith("/dashboard");
@@ -79,7 +85,7 @@ export default function Navbar() {
                 </>
               )}
               <button
-                onClick={() => navigate(isDoctor ? "/dashboardDoctor" : "/dashboardPatient")}
+                onClick={() => navigate(dashboardPath)}
                 className={`text-sm font-medium transition ${
                 isDashboard ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
               }`}>

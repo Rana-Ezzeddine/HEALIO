@@ -13,12 +13,25 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [licenseNb, setLicenseNb] = useState("");
+  const [patientLinkCode, setPatientLinkCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  const dashboardPathByRole = {
+    doctor: "/dashboardDoctor",
+    patient: "/dashboardPatient",
+    caregiver: "/dashboardCaregiver",
+  };
+
+  const roleDescriptionByType = {
+    patient: "Track your health records, book appointments, and communicate with doctors.",
+    doctor: "Manage patient records, schedule appointments, and provide healthcare services.",
+    caregiver: "Support loved ones by tracking care updates, appointments, and medications.",
+  };
 
   async function handleCreateAccount(e) {
     e.preventDefault();
@@ -30,18 +43,28 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
       return;
     }
 
+    if (userType === "caregiver" && !patientLinkCode.trim()) {
+      setError("Patient Link Code is required for caregivers.");
+      return;
+    }
+
     setLoading(true);
     try {
       // Backend-dependent account creation (re-enable when backend is ready)
-      // await registerApi(email, password);
+      await registerApi(email, password);
 
-      const dashboardPath = userType === "doctor" ? "/dashboardDoctor" : "/dashboardPatient";
+      const dashboardPath = dashboardPathByRole[userType] || "/dashboardPatient";
 
       localStorage.setItem("requestedRole", userType);
       localStorage.setItem("userRole", userType);
       localStorage.setItem("firstName", firstName);
       localStorage.setItem("lastName", lastName);
       localStorage.setItem("licenseNb", licenseNb);
+      if (userType === "caregiver") {
+        localStorage.setItem("pendingPatientLinkCode", patientLinkCode.trim());
+      } else {
+        localStorage.removeItem("pendingPatientLinkCode");
+      }
 
       setSuccess("Account created successfully.");
 
@@ -92,6 +115,7 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
               onClick={() => {
                 setUserType("patient");
                 setLicenseNb("");
+                setPatientLinkCode("");
               }}
               className={`flex-1 h-10 rounded-lg font-medium transition ${
                 userType === "patient"
@@ -103,7 +127,10 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
             </button>
             <button
               type="button"
-              onClick={() => setUserType("doctor")}
+              onClick={() => {
+                setUserType("doctor");
+                setPatientLinkCode("");
+              }}
               className={`flex-1 h-10 rounded-lg font-medium transition ${
                 userType === "doctor"
                   ? "bg-sky-500 text-white"
@@ -112,14 +139,26 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
             >
               Doctor
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setUserType("caregiver");
+                setLicenseNb("");
+              }}
+              className={`flex-1 h-10 rounded-lg font-medium transition ${
+                userType === "caregiver"
+                  ? "bg-sky-500 text-white"
+                  : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-100"
+              }`}
+            >
+              Caregiver
+            </button>
           </div>
         </div>
 
         <div className="mt-2">
           <p className="text-xs text-slate-500 italic">
-            {userType === "patient"
-              ? "Track your health records, book appointments, and communicate with doctors."
-              : "Manage patient records, schedule appointments, and provide healthcare services."}
+            {roleDescriptionByType[userType]}
           </p>
         </div>
 
@@ -159,6 +198,22 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
               required
             />
           </div>
+
+          {userType === "caregiver" && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">
+                Patient Link Code
+              </label>
+              <input
+                type="text"
+                placeholder="Enter patient invitation code"
+                value={patientLinkCode}
+                onChange={(e) => setPatientLinkCode(e.target.value)}
+                className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-400 focus:ring-sky-400 transition"
+                required
+              />
+            </div>
+          )}
 
           {userType === "doctor" && (
           <div className="space-y-2">
