@@ -1,9 +1,8 @@
 import { apiUrl, authHeaders } from "../api/http";
 import Navbar from "../components/Navbar";
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import userMale from "../assets/userMale.png";
-import userFemale from "../assets/userFemale.png";
+import userMale from "../assets/userMale.png"
+import userFemale from "../assets/userFemale.png"
 
 function canonGender(g) {
   if (!g) return "";
@@ -68,9 +67,8 @@ function FormInput({ label, type = "text", value, onChange, isEditing, options }
   );
 }
 
-export default function ProfilePatient(){
+export default function ProfileCaregiver(){
     const [isEditing, setIsEditing] = useState(false);
-    const navigate = useNavigate();
 
     //personal info
     const[firstName, setFirstName] = useState("");
@@ -78,20 +76,15 @@ export default function ProfilePatient(){
     const[dateOfBirth, setDateOfBirth] = useState("");
     const[gender, setGender] = useState("");
 
-    //medical info
-    const[allergies, setAllergies] = useState("");
-    const[conditions, setConditions] = useState("");
-    const[bloodType, setBloodType] = useState("");
+  //caregiver info
+  const[relationshipToPatient, setRelationshipToPatient] = useState("");
+  const[linkedPatientName, setLinkedPatientName] = useState("");
+  const[patientLinkCode, setPatientLinkCode] = useState("");
+  const[supportNotes, setSupportNotes] = useState("");
 
     //contact info
     const[email, setEmail] = useState("");
     const[phone, setPhone] = useState("");
-
-    //emergency contact
-    const[emName, setEmName] = useState("");
-    const[relationship, setRelationship] = useState("");
-    const[emPhone, setEmPhone] = useState("");
-    
 
     useEffect(() => {
   (async () => {
@@ -113,16 +106,15 @@ export default function ProfilePatient(){
       setLastName(p.lastName || "");
       setGender(p.gender || "");
       setDateOfBirth(p.dateOfBirth || "");
-      setBloodType(p.bloodType || "");
+
+      setRelationshipToPatient(p.relationshipToPatient || "");
+      setLinkedPatientName(p.linkedPatientName || "");
+      setPatientLinkCode(p.patientLinkCode || localStorage.getItem("pendingPatientLinkCode") || "");
+      setSupportNotes(p.supportNotes || "");
+
       setPhone(p.phoneNumber || "");
       setEmail(p.email || "");
 
-      setAllergies((p.allergies || []).join(", "));
-      setConditions((p.chronicConditions || []).join(", "));
-
-      setEmName(p.emergencyContact?.name || "");
-      setRelationship(p.emergencyContact?.relationship || "");
-      setEmPhone(p.emergencyContact?.phoneNumber || "");
     } catch (err) {
       console.error(err);
     }
@@ -137,20 +129,15 @@ export default function ProfilePatient(){
       lastName,
       gender,
       dateOfBirth,
-      bloodType,
+
       phoneNumber: phone,
       email,
-      allergies: allergies
-        ? allergies.split(",").map((x) => x.trim()).filter(Boolean)
-        : [],
-      chronicConditions: conditions
-        ? conditions.split(",").map((x) => x.trim()).filter(Boolean)
-        : [],
-      emergencyContact: {
-        name: emName,
-        relationship,
-        phoneNumber: emPhone,
-      },
+
+      relationshipToPatient,
+      linkedPatientName,
+      patientLinkCode,
+      supportNotes
+      
     };
 
     const res = await fetch(`${apiUrl}/api/profile`, {
@@ -170,14 +157,18 @@ export default function ProfilePatient(){
     setLastName(data.lastName || "");
     setGender(canonGender(data.gender));
     setDateOfBirth(data.dateOfBirth || "");
-    setBloodType(data.bloodType || "");
+
+    setRelationshipToPatient(data.relationshipToPatient || "");
+    setLinkedPatientName(data.linkedPatientName || "");
+    setPatientLinkCode(data.patientLinkCode || patientLinkCode);
+    setSupportNotes(data.supportNotes || "");
+    
     setPhone(data.phoneNumber || "");
     setEmail(data.email || "");
-    setAllergies((data.allergies || []).join(", "));
-    setConditions((data.chronicConditions || []).join(", "));
-    setEmName(data.emergencyContact?.name || "");
-    setRelationship(data.emergencyContact?.relationship || "");
-    setEmPhone(data.emergencyContact?.phoneNumber || "");
+
+    if (data.patientLinkCode || patientLinkCode) {
+      localStorage.setItem("pendingPatientLinkCode", data.patientLinkCode || patientLinkCode);
+    }
 
     setIsEditing(false);
   } catch (err) {
@@ -191,64 +182,64 @@ export default function ProfilePatient(){
         setIsEditing(false);
         setFirstName(localStorage.getItem("firstName") || "");
         setLastName(localStorage.getItem("lastName") || "");
-        setEmail(localStorage.getItem("email") || "");
-        setPhone(localStorage.getItem("phone") || "");
         setGender(localStorage.getItem("gender") || "");
         setDateOfBirth(localStorage.getItem("dateOfBirth") || "");
-        setAllergies(localStorage.getItem("allergies") || "");
-        setConditions(localStorage.getItem("conditions") || "");
-        setBloodType(localStorage.getItem("bloodType") || "");
-        setEmName(localStorage.getItem("emName") || "");
-        setRelationship(localStorage.getItem("relationship") || "");
-        setEmPhone(localStorage.getItem("emPhone") || "");
+
+        setEmail(localStorage.getItem("email") || "");
+        setPhone(localStorage.getItem("phone") || "");
+
+        setRelationshipToPatient(localStorage.getItem("relationshipToPatient") || "");
+        setLinkedPatientName(localStorage.getItem("linkedPatientName") || "");
+        setPatientLinkCode(localStorage.getItem("pendingPatientLinkCode") || "");
+        setSupportNotes(localStorage.getItem("supportNotes") || "");
     }
 
     return(
       <div className="min-h-screen bg-gradient-to-br pt-18 from-sky-50 via-white to-indigo-50">
-        <Navbar/>
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          
-        <div className="flex justify-between items-center">
-          <div className="mt-6 rounded-2xl border border-white/60" >
-            <h1 className="text-5xl mb-3 text-3xl font-black leading-[1.2] pb-1 bg-gradient-to-r from-cyan-400 to-blue-500 text-transparent bg-clip-text inline-block">My Profile</h1>
-            <p className="text-slate-600 mb-5">
-              Review and update your personal, medical, and contact information.
-            </p>
-            {!isEditing ? (
-              <button
-                type="button"
-                onClick={() => setIsEditing(true)}
-                className="px-4 py-2 bg-gradient-to-b from-cyan-400 to-blue-500 hover:from-cyan-500 hover:to-blue-600 transition text-white rounded-lg hover:bg-sky-500 shadow"
-              >
-                Edit Profile
-              </button>
-            ) : (
-              <div className="flex gap-2">
+          <Navbar/>
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            
+          <div className="flex justify-between items-center">
+            <div className="mt-6 rounded-2xl border border-white/60" >
+              <h1 className="text-5xl mb-3 text-3xl font-black leading-[1.2] pb-1 bg-gradient-to-r from-cyan-400 to-blue-500 text-transparent bg-clip-text inline-block">My Profile</h1>
+              <p className=" text-slate-600 mb-5">
+                Review and update your caregiver details, linked patient information, and contact information.
+              </p>
+              {!isEditing ? (
                 <button
                   type="button"
-                  onClick={handleSave}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-500 shadow"
+                  onClick={() => setIsEditing(true)}
+                  className="px-4 py-2 bg-gradient-to-b from-cyan-400 to-blue-500 hover:from-cyan-500 hover:to-blue-600 transition text-white rounded-lg hover:bg-sky-500 shadow"
                 >
-                  Save Changes
+                  Edit Profile
                 </button>
-                <button
-                  type="button"
-                  onClick={handleCancel}
-                  className="px-4 py-2 bg-slate-400 text-white rounded-lg hover:bg-slate-300 shadow"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
+              ) : (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-500 shadow"
+                  >
+                    Save Changes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    className="px-4 py-2 bg-slate-400 text-white rounded-lg hover:bg-slate-300 shadow"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-center border border-slate-200 rounded-full w-40 h-40 overflow-hidden">
+                <img
+                className="w-full h-full object-cover object-center"
+                src={canonGender(gender) === "Female" ? userFemale : userMale}
+                alt="Profile"
+                />
+            </div>
           </div>
-          <div className="flex items-center justify-center border border-slate-200 rounded-full w-40 h-40 overflow-hidden">
-              <img
-              className="w-full h-full object-cover object-center"
-              src={canonGender(gender) === "Female" ? userFemale : userMale}
-              alt="Profile"
-              />
-          </div>
-        </div>
 
           <div className="mt-6 grid grid-cols-1 gap-6">
             <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
@@ -262,11 +253,16 @@ export default function ProfilePatient(){
             </section>
 
             <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
-              <h2 className="text-xl font-semibold text-slate-800 mb-4">Medical Information</h2>
-              <div className="grid grid-cols-1 gap-4"> 
-                <FormInput label="Allergies" type="textarea" value={allergies} onChange={(e)=>setAllergies(e.target.value)} isEditing={isEditing} />
-                <FormInput label="Chronic Conditions" type="textarea" value={conditions} onChange={(e)=>setConditions(e.target.value)} isEditing={isEditing} />
-                <FormInput label="Blood Type" type="text" value={bloodType} onChange={(e)=>setBloodType(e.target.value)} isEditing={isEditing} options={["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]} />
+              <h2 className="text-xl font-semibold text-slate-800 mb-4">Caregiving Information</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> 
+                <div className="sm:col-span-2">
+                    <FormInput label="Linked Patient Name" type="text" value={linkedPatientName} onChange={(e)=>setLinkedPatientName(e.target.value)} isEditing={isEditing} />
+                </div>
+                <FormInput label="Relationship to Patient" type="text" value={relationshipToPatient} onChange={(e)=>setRelationshipToPatient(e.target.value)} isEditing={isEditing} />
+                <FormInput label="Patient Link Code" type="text" value={patientLinkCode} onChange={(e)=>setPatientLinkCode(e.target.value)} isEditing={isEditing} />
+                <div className="sm:col-span-2">
+                  <FormInput label="Support Notes" type="textarea" value={supportNotes} onChange={(e)=>setSupportNotes(e.target.value)} isEditing={isEditing} />
+                </div>
               </div>
             </section>
 
@@ -275,15 +271,6 @@ export default function ProfilePatient(){
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> 
                 <FormInput label="Phone Number" type="text" value={phone} onChange={(e)=>setPhone(e.target.value)} isEditing={isEditing} />
                 <FormInput label="Email" type="text" value={email} onChange={(e)=>setEmail(e.target.value)} isEditing={isEditing} />
-              </div>
-            </section>
-
-            <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
-              <h2 className="text-xl font-semibold text-slate-800 mb-4">Emergency Contact</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> 
-                <FormInput label="Emergency Contact Name" type="text" value={emName} onChange={(e)=>setEmName(e.target.value)} isEditing={isEditing} />
-                <FormInput label="Relationship" type="text" value={relationship} onChange={(e)=>setRelationship(e.target.value)} isEditing={isEditing} />
-                <FormInput label="Phone Number" type="text" value={emPhone} onChange={(e)=>setEmPhone(e.target.value)} isEditing={isEditing} />
               </div>
             </section>
           </div>

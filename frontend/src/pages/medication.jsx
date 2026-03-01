@@ -11,7 +11,6 @@ const MedicationManager = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingMed, setEditingMed] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
   const [backendAvailable, setBackendAvailable] = useState(true);
   const [error, setError] = useState(null);
   const [formData, setFormData] = useState({
@@ -62,7 +61,6 @@ const MedicationManager = () => {
   }, []);
 
   const checkBackendAndFetchMedications = async () => {
-    setIsLoading(true);
     setError(null);
 
     try {
@@ -85,7 +83,6 @@ const MedicationManager = () => {
       console.warn('Backend not available, using fallback data:', err);
       setBackendAvailable(false);
       setMedications(fallbackMedications);
-      setIsLoading(false);
     }
   };
 
@@ -108,8 +105,6 @@ const MedicationManager = () => {
       setBackendAvailable(false);
       setMedications(fallbackMedications);
       setError('Using offline data - backend unavailable');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -247,17 +242,6 @@ const MedicationManager = () => {
     (med.prescribedBy && med.prescribedBy.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-sky-600 mb-4"></div>
-          <p className="text-slate-600">Loading medications...</p>
-        </div>
-      </div>
-    );
-  }
-  
   return (
     <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-indigo-50 p-6">
       <Navbar

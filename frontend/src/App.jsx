@@ -9,6 +9,7 @@ import DashboardDoctor from "./pages/DashboardDoctor";
 import DashboardCaregiver from "./pages/DashboardCaregiver";
 import ProfilePatient from "./pages/ProfilePatient";
 import ProfileDoctor from "./pages/ProfileDoctor";
+import ProfileCaregiver from "./pages/ProfileCaregiver";
 import Medication from "./pages/medication";
 import LandingPage from "./pages/LandingPage";
 import Symptoms from "./pages/Symptoms";
@@ -53,6 +54,7 @@ useEffect(() => {
         <Route path="/medication" element={<Medication />}/>
         <Route path="/profilePatient" element={<ProfilePatient />} />
         <Route path="/profileDoctor" element={<ProfileDoctor />} />
+        <Route path="/profileCaregiver" element={<ProfileCaregiver />} />
         <Route path="/symptoms" element={<Symptoms />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

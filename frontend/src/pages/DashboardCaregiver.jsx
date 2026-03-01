@@ -118,7 +118,7 @@ export default function DashboardCaregiver() {
               </button>
 
               <button
-                onClick={() => navigate("/profilePatient")}
+                
                 className="w-full px-4 py-2 rounded-xl bg-emerald-100 text-emerald-700 font-medium hover:bg-emerald-200 transition"
               >
                 View Care Notes

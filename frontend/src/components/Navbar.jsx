@@ -16,12 +16,18 @@ export default function Navbar() {
   }, [location]); // re-check role when route changes
 
   const isDoctor = userRole === "doctor";
-  const isCaregiver = userRole === "caregiver";
-  const dashboardPath = isDoctor
-    ? "/dashboardDoctor"
-    : isCaregiver
-      ? "/dashboardCaregiver"
-      : "/dashboardPatient";
+  const dashboardPathByRole = {
+    doctor: "/dashboardDoctor",
+    patient: "/dashboardPatient",
+    caregiver: "/dashboardCaregiver",
+  };
+  const profilePathByRole = {
+    doctor: "/profileDoctor",
+    patient: "/profilePatient",
+    caregiver: "/profileCaregiver",
+  };
+  const dashboardPath = dashboardPathByRole[userRole] || "/dashboardPatient";
+  const profilePath = profilePathByRole[userRole] || "/profilePatient";
 
   const path = location.pathname;
   const isDashboard = path.toLowerCase().startsWith("/dashboard");
@@ -72,7 +78,15 @@ export default function Navbar() {
                 </button>
               </>
             ) : (
+              
               <>
+              <button
+                onClick={() => navigate(dashboardPath)}
+                className={`text-sm font-medium transition ${
+                isDashboard ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+              }`}>
+                Dashboard
+              </button>
               {!isDoctor && (
                 <>
                   <button
@@ -84,15 +98,9 @@ export default function Navbar() {
                   </button>
                 </>
               )}
+              
               <button
-                onClick={() => navigate(dashboardPath)}
-                className={`text-sm font-medium transition ${
-                isDashboard ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
-              }`}>
-                Dashboard
-              </button>
-              <button
-                onClick={() => navigate(isDoctor ? "/profileDoctor" : "/profilePatient")}
+                onClick={() => navigate(profilePath)}
                 className={`text-sm font-medium transition ${
                 isProfile ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
               }`}>
