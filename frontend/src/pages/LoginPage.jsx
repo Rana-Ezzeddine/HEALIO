@@ -25,6 +25,7 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
       localStorage.setItem("userRole", user.role);
 
       if (user.role === "doctor") navigate("/dashboardDoctor");
+      else if (user.role === "caregiver") navigate("/dashboardCaregiver");
       else navigate("/dashboardPatient");
 
       if (embedded) onClose?.();
