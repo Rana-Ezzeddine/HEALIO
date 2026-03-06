@@ -1,0 +1,48 @@
+import express from "express";
+import requireUser from "../middleware/requireUser.js";
+import requireRole from "../middleware/rbac.js";
+import {
+  assignCaregiver,
+  getCaregiverPatientHealthData,
+  getCaregiverPatientAppointments,
+  getCaregiverPatientMedications,
+  getCaregiverPatientSymptoms,
+  listMyCaregivers,
+  listPatientsUnderCare,
+  removeCaregiverAssignment,
+  updateCaregiverPermissions,
+} from "../controllers/caregiver.controller.js";
+
+const router = express.Router();
+router.use(requireUser);
+
+// Patient-managed assignment and permission control
+router.post("/assignments", requireRole("patient"), assignCaregiver);
+router.get("/assignments/mine", requireRole("patient"), listMyCaregivers);
+router.patch("/assignments/:caregiverId", requireRole("patient"), updateCaregiverPermissions);
+router.delete("/assignments/:caregiverId", requireRole("patient"), removeCaregiverAssignment);
+
+// Caregiver access with permission enforcement
+router.get("/patients", requireRole("caregiver"), listPatientsUnderCare);
+router.get(
+  "/patients/:patientId/medications",
+  requireRole("caregiver"),
+  getCaregiverPatientMedications
+);
+router.get(
+  "/patients/:patientId/symptoms",
+  requireRole("caregiver"),
+  getCaregiverPatientSymptoms
+);
+router.get(
+  "/patients/:patientId/appointments",
+  requireRole("caregiver"),
+  getCaregiverPatientAppointments
+);
+router.get(
+  "/patients/:patientId/health-data",
+  requireRole("caregiver"),
+  getCaregiverPatientHealthData
+);
+
+export default router;

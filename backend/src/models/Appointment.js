@@ -51,6 +51,13 @@ const Appointment = sequelize.define('Appointment', {
 }, {
   tableName: 'appointments',
   timestamps: true,
+  validate: {
+    endsAfterStart() {
+      if (this.startsAt && this.endsAt && this.startsAt >= this.endsAt) {
+        throw new Error('endsAt must be after startsAt');
+      }
+    }
+  },
   indexes: [
     {
       fields: ['patientId']
