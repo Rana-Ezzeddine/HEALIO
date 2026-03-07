@@ -54,7 +54,11 @@ export const register = async (req, res) => {
     }
 
     const validRoles = ["patient", "doctor", "caregiver"];
-    const userRole = (role && validRoles.includes(role)) ? role : "patient";
+
+    if (!role || !validRoles.includes(role)) {
+      return res.status(400).json({ message: "Invalid role" });
+    }
+    const userRole = role;
 
     const cleanEmail = String(email || "").toLowerCase().trim();
 
