@@ -7,11 +7,13 @@ export function authHeaders() {
 export function setSession({ token, user }) {
   localStorage.setItem("accessToken", token);
   localStorage.setItem("user", JSON.stringify(user));
+  localStorage.setItem("userRole", user.role);
 }
 
 export function clearSession() {
   localStorage.removeItem("accessToken");
   localStorage.removeItem("user");
+  localStorage.removeItem("userRole");
 }
 
 export function getToken() {

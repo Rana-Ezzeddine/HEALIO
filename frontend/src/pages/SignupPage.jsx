@@ -87,7 +87,7 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
       const { token, user } = await loginApi(cleanEmail, password);
 
       localStorage.setItem("requestedRole", userType);
-      localStorage.setItem("userRole", userType);
+      localStorage.setItem("userRole", user.role  );
       localStorage.setItem("firstName", cleanFirstName);
       localStorage.setItem("lastName", cleanLastName);
       localStorage.setItem("email", cleanEmail);
@@ -100,7 +100,7 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
         localStorage.removeItem("pendingPatientLinkCode");
       }
 
-      const dashboardPath = dashboardPathByRole[userType] || "/dashboardPatient";
+      const dashboardPath = dashboardPathByRole[user.role] || "/dashboardPatient";
       setSuccess("Account created successfully.");
 
       if (embedded) onClose?.();
