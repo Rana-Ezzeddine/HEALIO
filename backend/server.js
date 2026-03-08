@@ -45,6 +45,7 @@ import medicationRoutes from "./src/routes/medications.routes.js";
 import doctorRoutes from "./src/routes/doctor.routes.js";
 import medicalHistoryRoutes from "./src/routes/medicalHistory.routes.js";
 import dashboardRoutes from './src/routes/patientDashboard.routes.js';
+import patientmedHistoryRoutes from './src/routes/patientmedHistory.routes.js';
 /////////////////////////////////////////////////
 // Initialize App
 /////////////////////////////////////////////////
@@ -94,6 +95,7 @@ app.use("/api/medications", medicationRoutes);
 app.use("/api/doctors", doctorRoutes);
 app.use("/api/medical-history", medicalHistoryRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/patient-med-history', patientmedHistoryRoutes);
 
 
 /////////////////////////////////////////////////

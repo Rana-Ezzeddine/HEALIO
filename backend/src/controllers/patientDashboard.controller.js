@@ -3,43 +3,30 @@ import Appointment from '../models/Appointment.js';
 import Symptom from '../models/Symptom.js';
 import { Op } from 'sequelize';
 
-// Get patient dashboard with aggregated medical data
 export const getPatientDashboard = async (req, res) => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
-    // TODO: Get patientId from authentication (req.user.id)
-    // For now, we'll fetch all data (to be filtered by user later)
-
-    // Get all medications for this patient
     const allMedications = await Medication.findAll();
 
-    // Active medications (no end date or end date in future)
     const activeMedications = allMedications.filter(med => 
       !med.endDate || new Date(med.endDate) >= today
     );
 
-    // Find next medication dose
     const nextDose = activeMedications.length > 0 ? {
       medication: activeMedications[0].name,
-      time: "8:00 PM", // This would be calculated from frequency
+      time: "8:00 PM", 
       dosage: activeMedications[0].dosage
     } : null;
-
-    // Get next upcoming appointment
     const nextAppointment = await Appointment.findOne({
       where: {
         date: {
           [Op.gte]: today
         }
-        // TODO: Add patientId filter when auth is implemented
-        // patientId: req.user.id
       },
       order: [['date', 'ASC']]
     });
 
-    // Calculate days until appointment
     let appointmentData = {
       icon: "📅",
       label: "Next Appointment",
@@ -61,7 +48,6 @@ export const getPatientDashboard = async (req, res) => {
       };
     }
 
-    // Get all upcoming appointments (within next 30 days)
     const thirtyDaysFromNow = new Date();
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
@@ -70,17 +56,12 @@ export const getPatientDashboard = async (req, res) => {
         date: {
           [Op.between]: [today, thirtyDaysFromNow]
         }
-        // TODO: Add patientId filter
-        // patientId: req.user.id
       },
       order: [['date', 'ASC']],
       limit: 5
     });
 
-    // Get last symptom logged
     const lastSymptom = await Symptom.findOne({
-      // TODO: Add patientId filter
-      // where: { patientId: req.user.id },
       order: [['createdAt', 'DESC']]
     });
 
@@ -105,17 +86,15 @@ export const getPatientDashboard = async (req, res) => {
         icon: "😊",
         label: "Last Symptom Logged",
         when: whenText,
-        symptomName: lastSymptom.name || lastSymptom.symptom, // Adjust based on actual field name
+        symptomName: lastSymptom.name || lastSymptom.symptom, 
         viewLink: "/symptoms"
       };
     }
 
-    // Patient dashboard response matching the UI
     const dashboard = {
       welcomeMessage: "Welcome Back, Patient",
       subtitle: "Here's a quick overview of your health",
       
-      // Top 3 cards section
       topCards: {
         activeMedications: {
           icon: "💊",
@@ -133,7 +112,6 @@ export const getPatientDashboard = async (req, res) => {
         lastSymptomLogged: symptomData
       },
 
-      // Upcoming appointments section
       upcomingAppointments: {
         title: "Upcoming Appointments",
         hasAppointments: upcomingAppointments.length > 0,
@@ -152,7 +130,6 @@ export const getPatientDashboard = async (req, res) => {
         }))
       },
 
-      // Quick actions section
       quickActions: {
         title: "Quick Actions",
         actions: [
@@ -177,7 +154,6 @@ export const getPatientDashboard = async (req, res) => {
         ]
       },
 
-      // Medical summary for patient
       medicalSummary: {
         activeMedications: activeMedications.map(med => ({
           id: med.id,
@@ -210,7 +186,6 @@ export const getPatientDashboard = async (req, res) => {
   }
 };
 
-// Get medication statistics
 export const getMedicationStats = async (req, res) => {
   try {
     const today = new Date();
@@ -218,14 +193,12 @@ export const getMedicationStats = async (req, res) => {
 
     const allMedications = await Medication.findAll();
 
-    // Frequency distribution
     const frequencyDistribution = {};
     allMedications.forEach(med => {
       const freq = med.frequency || 'Not specified';
       frequencyDistribution[freq] = (frequencyDistribution[freq] || 0) + 1;
     });
 
-    // Active vs Inactive
     const active = allMedications.filter(med => 
       !med.endDate || new Date(med.endDate) >= today
     ).length;
@@ -247,7 +220,6 @@ export const getMedicationStats = async (req, res) => {
   }
 };
 
-// Get active medications list
 export const getActiveMedications = async (req, res) => {
   try {
     const today = new Date();
@@ -270,7 +242,6 @@ export const getActiveMedications = async (req, res) => {
   }
 };
 
-// Get medications by doctor
 export const getMedicationsByDoctor = async (req, res) => {
   try {
     const { doctor } = req.params;
@@ -293,7 +264,6 @@ export const getMedicationsByDoctor = async (req, res) => {
   }
 };
 
-// Get upcoming medications (starting soon)
 export const getUpcomingMedications = async (req, res) => {
   try {
     const today = new Date();

@@ -3,7 +3,6 @@ import { Op } from "sequelize";
 
 const getPatientId = (req) => req.user?.id || req.user?.sub || null;
 
-// Get all medications for the authenticated patient
 export const getAllMedications = async (req, res) => {
   try {
     const patientId = getPatientId(req);
@@ -21,7 +20,6 @@ export const getAllMedications = async (req, res) => {
   }
 };
 
-// Get single medication by ID (must belong to authenticated patient)
 export const getMedicationById = async (req, res) => {
   try {
     const patientId = getPatientId(req);
@@ -40,7 +38,6 @@ export const getMedicationById = async (req, res) => {
   }
 };
 
-// Create new medication for the authenticated patient
 export const createMedication = async (req, res) => {
   try {
     const patientId = getPatientId(req);
@@ -86,7 +83,6 @@ export const createMedication = async (req, res) => {
   }
 };
 
-// Update medication (must belong to authenticated patient)
 export const updateMedication = async (req, res) => {
   try {
     const patientId = getPatientId(req);
@@ -137,7 +133,6 @@ export const updateMedication = async (req, res) => {
   }
 };
 
-// Delete medication (must belong to authenticated patient)
 export const deleteMedication = async (req, res) => {
   try {
     const patientId = getPatientId(req);
@@ -157,7 +152,6 @@ export const deleteMedication = async (req, res) => {
   }
 };
 
-// Search medications for the authenticated patient
 export const searchMedications = async (req, res) => {
   try {
     const patientId = getPatientId(req);
