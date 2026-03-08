@@ -16,6 +16,7 @@ export default function Navbar() {
   }, [location]); // re-check role when route changes
 
   const isDoctor = userRole === "doctor";
+  const isPatient = userRole === "patient";
   const dashboardPathByRole = {
     doctor: "/dashboardDoctor",
     patient: "/dashboardPatient",
@@ -33,6 +34,8 @@ export default function Navbar() {
   const isDashboard = path.toLowerCase().startsWith("/dashboard");
   const isProfile = path.toLowerCase().startsWith("/profile");
   const isMedication = path.toLowerCase().startsWith("/medication");
+  const isDoctorMessages = path.toLowerCase().startsWith("/doctormessages");
+  const isPatientMessages = path.toLowerCase().startsWith("/patientmessages");
   const isLanding = path === "/";
 
   function handleLogout() {
@@ -97,6 +100,26 @@ export default function Navbar() {
                     Medications
                   </button>
                 </>
+              )}
+              {isDoctor && (
+                <button
+                  onClick={() => navigate("/doctorMessages")}
+                  className={`text-sm font-medium transition ${
+                    isDoctorMessages ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  Messages
+                </button>
+              )}
+              {isPatient && (
+                <button
+                  onClick={() => navigate("/patientMessages")}
+                  className={`text-sm font-medium transition ${
+                    isPatientMessages ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  Messages
+                </button>
               )}
               
               <button

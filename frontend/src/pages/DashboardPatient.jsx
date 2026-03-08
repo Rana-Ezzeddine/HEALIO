@@ -111,6 +111,7 @@ export default function DashboardPatient() {
               </button>
 
               <button
+                onClick={() => navigate("/patientMessages")}
                 className="w-full px-4 py-2 rounded-xl bg-emerald-100 text-emerald-700 font-medium hover:bg-emerald-200 transition"
               >
                 Message Doctor

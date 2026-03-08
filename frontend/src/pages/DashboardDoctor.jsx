@@ -69,6 +69,7 @@ export default function DashboarDoctor() {
           <DashboardCard
             title="📩 New Messages"
             mainText="3 unread"
+            navPage = "/doctorMessages"
           />
           <DashboardCard
             title="⚠️ Critical Alerts"
