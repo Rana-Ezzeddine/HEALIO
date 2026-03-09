@@ -3,6 +3,24 @@ import Appointment from '../models/Appointment.js';
 import Symptom from '../models/Symptom.js';
 import { Op } from 'sequelize';
 
+function startOfDayFromValue(value) {
+  if (!value) return null;
+
+  if (typeof value === 'string') {
+    const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
+    if (dateOnly) {
+      const year = Number(dateOnly[1]);
+      const month = Number(dateOnly[2]) - 1;
+      const day = Number(dateOnly[3]);
+      return new Date(year, month, day);
+    }
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+}
+
 // Get patient dashboard with aggregated medical data
 export const getPatientDashboard = async (req, res) => {
   try {
@@ -81,7 +99,7 @@ export const getPatientDashboard = async (req, res) => {
     const lastSymptom = await Symptom.findOne({
       // TODO: Add patientId filter
       // where: { patientId: req.user.id },
-      order: [['createdAt', 'DESC']]
+      order: [['loggedAt', 'DESC'], ['createdAt', 'DESC']]
     });
 
     let symptomData = {
@@ -92,14 +110,16 @@ export const getPatientDashboard = async (req, res) => {
     };
 
     if (lastSymptom) {
-      const symptomDate = new Date(lastSymptom.createdAt);
-      const daysSince = Math.floor((today - symptomDate) / (1000 * 60 * 60 * 24));
+      const symptomDate = startOfDayFromValue(lastSymptom.loggedAt || lastSymptom.createdAt);
+      const daysSince = symptomDate
+        ? Math.floor((today - symptomDate) / (1000 * 60 * 60 * 24))
+        : null;
       
       let whenText;
-      if (daysSince === 0) whenText = "Today";
+      if (daysSince === null) whenText = "No symptoms logged";
+      else if (daysSince <= 0) whenText = "Today";
       else if (daysSince === 1) whenText = "Yesterday";
-      else if (daysSince < 7) whenText = `${daysSince} days ago`;
-      else whenText = symptomDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      else whenText = `${daysSince} days ago`;
 
       symptomData = {
         icon: "😊",
@@ -193,10 +213,12 @@ export const getPatientDashboard = async (req, res) => {
         recentSymptoms: lastSymptom ? [{
           id: lastSymptom.id,
           name: lastSymptom.name || lastSymptom.symptom,
-          date: lastSymptom.createdAt,
+          date: lastSymptom.loggedAt || lastSymptom.createdAt,
           severity: lastSymptom.severity
         }] : [],
-        lastSymptomDate: lastSymptom ? new Date(lastSymptom.createdAt).toLocaleDateString() : null
+        lastSymptomDate: lastSymptom
+          ? (startOfDayFromValue(lastSymptom.loggedAt || lastSymptom.createdAt)?.toLocaleDateString() || null)
+          : null
       }
     };
 
