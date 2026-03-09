@@ -65,6 +65,7 @@ export default function DashboarDoctor() {
             title="🗓 Today's Appointments" 
             mainText="8 Apointments"
             subText="Next: 2:30 - Sarah Khalil"
+            navPage = "/doctorAppointments"
           />
           <DashboardCard
             title="📩 New Messages"
@@ -106,7 +107,10 @@ export default function DashboarDoctor() {
                         </span>
                       </td>
                       <td className="py-3 px-4">
-                        <button className="text-sky-600 hover:underline">
+                        <button
+                          onClick={() => navigate("/doctorAppointments")}
+                          className="text-sky-600 hover:underline"
+                        >
                           Open
                         </button>
                       </td>
