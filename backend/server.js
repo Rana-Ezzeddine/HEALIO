@@ -47,6 +47,7 @@ import medicalHistoryRoutes from "./src/routes/medicalHistory.routes.js";
 import dashboardRoutes from './src/routes/patientDashboard.routes.js';
 import appointmentsRoutes from "./src/routes/appointments.routes.js";
 import caregiverRoutes from "./src/routes/caregiver.routes.js";
+import messagingRoutes from "./src/routes/messaging.routes.js";
 /////////////////////////////////////////////////
 // Initialize App
 /////////////////////////////////////////////////
@@ -112,6 +113,7 @@ app.use("/api/medical-history", medicalHistoryRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use("/api/appointments", appointmentsRoutes);
 app.use("/api/caregivers", caregiverRoutes);
+app.use("/api/conversations", messagingRoutes);
 
 
 /////////////////////////////////////////////////

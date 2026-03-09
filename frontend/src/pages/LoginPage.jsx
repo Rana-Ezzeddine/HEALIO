@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { login as loginApi } from "../api/auth";
+import { setSession } from "../api/http";
 import logo from "../assets/logo.png";
 
 export default function LoginPage({ embedded = false, onClose, onSwitchToSignup }) {
@@ -20,9 +21,7 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
     try {
       const { token, user } = await loginApi(email, password);
 
-      localStorage.setItem("accessToken", token);
-      localStorage.setItem("user", JSON.stringify(user));
-      localStorage.setItem("userRole", user.role);
+      setSession({ token, user });
 
       if (user.role === "doctor") navigate("/dashboardDoctor");
       else if (user.role === "caregiver") navigate("/dashboardCaregiver");

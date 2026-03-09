@@ -3,6 +3,24 @@ import Navbar from "../components/Navbar";
 import { useNavigate } from "react-router-dom";
 import { apiUrl, authHeaders } from "../api/http";
 
+function startOfDayFromValue(value) {
+  if (!value) return null;
+
+  if (typeof value === "string") {
+    const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
+    if (dateOnly) {
+      const year = Number(dateOnly[1]);
+      const month = Number(dateOnly[2]) - 1;
+      const day = Number(dateOnly[3]);
+      return new Date(year, month, day);
+    }
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+}
+
 function DashboardCard({title, mainText, subText, navPage}){
   const navigate = useNavigate();
   return(
@@ -94,15 +112,19 @@ export default function DashboardPatient() {
           return;
         }
 
-        const loggedDate = new Date(rawDate);
+        const startOfLogged = startOfDayFromValue(rawDate);
+        if (!startOfLogged) {
+          setLastSymptomText("No logs");
+          return;
+        }
+
         const today = new Date();
         const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-        const startOfLogged = new Date(loggedDate.getFullYear(), loggedDate.getMonth(), loggedDate.getDate());
-        const diffDays = Math.round((startOfToday - startOfLogged) / (1000 * 60 * 60 * 24));
+        const diffDays = Math.floor((startOfToday - startOfLogged) / (1000 * 60 * 60 * 24));
 
-        if (diffDays === 0) setLastSymptomText("Today");
+        if (diffDays <= 0) setLastSymptomText("Today");
         else if (diffDays === 1) setLastSymptomText("Yesterday");
-        else setLastSymptomText(loggedDate.toLocaleDateString(undefined, { month: "short", day: "numeric" }));
+        else setLastSymptomText(`${diffDays} days ago`);
       } catch (err) {
         setLastSymptomText("No logs");
       }
