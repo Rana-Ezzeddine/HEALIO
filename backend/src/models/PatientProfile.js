@@ -53,6 +53,15 @@ const PatientProfile = sequelize.define('PatientProfile', {
     type: DataTypes.TEXT,
     allowNull: true
   },
+  emergencyStatus: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
+  emergencyStatusUpdatedAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
   specialization: {
     type: DataTypes.STRING,
     allowNull: true
@@ -79,6 +88,9 @@ const PatientProfile = sequelize.define('PatientProfile', {
   indexes: [
     {
       fields: ['userId']
+    },
+    {
+      fields: ['emergencyStatus']
     }
   ]
 });

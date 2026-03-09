@@ -1,9 +1,11 @@
 import express from "express";
 import requireUser from "../middleware/requireUser.js";
+import requireVerified from "../middleware/requireVerified.js";
 import { postProfile, getMyProfile, getEmergencyCard } from "../controllers/profileController.js";
 
 const router = express.Router();
 router.use(requireUser);
+router.use(requireVerified);
 
 router.get("/", getMyProfile);
 router.post("/", postProfile);

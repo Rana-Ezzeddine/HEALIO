@@ -1,4 +1,6 @@
 import express from 'express';
+import requireUser from '../middleware/requireUser.js';
+import requireVerified from '../middleware/requireVerified.js';
 import {
   getPatientDashboard,
   getMedicationStats,
@@ -8,6 +10,9 @@ import {
 } from '../controllers/patientDashboard.controller.js';
 
 const router = express.Router();
+
+router.use(requireUser);
+router.use(requireVerified);
 
 // HEAL-37: Patient dashboard - aggregated endpoint
 router.get('/patient', getPatientDashboard);

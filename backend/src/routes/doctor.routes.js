@@ -1,5 +1,6 @@
 import express from "express";
 import requireUser from "../middleware/requireUser.js";
+import requireVerified from "../middleware/requireVerified.js";
 import {
   assignPatientToDoctor,
   getAssignedPatients,
@@ -9,7 +10,7 @@ import {
 const router = express.Router();
 
 // GET /api/doctors/assigned-patients
-router.get("/assigned-patients", requireUser, getAssignedPatients);
+router.get("/assigned-patients", requireUser, requireVerified, getAssignedPatients);
 // GET /api/doctors/dashboard-overview
 router.get("/dashboard-overview", requireUser, getDoctorDashboardOverview);
 // POST /api/doctors/assignments

@@ -18,6 +18,8 @@ import Conversation from './Conversation.js';
 import ConversationParticipant from './ConversationParticipant.js';
 import Message from './Message.js';
 import Reminder from './Reminder.js';
+import EmailVerificationToken from './EmailVerificationToken.js';
+import ActivityLog from './ActivityLog.js';
 
 // ========================================
 // ASSOCIATIONS
@@ -32,6 +34,28 @@ User.hasOne(PatientProfile, {
 PatientProfile.belongsTo(User, {
   foreignKey: 'userId',
   as: 'user'
+});
+
+// User ↔ EmailVerificationToken (1:Many)
+User.hasMany(EmailVerificationToken, {
+  foreignKey: 'userId',
+  as: 'emailVerificationTokens',
+  onDelete: 'CASCADE',
+});
+EmailVerificationToken.belongsTo(User, {
+  foreignKey: 'userId',
+  as: 'user',
+});
+
+// User ↔ ActivityLog (1:Many)
+User.hasMany(ActivityLog, {
+  foreignKey: 'userId',
+  as: 'activityLogs',
+  onDelete: 'SET NULL',
+});
+ActivityLog.belongsTo(User, {
+  foreignKey: 'userId',
+  as: 'user',
 });
 
 // Doctor ↔ Patient (Many-to-Many via DoctorPatientAssignment)
@@ -211,7 +235,9 @@ export {
   Conversation,
   ConversationParticipant,
   Message,
-  Reminder
+  Reminder,
+  EmailVerificationToken,
+  ActivityLog,
 };
 
 export default {
@@ -227,5 +253,7 @@ export default {
   Conversation,
   ConversationParticipant,
   Message,
-  Reminder
+  Reminder,
+  EmailVerificationToken,
+  ActivityLog,
 };

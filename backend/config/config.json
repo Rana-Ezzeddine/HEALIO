@@ -1,12 +1,11 @@
 {
   "development": {
-    "username": "postgres",
-    "password": "password",
-    "database": "healio_dev",
-    "host": "127.0.0.1",
-    "dialect": "postgres",
-    "logging": false
-  },
+  "username": "healio_user",
+  "password": "YOUR_HEALIO_USER_PASSWORD",
+  "database": "healio_dev",
+  "host": "127.0.0.1",
+  "dialect": "postgres"
+},
   "test": {
     "username": "postgres",
     "password": "password",
