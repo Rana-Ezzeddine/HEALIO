@@ -1,6 +1,7 @@
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5050";
 
 export async function register({ firstName, lastName, email, password, role }) {
+  // TODO(backend): Requires POST /api/auth/register endpoint.
   const res = await fetch(`${API_BASE}/api/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -13,6 +14,7 @@ export async function register({ firstName, lastName, email, password, role }) {
 }
 
 export async function login(email, password) {
+  // TODO(backend): Requires POST /api/auth/login endpoint returning token and user role.
   const res = await fetch(`${API_BASE}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
