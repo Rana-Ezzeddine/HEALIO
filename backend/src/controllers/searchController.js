@@ -2,28 +2,74 @@ import Medication from '../models/Medication.js';
 import Symptom from '../models/Symptom.js';
 import Diagnosis from '../models/Diagnosis.js';
 import { Op } from 'sequelize';
+import DoctorPatientAssignment from '../models/DoctorPatientAssignment.js';
+import CaregiverPatientPermission from '../models/CaregiverPatientPermission.js';
+
+const canAccessPatientData = async (req, patientId) => {
+  if (!req.user?.id || !req.user?.role || !patientId) return false;
+
+  if (req.user.role === 'patient') {
+    return req.user.id === patientId;
+  }
+
+  if (req.user.role === 'doctor') {
+    const assignment = await DoctorPatientAssignment.findOne({
+      where: { doctorId: req.user.id, patientId }
+    });
+    return !!assignment;
+  }
+
+  if (req.user.role === 'caregiver') {
+    const permission = await CaregiverPatientPermission.findOne({
+      where: { caregiverId: req.user.id, patientId }
+    });
+    return !!permission;
+  }
+
+  return false;
+};
 
 /**
  * PBI-29: Universal search across medications, symptoms, and history
  */
 export const universalSearch = async (req, res) => {
   try {
-    const { query, patientId, type, startDate, endDate } = req.query;
+    let targetPatientId = req.query.patientId;
 
-    if (!query || query.length < 2) {
-      return res.status(400).json({ error: 'Search query must be at least 2 characters' });
+    if (req.user.role === 'patient') {
+      targetPatientId = req.user.id;
+    }
+
+    if (!targetPatientId) {
+      return res.status(400).json({ message: 'patientId is required.' });
+    }
+
+    const allowed = await canAccessPatientData(req, targetPatientId);
+    if (!allowed) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
+    const { q: query, type, startDate, endDate } = req.query;
+
+    if (!query || query.trim().length < 2) {
+      return res.status(400).json({ message: 'Search query must be at least 2 characters.' });
+    }
+
+    if (startDate && isNaN(new Date(startDate).getTime())) {
+      return res.status(400).json({ message: 'Invalid startDate.' });
+    }
+
+    if (endDate && isNaN(new Date(endDate).getTime())) {
+      return res.status(400).json({ message: 'Invalid endDate.' });
     }
 
     const searchConditions = {
+      patientId: targetPatientId,
       [Op.or]: [
         { name: { [Op.iLike]: `%${query}%` } },
         { notes: { [Op.iLike]: `%${query}%` } }
       ]
     };
-
-    if (patientId) {
-      searchConditions.patientId = patientId;
-    }
 
     // Date range filter
     if (startDate && endDate) {
@@ -59,14 +105,17 @@ export const universalSearch = async (req, res) => {
     // Search diagnoses
     if (!type || type === 'diagnoses') {
       const diagnosisConditions = {
+        patientId: targetPatientId,
         [Op.or]: [
           { diagnosis: { [Op.iLike]: `%${query}%` } },
           { notes: { [Op.iLike]: `%${query}%` } }
         ]
       };
-      
-      if (patientId) {
-        diagnosisConditions.patientId = patientId;
+
+      if (startDate && endDate) {
+        diagnosisConditions.createdAt = {
+          [Op.between]: [new Date(startDate), new Date(endDate)]
+        };
       }
 
       results.diagnoses = await Diagnosis.findAll({
@@ -85,7 +134,7 @@ export const universalSearch = async (req, res) => {
     });
   } catch (error) {
     console.error('Error performing universal search:', error);
-    res.status(500).json({ error: 'Failed to perform search' });
+    res.status(500).json({ message: 'Failed to perform search.' });
   }
 };
 
@@ -94,11 +143,25 @@ export const universalSearch = async (req, res) => {
  */
 export const filterMedications = async (req, res) => {
   try {
-    const { 
-      patientId, 
-      status,  // 'active' or 'past'
-      prescribedBy, 
-      startDate, 
+    let targetPatientId = req.query.patientId;
+
+    if (req.user.role === 'patient') {
+      targetPatientId = req.user.id;
+    }
+
+    if (!targetPatientId) {
+      return res.status(400).json({ message: 'patientId is required.' });
+    }
+
+    const allowed = await canAccessPatientData(req, targetPatientId);
+    if (!allowed) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
+    const {
+      status,
+      prescribedBy,
+      startDate,
       endDate,
       frequency,
       sortBy = 'createdAt',
@@ -107,9 +170,23 @@ export const filterMedications = async (req, res) => {
       offset = 0
     } = req.query;
 
-    const whereConditions = {};
+    const parsedLimit = parseInt(limit);
+    const parsedOffset = parseInt(offset);
 
-    if (patientId) whereConditions.patientId = patientId;
+    if (isNaN(parsedLimit) || isNaN(parsedOffset)) {
+      return res.status(400).json({ message: 'limit and offset must be numbers.' });
+    }
+
+    if (startDate && isNaN(new Date(startDate).getTime())) {
+      return res.status(400).json({ message: 'Invalid startDate.' });
+    }
+
+    if (endDate && isNaN(new Date(endDate).getTime())) {
+      return res.status(400).json({ message: 'Invalid endDate.' });
+    }
+
+    const whereConditions = { patientId: targetPatientId };
+
     if (prescribedBy) whereConditions.prescribedBy = { [Op.iLike]: `%${prescribedBy}%` };
     if (frequency) whereConditions.frequency = { [Op.iLike]: `%${frequency}%` };
 
@@ -134,19 +211,19 @@ export const filterMedications = async (req, res) => {
     const medications = await Medication.findAndCountAll({
       where: whereConditions,
       order: [[sortBy, sortOrder]],
-      limit: parseInt(limit),
-      offset: parseInt(offset)
+      limit: parsedLimit,
+      offset: parsedOffset
     });
 
     res.json({
       total: medications.count,
       medications: medications.rows,
-      page: Math.floor(offset / limit) + 1,
-      totalPages: Math.ceil(medications.count / limit)
+      page: Math.floor(parsedOffset / parsedLimit) + 1,
+      totalPages: Math.ceil(medications.count / parsedLimit)
     });
   } catch (error) {
     console.error('Error filtering medications:', error);
-    res.status(500).json({ error: 'Failed to filter medications' });
+    res.status(500).json({ message: 'Failed to filter medications.' });
   }
 };
 
@@ -155,8 +232,22 @@ export const filterMedications = async (req, res) => {
  */
 export const filterSymptoms = async (req, res) => {
   try {
+    let targetPatientId = req.query.patientId;
+
+    if (req.user.role === 'patient') {
+      targetPatientId = req.user.id;
+    }
+
+    if (!targetPatientId) {
+      return res.status(400).json({ message: 'patientId is required.' });
+    }
+
+    const allowed = await canAccessPatientData(req, targetPatientId);
+    if (!allowed) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
     const {
-      patientId,
       severity,
       startDate,
       endDate,
@@ -167,9 +258,23 @@ export const filterSymptoms = async (req, res) => {
       offset = 0
     } = req.query;
 
-    const whereConditions = {};
+    const parsedLimit = parseInt(limit);
+    const parsedOffset = parseInt(offset);
 
-    if (patientId) whereConditions.patientId = patientId;
+    if (isNaN(parsedLimit) || isNaN(parsedOffset)) {
+      return res.status(400).json({ message: 'limit and offset must be numbers.' });
+    }
+
+    if (startDate && isNaN(new Date(startDate).getTime())) {
+      return res.status(400).json({ message: 'Invalid startDate.' });
+    }
+
+    if (endDate && isNaN(new Date(endDate).getTime())) {
+      return res.status(400).json({ message: 'Invalid endDate.' });
+    }
+
+    const whereConditions = { patientId: targetPatientId };
+
     if (severity) whereConditions.severity = severity;
     if (symptomName) whereConditions.name = { [Op.iLike]: `%${symptomName}%` };
 
@@ -183,19 +288,19 @@ export const filterSymptoms = async (req, res) => {
     const symptoms = await Symptom.findAndCountAll({
       where: whereConditions,
       order: [[sortBy, sortOrder]],
-      limit: parseInt(limit),
-      offset: parseInt(offset)
+      limit: parsedLimit,
+      offset: parsedOffset
     });
 
     res.json({
       total: symptoms.count,
       symptoms: symptoms.rows,
-      page: Math.floor(offset / limit) + 1,
-      totalPages: Math.ceil(symptoms.count / limit)
+      page: Math.floor(parsedOffset / parsedLimit) + 1,
+      totalPages: Math.ceil(symptoms.count / parsedLimit)
     });
   } catch (error) {
     console.error('Error filtering symptoms:', error);
-    res.status(500).json({ error: 'Failed to filter symptoms' });
+    res.status(500).json({ message: 'Failed to filter symptoms.' });
   }
 };
 
@@ -204,10 +309,23 @@ export const filterSymptoms = async (req, res) => {
  */
 export const getFilterOptions = async (req, res) => {
   try {
-    const { patientId } = req.query;
+    let targetPatientId = req.query.patientId;
 
-    const medicationConditions = patientId ? { patientId } : {};
-    const symptomConditions = patientId ? { patientId } : {};
+    if (req.user.role === 'patient') {
+      targetPatientId = req.user.id;
+    }
+
+    if (!targetPatientId) {
+      return res.status(400).json({ message: 'patientId is required.' });
+    }
+
+    const allowed = await canAccessPatientData(req, targetPatientId);
+    if (!allowed) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
+    const medicationConditions = { patientId: targetPatientId };
+    const symptomConditions = { patientId: targetPatientId };
 
     // Get unique values for filters
     const [doctors, frequencies, severities] = await Promise.all([
@@ -235,6 +353,6 @@ export const getFilterOptions = async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching filter options:', error);
-    res.status(500).json({ error: 'Failed to fetch filter options' });
+    res.status(500).json({ message: 'Failed to fetch filter options.' });
   }
 };

@@ -3,12 +3,46 @@ import Symptom from '../models/Symptom.js';
 import Diagnosis from '../models/Diagnosis.js';
 import MedicalNote from '../models/MedicalNote.js';
 import { Op } from 'sequelize';
+import DoctorPatientAssignment from '../models/DoctorPatientAssignment.js';
+import CaregiverPatientPermission from '../models/CaregiverPatientPermission.js';
+
+const canAccessPatientData = async (req, patientId) => {
+  if (!req.user?.id || !req.user?.role || !patientId) return false;
+
+  if (req.user.role === 'patient') {
+    return req.user.id === patientId;
+  }
+
+  if (req.user.role === 'doctor') {
+    const assignment = await DoctorPatientAssignment.findOne({
+      where: { doctorId: req.user.id, patientId }
+    });
+    return !!assignment;
+  }
+
+  if (req.user.role === 'caregiver') {
+    const permission = await CaregiverPatientPermission.findOne({
+      where: { caregiverId: req.user.id, patientId }
+    });
+    return !!permission;
+  }
+
+  return false;
+};
 
 
 export const getPatientMedicalHistory = async (req, res) => {
   try {
     const { patientId } = req.params;
-    
+
+    if (!patientId) {
+      return res.status(400).json({ message: 'patientId is required.' });
+    }
+
+    const allowed = await canAccessPatientData(req, patientId);
+    if (!allowed) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
 
     // Fetch all medications for patient
     const medications = await Medication.findAll({
@@ -34,7 +68,6 @@ export const getPatientMedicalHistory = async (req, res) => {
       order: [['createdAt', 'DESC']]
     });
 
-    
     const medicalHistory = {
       patientId,
       summary: {
@@ -50,7 +83,7 @@ export const getPatientMedicalHistory = async (req, res) => {
         all: medications
       },
       symptoms: {
-        recent: symptoms.slice(0, 10), 
+        recent: symptoms.slice(0, 10),
         all: symptoms
       },
       diagnoses: diagnoses.map(d => ({
@@ -75,10 +108,7 @@ export const getPatientMedicalHistory = async (req, res) => {
     res.json(medicalHistory);
   } catch (error) {
     console.error('Error fetching patient medical history:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch patient medical history',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
+    res.status(500).json({ message: 'Failed to fetch patient medical history.' });
   }
 };
 
@@ -94,7 +124,7 @@ function generateTimeline(medications, symptoms, diagnoses, notes) {
       description: `${med.dosage} - ${med.frequency}`,
       data: med
     });
-    
+
     if (med.endDate) {
       timeline.push({
         type: 'medication',
@@ -146,22 +176,29 @@ export const getMedicalHistorySummary = async (req, res) => {
   try {
     const { patientId } = req.params;
 
+    if (!patientId) {
+      return res.status(400).json({ message: 'patientId is required.' });
+    }
+
+    const allowed = await canAccessPatientData(req, patientId);
+    if (!allowed) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
     const [medications, symptoms, diagnoses] = await Promise.all([
       Medication.findAll({ where: { patientId }, order: [['createdAt', 'DESC']], limit: 5 }),
       Symptom.findAll({ where: { patientId }, order: [['createdAt', 'DESC']], limit: 5 }),
       Diagnosis.findAll({ where: { patientId }, order: [['diagnosisDate', 'DESC']], limit: 5 })
     ]);
 
-    const summary = {
+    res.json({
       recentMedications: medications,
       recentSymptoms: symptoms,
       recentDiagnoses: diagnoses,
       lastUpdated: new Date()
-    };
-
-    res.json(summary);
+    });
   } catch (error) {
     console.error('Error fetching medical history summary:', error);
-    res.status(500).json({ error: 'Failed to fetch medical history summary' });
+    res.status(500).json({ message: 'Failed to fetch medical history summary.' });
   }
 };

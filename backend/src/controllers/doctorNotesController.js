@@ -1,11 +1,46 @@
 import MedicalNote from '../models/MedicalNote.js';
 import Diagnosis from '../models/Diagnosis.js';
 import { Op } from 'sequelize';
+import DoctorPatientAssignment from '../models/DoctorPatientAssignment.js';
+import CaregiverPatientPermission from '../models/CaregiverPatientPermission.js';
+
+const canAccessPatientData = async (req, patientId) => {
+  if (!req.user?.id || !req.user?.role || !patientId) return false;
+
+  if (req.user.role === 'patient') {
+    return req.user.id === patientId;
+  }
+
+  if (req.user.role === 'doctor') {
+    const assignment = await DoctorPatientAssignment.findOne({
+      where: { doctorId: req.user.id, patientId }
+    });
+    return !!assignment;
+  }
+
+  if (req.user.role === 'caregiver') {
+    const permission = await CaregiverPatientPermission.findOne({
+      where: { caregiverId: req.user.id, patientId }
+    });
+    return !!permission;
+  }
+
+  return false;
+};
 
 
 export const getPatientDoctorNotes = async (req, res) => {
   try {
     const { patientId } = req.params;
+
+    if (!patientId) {
+      return res.status(400).json({ message: 'patientId is required.' });
+    }
+
+    const allowed = await canAccessPatientData(req, patientId);
+    if (!allowed) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
 
     const doctorNotes = await MedicalNote.findAll({
       where: { patientId },
@@ -27,10 +62,7 @@ export const getPatientDoctorNotes = async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching doctor notes:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch doctor notes',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
+    res.status(500).json({ message: 'Failed to fetch doctor notes.' });
   }
 };
 
@@ -39,15 +71,21 @@ export const getDoctorNoteById = async (req, res) => {
   try {
     const { patientId, noteId } = req.params;
 
+    if (!patientId) {
+      return res.status(400).json({ message: 'patientId is required.' });
+    }
+
+    const allowed = await canAccessPatientData(req, patientId);
+    if (!allowed) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
     const note = await MedicalNote.findOne({
-      where: {
-        id: noteId,
-        patientId
-      }
+      where: { id: noteId, patientId }
     });
 
     if (!note) {
-      return res.status(404).json({ error: 'Note not found' });
+      return res.status(404).json({ message: 'Note not found.' });
     }
 
     res.json({
@@ -59,7 +97,7 @@ export const getDoctorNoteById = async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching doctor note:', error);
-    res.status(500).json({ error: 'Failed to fetch doctor note' });
+    res.status(500).json({ message: 'Failed to fetch doctor note.' });
   }
 };
 
@@ -68,6 +106,27 @@ export const searchDoctorNotes = async (req, res) => {
   try {
     const { patientId } = req.params;
     const { query, startDate, endDate } = req.query;
+
+    if (!patientId) {
+      return res.status(400).json({ message: 'patientId is required.' });
+    }
+
+    const allowed = await canAccessPatientData(req, patientId);
+    if (!allowed) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
+    if (query && query.trim().length < 2) {
+      return res.status(400).json({ message: 'Search query must be at least 2 characters.' });
+    }
+
+    if (startDate && isNaN(new Date(startDate).getTime())) {
+      return res.status(400).json({ message: 'Invalid startDate.' });
+    }
+
+    if (endDate && isNaN(new Date(endDate).getTime())) {
+      return res.status(400).json({ message: 'Invalid endDate.' });
+    }
 
     const whereConditions = { patientId };
 
@@ -98,7 +157,7 @@ export const searchDoctorNotes = async (req, res) => {
     });
   } catch (error) {
     console.error('Error searching doctor notes:', error);
-    res.status(500).json({ error: 'Failed to search doctor notes' });
+    res.status(500).json({ message: 'Failed to search doctor notes.' });
   }
 };
 
@@ -106,6 +165,15 @@ export const searchDoctorNotes = async (req, res) => {
 export const getPatientClinicalInformation = async (req, res) => {
   try {
     const { patientId } = req.params;
+
+    if (!patientId) {
+      return res.status(400).json({ message: 'patientId is required.' });
+    }
+
+    const allowed = await canAccessPatientData(req, patientId);
+    if (!allowed) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
 
     const [notes, treatmentPlans] = await Promise.all([
       MedicalNote.findAll({
@@ -149,6 +217,82 @@ export const getPatientClinicalInformation = async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching clinical information:', error);
-    res.status(500).json({ error: 'Failed to fetch clinical information' });
+    res.status(500).json({ message: 'Failed to fetch clinical information.' });
+  }
+};
+
+
+export const getPatientTreatmentPlans = async (req, res) => {
+  try {
+    const { patientId } = req.params;
+
+    if (!patientId) {
+      return res.status(400).json({ message: 'patientId is required.' });
+    }
+
+    const allowed = await canAccessPatientData(req, patientId);
+    if (!allowed) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
+    const plans = await Diagnosis.findAll({
+      where: {
+        patientId,
+        treatmentPlan: { [Op.ne]: null }
+      },
+      order: [['diagnosisDate', 'DESC']]
+    });
+
+    res.json({
+      patientId,
+      totalPlans: plans.length,
+      treatmentPlans: plans.map(plan => ({
+        id: plan.id,
+        diagnosis: plan.diagnosis || plan.name,
+        treatmentPlan: plan.treatmentPlan,
+        doctorName: plan.doctorName,
+        startDate: plan.startDate,
+        status: plan.status
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching treatment plans:', error);
+    res.status(500).json({ message: 'Failed to fetch treatment plans.' });
+  }
+};
+
+
+export const getTreatmentPlanById = async (req, res) => {
+  try {
+    const { patientId, planId } = req.params;
+
+    if (!patientId) {
+      return res.status(400).json({ message: 'patientId is required.' });
+    }
+
+    const allowed = await canAccessPatientData(req, patientId);
+    if (!allowed) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
+    const plan = await Diagnosis.findOne({
+      where: { id: planId, patientId }
+    });
+
+    if (!plan) {
+      return res.status(404).json({ message: 'Treatment plan not found.' });
+    }
+
+    res.json({
+      id: plan.id,
+      diagnosis: plan.diagnosis || plan.name,
+      treatmentPlan: plan.treatmentPlan,
+      doctorName: plan.doctorName,
+      startDate: plan.startDate,
+      status: plan.status
+    });
+  } catch (error) {
+    console.error('Error fetching treatment plan:', error);
+    res.status(500).json({ message: 'Failed to fetch treatment plan.' });
   }
 };

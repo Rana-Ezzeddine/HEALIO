@@ -7,8 +7,13 @@ import {
   getTreatmentPlanById,
   searchDoctorNotes
 } from '../controllers/doctorNotesController.js';
+import requireUser from '../middleware/requireUser.js';
+import requireVerified from '../middleware/requireVerified.js';
 
 const router = express.Router();
+
+router.use(requireUser);
+router.use(requireVerified);
 
 //Patient view of doctor notes and treatment plans
 
@@ -30,5 +35,4 @@ router.get('/patient/:patientId/treatment-plans/:planId', getTreatmentPlanById);
 
 // Search doctor notes
 router.get('/patient/:patientId/notes/search', searchDoctorNotes);
-
 export default router;
