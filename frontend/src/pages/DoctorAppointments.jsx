@@ -59,6 +59,14 @@ export default function DoctorAppointments() {
   const [appointmentsList, setAppointmentsList] = useState(readAppointments);
   const [decisionNotes, setDecisionNotes] = useState({});
   const [selectedDateKey, setSelectedDateKey] = useState(toDateKey(new Date()));
+  const [newPatientName, setNewPatientName] = useState("");
+  const [newDoctorName, setNewDoctorName] = useState(() => {
+    const firstName = localStorage.getItem("firstName") || "";
+    return firstName ? `Dr. ${firstName}` : "";
+  });
+  const [newSpecialty, setNewSpecialty] = useState("");
+  const [newTime, setNewTime] = useState("");
+  const [newReason, setNewReason] = useState("");
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -116,6 +124,42 @@ export default function DoctorAppointments() {
 
   function updateDecisionNote(appointmentId, note) {
     setDecisionNotes((previous) => ({ ...previous, [appointmentId]: note }));
+  }
+
+  function handleScheduleAppointment(e) {
+    e.preventDefault();
+
+    const patientName = newPatientName.trim();
+    const doctorName = newDoctorName.trim();
+    const specialty = newSpecialty.trim();
+    const reason = newReason.trim();
+
+    if (!patientName || !doctorName || !specialty || !newTime || !reason) {
+      return;
+    }
+
+    const [hour, minute] = newTime.split(":");
+    const timeDate = new Date();
+    timeDate.setHours(Number(hour), Number(minute), 0, 0);
+    const formattedTime = timeDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+    const newAppointment = {
+      id: `pa-${Date.now()}`,
+      patientName,
+      doctorName,
+      specialty,
+      date: selectedDateKey,
+      time: formattedTime,
+      reason,
+      status: "Upcoming",
+      decisionMessage: "Scheduled directly by doctor.",
+      reviewedAt: new Date().toISOString(),
+    };
+
+    setAppointmentsList((previousAppointments) => [newAppointment, ...previousAppointments]);
+    setNewPatientName("");
+    setNewTime("");
+    setNewReason("");
   }
 
   function approveRequest(appointmentId) {
@@ -263,6 +307,56 @@ export default function DoctorAppointments() {
               </tbody>
             </table>
           </div>
+        </section>
+
+        <section className="bg-white rounded-3xl shadow p-6 mb-6">
+          <h2 className="text-xl font-semibold text-slate-800 mb-1">Schedule For Patient</h2>
+          <p className="text-sm text-slate-500 mb-4">
+            Create an appointment directly on the selected date: {selectedDateKey}
+          </p>
+
+          <form onSubmit={handleScheduleAppointment} className="grid grid-cols-1 md:grid-cols-6 gap-2">
+            <input
+              type="text"
+              placeholder="Patient name"
+              value={newPatientName}
+              onChange={(e) => setNewPatientName(e.target.value)}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+            />
+            <input
+              type="text"
+              placeholder="Doctor name"
+              value={newDoctorName}
+              onChange={(e) => setNewDoctorName(e.target.value)}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+            />
+            <input
+              type="text"
+              placeholder="Specialty"
+              value={newSpecialty}
+              onChange={(e) => setNewSpecialty(e.target.value)}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+            />
+            <input
+              type="time"
+              value={newTime}
+              onChange={(e) => setNewTime(e.target.value)}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+            />
+            <input
+              type="text"
+              placeholder="Visit reason"
+              value={newReason}
+              onChange={(e) => setNewReason(e.target.value)}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+            />
+            <button
+              type="submit"
+              className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 transition"
+            >
+              Schedule
+            </button>
+          </form>
         </section>
 
         <section className="bg-white rounded-3xl shadow p-6 mb-6">
