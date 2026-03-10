@@ -44,26 +44,16 @@ import medicationRoutes from "./src/routes/medications.routes.js";
 import doctorRoutes from "./src/routes/doctor.routes.js";
 import medicalHistoryRoutes from "./src/routes/medicalHistory.routes.js";
 import dashboardRoutes from './src/routes/patientDashboard.routes.js';
-<<<<<<< HEAD
-<<<<<<< HEAD
 import appointmentsRoutes from "./src/routes/appointments.routes.js";
 import caregiverRoutes from "./src/routes/caregiver.routes.js";
 import messagingRoutes from "./src/routes/messaging.routes.js";
 import auditRoutes from './src/routes/audit.routes.js';
 import emergencyRoutes from './src/routes/emergency.routes.js';
 import caregiverNotesRoutes from './src/routes/caregiverNotes.routes.js';
-import doctorNotesRoutes from './routes/doctorNotes.routes.js';
-
-
-=======
+import doctorNotesRoutes from './src/routes/doctorNotes.routes.js';
 import patientmedHistoryRoutes from './src/routes/patientmedHistory.routes.js';
->>>>>>> feature/patient-medical-history
-=======
-import patientmedHistoryRoutes from '.src/routes/patientmedHistory.routes.js';
-import searchRoutes from '.src/routes/search.routes.js';
+import searchRoutes from './src/routes/search.routes.js';
 
-
->>>>>>> feature/search-filtering
 /////////////////////////////////////////////////
 // Initialize App
 /////////////////////////////////////////////////
@@ -127,29 +117,15 @@ app.use("/api/medications", medicationRoutes);
 app.use("/api/doctors", doctorRoutes);
 app.use("/api/medical-history", medicalHistoryRoutes);
 app.use('/api/dashboard', dashboardRoutes);
-<<<<<<< HEAD
-<<<<<<< HEAD
 app.use("/api/appointments", appointmentsRoutes);
 app.use("/api/caregivers", caregiverRoutes);
 app.use("/api/conversations", messagingRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/emergency', emergencyRoutes);
 app.use("/api/caregiver-notes", caregiverNotesRoutes);
-<<<<<<< HEAD
-app.use('/api/patient-med-history', patientmedHistoryRoutes);
-app.use('/api/medical-history', patientmedHistoryRoutes);
-app.use('/api/search', searchRoutes);
-
 app.use('/api/doctor-notes', doctorNotesRoutes);
-=======
-=======
-
->>>>>>> feature/search-filtering
-
-
->>>>>>> feature/patient-medical-history
-=======
->>>>>>> feature/patient-doctor-notes
+app.use('/api/patientmedhistory', patientmedHistoryRoutes);
+app.use('/api/search', searchRoutes);
 
 /////////////////////////////////////////////////
 // 404 Handler

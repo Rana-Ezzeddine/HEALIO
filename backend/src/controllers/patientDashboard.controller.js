@@ -3,7 +3,6 @@ import Appointment from '../models/Appointment.js';
 import Symptom from '../models/Symptom.js';
 import { Op } from 'sequelize';
 
-<<<<<<< HEAD
 function startOfDayFromValue(value) {
   if (!value) return null;
 
@@ -23,21 +22,19 @@ function startOfDayFromValue(value) {
 }
 
 // Get patient dashboard with aggregated medical data
-=======
->>>>>>> feature/patient-medical-history
 export const getPatientDashboard = async (req, res) => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const allMedications = await Medication.findAll();
 
-    const activeMedications = allMedications.filter(med => 
+    const activeMedications = allMedications.filter(med =>
       !med.endDate || new Date(med.endDate) >= today
     );
 
     const nextDose = activeMedications.length > 0 ? {
       medication: activeMedications[0].name,
-      time: "8:00 PM", 
+      time: "8:00 PM",
       dosage: activeMedications[0].dosage
     } : null;
     const nextAppointment = await Appointment.findOne({
@@ -60,7 +57,7 @@ export const getPatientDashboard = async (req, res) => {
     if (nextAppointment) {
       const appointmentDate = new Date(nextAppointment.date);
       const daysUntil = Math.ceil((appointmentDate - today) / (1000 * 60 * 60 * 24));
-      
+
       appointmentData = {
         icon: "📅",
         label: "Next Appointment",
@@ -84,13 +81,9 @@ export const getPatientDashboard = async (req, res) => {
     });
 
     const lastSymptom = await Symptom.findOne({
-<<<<<<< HEAD
       // TODO: Add patientId filter
       // where: { patientId: req.user.id },
       order: [['loggedAt', 'DESC'], ['createdAt', 'DESC']]
-=======
-      order: [['createdAt', 'DESC']]
->>>>>>> feature/patient-medical-history
     });
 
     let symptomData = {
@@ -105,7 +98,7 @@ export const getPatientDashboard = async (req, res) => {
       const daysSince = symptomDate
         ? Math.floor((today - symptomDate) / (1000 * 60 * 60 * 24))
         : null;
-      
+
       let whenText;
       if (daysSince === null) whenText = "No symptoms logged";
       else if (daysSince <= 0) whenText = "Today";
@@ -116,7 +109,7 @@ export const getPatientDashboard = async (req, res) => {
         icon: "😊",
         label: "Last Symptom Logged",
         when: whenText,
-        symptomName: lastSymptom.name || lastSymptom.symptom, 
+        symptomName: lastSymptom.name || lastSymptom.symptom,
         viewLink: "/symptoms"
       };
     }
@@ -124,7 +117,7 @@ export const getPatientDashboard = async (req, res) => {
     const dashboard = {
       welcomeMessage: "Welcome Back, Patient",
       subtitle: "Here's a quick overview of your health",
-      
+
       topCards: {
         activeMedications: {
           icon: "💊",
@@ -148,10 +141,10 @@ export const getPatientDashboard = async (req, res) => {
         message: upcomingAppointments.length === 0 ? "No upcoming appointments yet." : null,
         appointments: upcomingAppointments.map(apt => ({
           id: apt.id,
-          date: new Date(apt.date).toLocaleDateString('en-US', { 
-            weekday: 'short', 
-            month: 'short', 
-            day: 'numeric' 
+          date: new Date(apt.date).toLocaleDateString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric'
           }),
           time: apt.time || "Time TBD",
           doctorName: apt.doctorName || "Doctor TBD",
@@ -211,7 +204,7 @@ export const getPatientDashboard = async (req, res) => {
     res.json(dashboard);
   } catch (error) {
     console.error('Error fetching patient dashboard:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to fetch patient dashboard',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
@@ -231,7 +224,7 @@ export const getMedicationStats = async (req, res) => {
       frequencyDistribution[freq] = (frequencyDistribution[freq] || 0) + 1;
     });
 
-    const active = allMedications.filter(med => 
+    const active = allMedications.filter(med =>
       !med.endDate || new Date(med.endDate) >= today
     ).length;
     const inactive = allMedications.length - active;
@@ -300,7 +293,7 @@ export const getUpcomingMedications = async (req, res) => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const thirtyDaysFromNow = new Date();
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
