@@ -20,6 +20,7 @@ import Message from './Message.js';
 import Reminder from './Reminder.js';
 import EmailVerificationToken from './EmailVerificationToken.js';
 import ActivityLog from './ActivityLog.js';
+import CaregiverNote from './CaregiverNote.js';
 
 // ========================================
 // ASSOCIATIONS
@@ -84,6 +85,28 @@ User.belongsToMany(User, {
   as: 'caregivers',
   foreignKey: 'patientId',
   otherKey: 'caregiverId'
+});
+
+// Patient ↔ Caregiver Notes
+User.hasMany(CaregiverNote, {
+  foreignKey: 'patientId',
+  as: 'caregiverNotes',
+  onDelete: 'CASCADE'
+});
+CaregiverNote.belongsTo(User, {
+  foreignKey: 'patientId',
+  as: 'patient'
+});
+
+// Caregiver ↔ Notes Written
+User.hasMany(CaregiverNote, {
+  foreignKey: 'caregiverId',
+  as: 'notesWrittenByCaregiver',
+  onDelete: 'CASCADE'
+});
+CaregiverNote.belongsTo(User, {
+  foreignKey: 'caregiverId',
+  as: 'caregiver'
 });
 
 // Patient ↔ Medications (1:Many)
@@ -238,6 +261,7 @@ export {
   Reminder,
   EmailVerificationToken,
   ActivityLog,
+  CaregiverNote,
 };
 
 export default {
@@ -256,4 +280,5 @@ export default {
   Reminder,
   EmailVerificationToken,
   ActivityLog,
+  CaregiverNote,
 };

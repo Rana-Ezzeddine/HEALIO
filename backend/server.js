@@ -49,6 +49,7 @@ import caregiverRoutes from "./src/routes/caregiver.routes.js";
 import messagingRoutes from "./src/routes/messaging.routes.js";
 import auditRoutes from './src/routes/audit.routes.js';
 import emergencyRoutes from './src/routes/emergency.routes.js';
+import caregiverNotesRoutes from './src/routes/caregiverNotes.routes.js'
 
 /////////////////////////////////////////////////
 // Initialize App
@@ -118,6 +119,7 @@ app.use("/api/caregivers", caregiverRoutes);
 app.use("/api/conversations", messagingRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/emergency', emergencyRoutes);
+app.use("/api/caregiver-notes", caregiverNotesRoutes);
 
 /////////////////////////////////////////////////
 // 404 Handler
