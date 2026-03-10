@@ -34,6 +34,8 @@ export default function Navbar() {
   const isDashboard = path.toLowerCase().startsWith("/dashboard");
   const isProfile = path.toLowerCase().startsWith("/profile");
   const isMedication = path.toLowerCase().startsWith("/medication");
+  const isDoctorAppointments = path.toLowerCase().startsWith("/doctorappointments");
+  const isPatientAppointments = path.toLowerCase().startsWith("/patientappointments");
   const isDoctorMessages = path.toLowerCase().startsWith("/doctormessages");
   const isPatientMessages = path.toLowerCase().startsWith("/patientmessages");
   const isLanding = path === "/";
@@ -100,6 +102,26 @@ export default function Navbar() {
                     Medications
                   </button>
                 </>
+              )}
+              {isDoctor && (
+                <button
+                  onClick={() => navigate("/doctorAppointments")}
+                  className={`text-sm font-medium transition ${
+                    isDoctorAppointments ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  Appointments
+                </button>
+              )}
+              {isPatient && (
+                <button
+                  onClick={() => navigate("/patientAppointments")}
+                  className={`text-sm font-medium transition ${
+                    isPatientAppointments ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  Appointments
+                </button>
               )}
               {isDoctor && (
                 <button

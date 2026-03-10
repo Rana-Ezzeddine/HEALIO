@@ -15,6 +15,8 @@ import LandingPage from "./pages/LandingPage";
 import Symptoms from "./pages/Symptoms";
 import DoctorMessages from "./pages/DoctorMessages";
 import PatientMessages from "./pages/PatientMessages";
+import DoctorAppointments from "./pages/DoctorAppointments";
+import PatientAppointments from "./pages/PatientAppointments";
 
 export default function App() {
   const [message, setMessage] = useState("Loading...");
@@ -58,6 +60,8 @@ useEffect(() => {
         <Route path="/profileDoctor" element={<ProfileDoctor />} />
         <Route path="/profileCaregiver" element={<ProfileCaregiver />} />
         <Route path="/symptoms" element={<Symptoms />} />
+        <Route path="/doctorAppointments" element={<DoctorAppointments />} />
+        <Route path="/patientAppointments" element={<PatientAppointments />} />
         <Route path="/doctorMessages" element={<DoctorMessages />} />
         <Route path="/patientMessages" element={<PatientMessages />} />
         <Route path="*" element={<Navigate to="/" replace />} />
