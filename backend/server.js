@@ -13,8 +13,6 @@ dotenv.config({
   path: path.join(__dirname, ".env"),
 });
 
-
-
 /////////////////////////////////////////////////
 // Fail-fast env validation (production habit)
 /////////////////////////////////////////////////
@@ -32,10 +30,11 @@ for (const key of requiredEnv) {
 import express from "express";
 import cors from "cors";
 
-
-
 // Register models and associations
 import "./src/models/index.js";
+
+// Middleware
+import activityLogger from './src/middleware/activityLogger.js';
 
 // Routes
 import authRoutes from "./src/routes/auth.routes.js";
@@ -44,6 +43,14 @@ import symptomsRoutes from "./src/routes/symptoms.routes.js";
 import medicationRoutes from "./src/routes/medications.routes.js";
 import doctorRoutes from "./src/routes/doctor.routes.js";
 import medicalHistoryRoutes from "./src/routes/medicalHistory.routes.js";
+import dashboardRoutes from './src/routes/patientDashboard.routes.js';
+import appointmentsRoutes from "./src/routes/appointments.routes.js";
+import caregiverRoutes from "./src/routes/caregiver.routes.js";
+import messagingRoutes from "./src/routes/messaging.routes.js";
+import auditRoutes from './src/routes/audit.routes.js';
+import emergencyRoutes from './src/routes/emergency.routes.js';
+import caregiverNotesRoutes from './src/routes/caregiverNotes.routes.js'
+
 /////////////////////////////////////////////////
 // Initialize App
 /////////////////////////////////////////////////
@@ -55,7 +62,20 @@ const PORT = process.env.PORT || 5050;
 /////////////////////////////////////////////////
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+
+      const allowed = [
+        process.env.FRONTEND_URL || "http://localhost:5173",
+      ];
+
+      const isLocalhostDev = /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
+      if (allowed.includes(origin) || isLocalhostDev) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Not allowed by CORS"));
+    },
     credentials: true,
   })
 );
@@ -63,13 +83,14 @@ app.use(
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// Development request logging
 app.use((req, res, next) => {
   if (process.env.NODE_ENV === "development") {
     console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   }
   next();
 });
+
+app.use(activityLogger());
 
 /////////////////////////////////////////////////
 // Health Route
@@ -91,8 +112,14 @@ app.use("/api/profile", profileRoutes);
 app.use("/api/symptoms", symptomsRoutes);
 app.use("/api/medications", medicationRoutes);
 app.use("/api/doctors", doctorRoutes);
-app.use("/api/medical-history", medicalHistoryRoutes)
-
+app.use("/api/medical-history", medicalHistoryRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use("/api/appointments", appointmentsRoutes);
+app.use("/api/caregivers", caregiverRoutes);
+app.use("/api/conversations", messagingRoutes);
+app.use('/api/audit', auditRoutes);
+app.use('/api/emergency', emergencyRoutes);
+app.use("/api/caregiver-notes", caregiverNotesRoutes);
 
 /////////////////////////////////////////////////
 // 404 Handler
@@ -117,7 +144,6 @@ app.use((err, req, res, next) => {
 /////////////////////////////////////////////////
 const startServer = async () => {
   try {
-    // Test database connection
     const connected = await testConnection();
 
     if (!connected) {
@@ -126,9 +152,6 @@ const startServer = async () => {
 
     console.log("✓ PostgreSQL connected");
 
-    /////////////////////////////////////////////////////////
-    // Check if migrations were applied (SequelizeMeta exists)
-    /////////////////////////////////////////////////////////
     const [result] = await sequelize.query(`
       SELECT EXISTS (
         SELECT 1
@@ -144,9 +167,6 @@ const startServer = async () => {
       console.log("✓ Migrations detected (database schema ready)");
     }
 
-    /////////////////////////////////////////////////////////
-    // Start Express server
-    /////////////////////////////////////////////////////////
     app.listen(PORT, () => {
       console.log(`
 ╔═══════════════════════════════════════╗
@@ -163,14 +183,15 @@ const startServer = async () => {
   }
 };
 
-startServer();
+if (process.env.NODE_ENV !== 'test') {
+  startServer();
+}
 
 /////////////////////////////////////////////////
 // Graceful Shutdown
 /////////////////////////////////////////////////
 const shutdown = async () => {
   console.log("\nShutting down gracefully...");
-
 
   try {
     await sequelize.close();
@@ -185,4 +206,5 @@ const shutdown = async () => {
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 
+export { app, startServer };
 export default app;

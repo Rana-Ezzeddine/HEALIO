@@ -91,6 +91,14 @@ export default function ProfilePatient(){
     const[emName, setEmName] = useState("");
     const[relationship, setRelationship] = useState("");
     const[emPhone, setEmPhone] = useState("");
+    const sessionUser = JSON.parse(localStorage.getItem("user") || "null");
+    const accountEmail = sessionUser?.email || localStorage.getItem("email") || "";
+
+    function hydrateFromSession() {
+      setFirstName(localStorage.getItem("firstName") || "");
+      setLastName(localStorage.getItem("lastName") || "");
+      setEmail(accountEmail);
+    }
     
 
     useEffect(() => {
@@ -100,10 +108,14 @@ export default function ProfilePatient(){
         headers: { "Content-Type": "application/json", ...authHeaders() },
       });
 
-      if (res.status === 404) return; // no profile yet
+      if (res.status === 404) {
+        hydrateFromSession();
+        return; // no profile yet
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         console.error("Failed to load profile:", err);
+        hydrateFromSession();
         return;
       }
 
@@ -111,20 +123,25 @@ export default function ProfilePatient(){
 
       setFirstName(p.firstName || "");
       setLastName(p.lastName || "");
-      setGender(p.gender || "");
+      setGender(p.gender || p.sex || "");
       setDateOfBirth(p.dateOfBirth || "");
       setBloodType(p.bloodType || "");
       setPhone(p.phoneNumber || "");
-      setEmail(p.email || "");
+      setEmail(p.email || accountEmail);
 
-      setAllergies((p.allergies || []).join(", "));
-      setConditions((p.chronicConditions || []).join(", "));
+      setAllergies(Array.isArray(p.allergies) ? p.allergies.join(", ") : (p.allergies || ""));
+      setConditions(
+        Array.isArray(p.chronicConditions)
+          ? p.chronicConditions.join(", ")
+          : (p.chronicConditions || p.medicalConditions || "")
+      );
 
       setEmName(p.emergencyContact?.name || "");
       setRelationship(p.emergencyContact?.relationship || "");
       setEmPhone(p.emergencyContact?.phoneNumber || "");
     } catch (err) {
       console.error(err);
+      hydrateFromSession();
     }
   })();
 }, []);
@@ -168,16 +185,24 @@ export default function ProfilePatient(){
 
     setFirstName(data.firstName || "");
     setLastName(data.lastName || "");
-    setGender(canonGender(data.gender));
+    setGender(canonGender(data.gender || data.sex));
     setDateOfBirth(data.dateOfBirth || "");
     setBloodType(data.bloodType || "");
-    setPhone(data.phoneNumber || "");
-    setEmail(data.email || "");
-    setAllergies((data.allergies || []).join(", "));
-    setConditions((data.chronicConditions || []).join(", "));
-    setEmName(data.emergencyContact?.name || "");
-    setRelationship(data.emergencyContact?.relationship || "");
-    setEmPhone(data.emergencyContact?.phoneNumber || "");
+    setPhone(data.phoneNumber || phone);
+    setEmail(accountEmail);
+    setAllergies(Array.isArray(data.allergies) ? data.allergies.join(", ") : (data.allergies || allergies));
+    setConditions(
+      Array.isArray(data.chronicConditions)
+        ? data.chronicConditions.join(", ")
+        : (data.chronicConditions || data.medicalConditions || conditions)
+    );
+    setEmName(data.emergencyContact?.name || emName);
+    setRelationship(data.emergencyContact?.relationship || relationship);
+    setEmPhone(data.emergencyContact?.phoneNumber || emPhone);
+
+    // Keep dashboard/session name in sync with profile edits
+    localStorage.setItem("firstName", data.firstName || firstName);
+    localStorage.setItem("lastName", data.lastName || lastName);
 
     setIsEditing(false);
   } catch (err) {
@@ -274,7 +299,7 @@ export default function ProfilePatient(){
               <h2 className="text-xl font-semibold text-slate-800 mb-4">Contact Information</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> 
                 <FormInput label="Phone Number" type="text" value={phone} onChange={(e)=>setPhone(e.target.value)} isEditing={isEditing} />
-                <FormInput label="Email" type="text" value={email} onChange={(e)=>setEmail(e.target.value)} isEditing={isEditing} />
+                <FormInput label="Email" type="text" value={email} onChange={(e)=>setEmail(e.target.value)} isEditing={false} />
               </div>
             </section>
 

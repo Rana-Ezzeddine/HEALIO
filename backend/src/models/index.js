@@ -18,6 +18,9 @@ import Conversation from './Conversation.js';
 import ConversationParticipant from './ConversationParticipant.js';
 import Message from './Message.js';
 import Reminder from './Reminder.js';
+import EmailVerificationToken from './EmailVerificationToken.js';
+import ActivityLog from './ActivityLog.js';
+import CaregiverNote from './CaregiverNote.js';
 
 // ========================================
 // ASSOCIATIONS
@@ -32,6 +35,28 @@ User.hasOne(PatientProfile, {
 PatientProfile.belongsTo(User, {
   foreignKey: 'userId',
   as: 'user'
+});
+
+// User ↔ EmailVerificationToken (1:Many)
+User.hasMany(EmailVerificationToken, {
+  foreignKey: 'userId',
+  as: 'emailVerificationTokens',
+  onDelete: 'CASCADE',
+});
+EmailVerificationToken.belongsTo(User, {
+  foreignKey: 'userId',
+  as: 'user',
+});
+
+// User ↔ ActivityLog (1:Many)
+User.hasMany(ActivityLog, {
+  foreignKey: 'userId',
+  as: 'activityLogs',
+  onDelete: 'SET NULL',
+});
+ActivityLog.belongsTo(User, {
+  foreignKey: 'userId',
+  as: 'user',
 });
 
 // Doctor ↔ Patient (Many-to-Many via DoctorPatientAssignment)
@@ -60,6 +85,28 @@ User.belongsToMany(User, {
   as: 'caregivers',
   foreignKey: 'patientId',
   otherKey: 'caregiverId'
+});
+
+// Patient ↔ Caregiver Notes
+User.hasMany(CaregiverNote, {
+  foreignKey: 'patientId',
+  as: 'caregiverNotes',
+  onDelete: 'CASCADE'
+});
+CaregiverNote.belongsTo(User, {
+  foreignKey: 'patientId',
+  as: 'patient'
+});
+
+// Caregiver ↔ Notes Written
+User.hasMany(CaregiverNote, {
+  foreignKey: 'caregiverId',
+  as: 'notesWrittenByCaregiver',
+  onDelete: 'CASCADE'
+});
+CaregiverNote.belongsTo(User, {
+  foreignKey: 'caregiverId',
+  as: 'caregiver'
 });
 
 // Patient ↔ Medications (1:Many)
@@ -211,7 +258,10 @@ export {
   Conversation,
   ConversationParticipant,
   Message,
-  Reminder
+  Reminder,
+  EmailVerificationToken,
+  ActivityLog,
+  CaregiverNote,
 };
 
 export default {
@@ -227,5 +277,8 @@ export default {
   Conversation,
   ConversationParticipant,
   Message,
-  Reminder
+  Reminder,
+  EmailVerificationToken,
+  ActivityLog,
+  CaregiverNote,
 };

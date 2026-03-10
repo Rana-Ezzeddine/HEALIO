@@ -86,6 +86,13 @@ export default function ProfileCaregiver(){
     const[email, setEmail] = useState("");
     const[phone, setPhone] = useState("");
 
+    function hydrateFromSession() {
+      const storedUser = JSON.parse(localStorage.getItem("user") || "null");
+      setFirstName(localStorage.getItem("firstName") || "");
+      setLastName(localStorage.getItem("lastName") || "");
+      setEmail(storedUser?.email || localStorage.getItem("email") || "");
+    }
+
     useEffect(() => {
   (async () => {
     try {
@@ -93,10 +100,14 @@ export default function ProfileCaregiver(){
         headers: { "Content-Type": "application/json", ...authHeaders() },
       });
 
-      if (res.status === 404) return; // no profile yet
+      if (res.status === 404) {
+        hydrateFromSession();
+        return; // no profile yet
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         console.error("Failed to load profile:", err);
+        hydrateFromSession();
         return;
       }
 
@@ -104,7 +115,7 @@ export default function ProfileCaregiver(){
 
       setFirstName(p.firstName || "");
       setLastName(p.lastName || "");
-      setGender(p.gender || "");
+      setGender(p.gender || p.sex || "");
       setDateOfBirth(p.dateOfBirth || "");
 
       setRelationshipToPatient(p.relationshipToPatient || "");
@@ -117,6 +128,7 @@ export default function ProfileCaregiver(){
 
     } catch (err) {
       console.error(err);
+      hydrateFromSession();
     }
   })();
 }, []);
@@ -155,7 +167,7 @@ export default function ProfileCaregiver(){
 
     setFirstName(data.firstName || "");
     setLastName(data.lastName || "");
-    setGender(canonGender(data.gender));
+    setGender(canonGender(data.gender || data.sex));
     setDateOfBirth(data.dateOfBirth || "");
 
     setRelationshipToPatient(data.relationshipToPatient || "");
@@ -169,6 +181,10 @@ export default function ProfileCaregiver(){
     if (data.patientLinkCode || patientLinkCode) {
       localStorage.setItem("pendingPatientLinkCode", data.patientLinkCode || patientLinkCode);
     }
+
+    // Keep dashboard/session name in sync with profile edits
+    localStorage.setItem("firstName", data.firstName || firstName);
+    localStorage.setItem("lastName", data.lastName || lastName);
 
     setIsEditing(false);
   } catch (err) {

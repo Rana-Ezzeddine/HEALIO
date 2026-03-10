@@ -1,16 +1,22 @@
-import express from "express";
-import requireUser from "../middleware/requireUser.js";
-const router = express.Router();
+import express from 'express';
+import requireUser from '../middleware/requireUser.js';
 
 import {
-    register,
-    login,
-    me
-} from '../controllers/auth.controller.js'
+  register,
+  login,
+  me,
+  verifyEmail,
+  resendVerification,
+} from '../controllers/auth.controller.js';
+
+const router = express.Router();
 
 // routes
-router.post("/register", register);
-router.post("/login", login);
-router.get("/me", requireUser, me);
+router.post('/register', register);
+router.post('/login', login);
+router.post('/verify-email', verifyEmail);
+router.get('/verify-email', verifyEmail);
+router.post('/resend-verification', requireUser, resendVerification);
+router.get('/me', requireUser, me);
 
 export default router;

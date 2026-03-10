@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { clearSession } from "../api/http";
 import logo from "../assets/logo.png";
 
 export default function Navbar() {
@@ -41,7 +42,7 @@ export default function Navbar() {
   const isLanding = path === "/";
 
   function handleLogout() {
-    localStorage.clear();
+    clearSession();
     setUserRole(null);
     navigate("/");
   }
@@ -54,7 +55,7 @@ export default function Navbar() {
                      bg-white/70 backdrop-blur-md border border-white/60
                      shadow-sm px-6 py-3"
         >
-          
+
           <button
             onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
             className="flex items-center gap-2"
@@ -83,82 +84,80 @@ export default function Navbar() {
                 </button>
               </>
             ) : (
-              
+
               <>
-              <button
-                onClick={() => navigate(dashboardPath)}
-                className={`text-sm font-medium transition ${
-                isDashboard ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
-              }`}>
-                Dashboard
-              </button>
-              {!isDoctor && (
-                <>
+                <button
+                  onClick={() => navigate(dashboardPath)}
+                  className={`text-sm font-medium transition ${isDashboard ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                    }`}>
+                  Dashboard
+                </button>
+                {!isDoctor && (
+                  <>
+                    <button
+                      onClick={() => navigate("/medication")}
+                      className={`text-sm font-medium transition ${isMedication ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                        }`}>
+                      Medications
+                    </button>
+                  </>
+                )}
+
+                {isDoctor && (
                   <button
-                    onClick={() => navigate("/medication")}
+                    onClick={() => navigate("/doctorAppointments")}
                     className={`text-sm font-medium transition ${
-                    isMedication ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
-                  }`}>
-                    Medications
+                      isDoctorAppointments ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Appointments
                   </button>
-                </>
-              )}
-              {isDoctor && (
+                )}
+                {isPatient && (
+                  <button
+                    onClick={() => navigate("/patientAppointments")}
+                    className={`text-sm font-medium transition ${
+                      isPatientAppointments ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Appointments
+                  </button>
+                )}
+                {isDoctor && (
+                  <button
+                    onClick={() => navigate("/doctorMessages")}
+                    className={`text-sm font-medium transition ${
+                      isDoctorMessages ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Messages
+                  </button>
+                )}
+                {isPatient && (
+                  <button
+                    onClick={() => navigate("/patientMessages")}
+                    className={`text-sm font-medium transition ${
+                      isPatientMessages ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Messages
+                  </button>
+                )}
+
                 <button
-                  onClick={() => navigate("/doctorAppointments")}
-                  className={`text-sm font-medium transition ${
-                    isDoctorAppointments ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  Appointments
+                  onClick={() => navigate(profilePath)}
+                  className={`text-sm font-medium transition ${isProfile ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                    }`}>
+                  Profile
                 </button>
-              )}
-              {isPatient && (
+
                 <button
-                  onClick={() => navigate("/patientAppointments")}
-                  className={`text-sm font-medium transition ${
-                    isPatientAppointments ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  Appointments
-                </button>
-              )}
-              {isDoctor && (
-                <button
-                  onClick={() => navigate("/doctorMessages")}
-                  className={`text-sm font-medium transition ${
-                    isDoctorMessages ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  Messages
-                </button>
-              )}
-              {isPatient && (
-                <button
-                  onClick={() => navigate("/patientMessages")}
-                  className={`text-sm font-medium transition ${
-                    isPatientMessages ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  Messages
-                </button>
-              )}
-              
-              <button
-                onClick={() => navigate(profilePath)}
-                className={`text-sm font-medium transition ${
-                isProfile ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
-              }`}>
-                Profile
-              </button>
-              
-              <button
-                onClick={handleLogout}
-                className="rounded-lg bg-sky-500 px-5 py-2 text-sm font-semibold text-white
+                  onClick={handleLogout}
+                  className="rounded-lg bg-sky-500 px-5 py-2 text-sm font-semibold text-white
                             hover:bg-sky-600 transition shadow"
-              >
-                Logout
-              </button>
+                >
+                  Logout
+                </button>
               </>
             )}
           </div>

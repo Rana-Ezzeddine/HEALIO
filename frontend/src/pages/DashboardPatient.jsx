@@ -1,6 +1,25 @@
 import { useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
 import { useNavigate } from "react-router-dom";
+import { apiUrl, authHeaders } from "../api/http";
+
+function startOfDayFromValue(value) {
+  if (!value) return null;
+
+  if (typeof value === "string") {
+    const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
+    if (dateOnly) {
+      const year = Number(dateOnly[1]);
+      const month = Number(dateOnly[2]) - 1;
+      const day = Number(dateOnly[3]);
+      return new Date(year, month, day);
+    }
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+}
 
 const PATIENT_APPOINTMENTS_STORAGE_KEY = "patientAppointments";
 const fallbackAppointments = [
@@ -69,15 +88,14 @@ function DashboardCard({title, mainText, subText, navPage}){
 
 export default function DashboardPatient() {
   const navigate = useNavigate();
-  const [role, setRole] = useState("Patient");
   const [name, setName] = useState("Patient");
   const [appointments, setAppointments] = useState(fallbackAppointments);
+  const [medicationCount, setMedicationCount] = useState(0);
+  const [medicationSubText, setMedicationSubText] = useState("No medications added yet");
+  const [lastSymptomText, setLastSymptomText] = useState("No logs");
 
   useEffect(() => {
     try {
-      const r = localStorage.getItem("userRole");
-      setRole(r || "Patient");
-
       const firstName = localStorage.getItem("firstName") || "Patient";
       setName(firstName);
     } catch (err) {
@@ -111,6 +129,76 @@ export default function DashboardPatient() {
     ? `${nextAppointment.time} - ${nextAppointment.doctorName}`
     : "Book your next visit";
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${apiUrl}/api/medications`, {
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+        });
+
+        if (!res.ok) {
+          setMedicationCount(0);
+          setMedicationSubText("No medications added yet");
+          return;
+        }
+
+        const meds = await res.json().catch(() => []);
+        const list = Array.isArray(meds) ? meds : [];
+        setMedicationCount(list.length);
+        setMedicationSubText(
+          list.length > 0 ? `Latest: ${list[0]?.name || "Medication"}` : "No medications added yet"
+        );
+      } catch (err) {
+        setMedicationCount(0);
+        setMedicationSubText("No medications added yet");
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${apiUrl}/api/symptoms`, {
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+        });
+
+        if (!res.ok) {
+          setLastSymptomText("No logs");
+          return;
+        }
+
+        const symptoms = await res.json().catch(() => []);
+        const list = Array.isArray(symptoms) ? symptoms : [];
+        if (list.length === 0) {
+          setLastSymptomText("No logs");
+          return;
+        }
+
+        const rawDate = list[0]?.loggedAt;
+        if (!rawDate) {
+          setLastSymptomText("No logs");
+          return;
+        }
+
+        const startOfLogged = startOfDayFromValue(rawDate);
+        if (!startOfLogged) {
+          setLastSymptomText("No logs");
+          return;
+        }
+
+        const today = new Date();
+        const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const diffDays = Math.floor((startOfToday - startOfLogged) / (1000 * 60 * 60 * 24));
+
+        if (diffDays <= 0) setLastSymptomText("Today");
+        else if (diffDays === 1) setLastSymptomText("Yesterday");
+        else setLastSymptomText(`${diffDays} days ago`);
+      } catch (err) {
+        setLastSymptomText("No logs");
+      }
+    })();
+  }, []);
+
   function handleLogout() {
     try {
       localStorage.removeItem("accessToken");
@@ -136,8 +224,8 @@ export default function DashboardPatient() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
           <DashboardCard
             title="💊 Active Medications"
-            mainText="3 Medications"
-            subText="Next dose: Paracetamol - 8:00 PM"
+            mainText={`${medicationCount} Medication${medicationCount === 1 ? "" : "s"}`}
+            subText={medicationSubText}
             navPage="/medication"
           />
           <DashboardCard
@@ -148,7 +236,7 @@ export default function DashboardPatient() {
           />
           <DashboardCard
             title="🤒 Last Symptom Logged"
-            mainText="Yesterday"
+            mainText={lastSymptomText}
             navPage="/symptoms"
           />
           
