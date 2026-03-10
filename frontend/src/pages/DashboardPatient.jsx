@@ -21,6 +21,51 @@ function startOfDayFromValue(value) {
   return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
 }
 
+const PATIENT_APPOINTMENTS_STORAGE_KEY = "patientAppointments";
+const fallbackAppointments = [
+  {
+    id: "pa1",
+    doctorName: "Dr. Hadi Rahme",
+    specialty: "Internal Medicine",
+    date: "2026-03-22",
+    time: "10:30 AM",
+    reason: "Monthly follow-up",
+    status: "Upcoming",
+  },
+  {
+    id: "pa2",
+    doctorName: "Dr. Rania Khoury",
+    specialty: "Cardiology",
+    date: "2026-03-28",
+    time: "01:00 PM",
+    reason: "Blood pressure review",
+    status: "Upcoming",
+  },
+];
+
+function appointmentDateTime(appointment) {
+  const [timePart, period] = appointment.time.split(" ");
+  const [hourString, minuteString] = timePart.split(":");
+  let hour = Number(hourString);
+
+  if (period === "PM" && hour !== 12) {
+    hour += 12;
+  }
+
+  if (period === "AM" && hour === 12) {
+    hour = 0;
+  }
+
+  const date = new Date(`${appointment.date}T00:00:00`);
+  date.setHours(hour, Number(minuteString), 0, 0);
+  return date;
+}
+
+function formatAppointmentDate(dateString) {
+  const date = new Date(`${dateString}T00:00:00`);
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 function DashboardCard({title, mainText, subText, navPage}){
   const navigate = useNavigate();
   return(
@@ -43,23 +88,46 @@ function DashboardCard({title, mainText, subText, navPage}){
 
 export default function DashboardPatient() {
   const navigate = useNavigate();
-  const [role, setRole] = useState("Patient");
   const [name, setName] = useState("Patient");
+  const [appointments, setAppointments] = useState(fallbackAppointments);
   const [medicationCount, setMedicationCount] = useState(0);
   const [medicationSubText, setMedicationSubText] = useState("No medications added yet");
   const [lastSymptomText, setLastSymptomText] = useState("No logs");
 
   useEffect(() => {
     try {
-      const r = localStorage.getItem("userRole");
-      setRole(r || "Patient");
-
       const firstName = localStorage.getItem("firstName") || "Patient";
       setName(firstName);
     } catch (err) {
       console.error(err);
     }
+
+    try {
+      const storedAppointments = localStorage.getItem(PATIENT_APPOINTMENTS_STORAGE_KEY);
+      if (!storedAppointments) {
+        return;
+      }
+
+      const parsedAppointments = JSON.parse(storedAppointments);
+      if (Array.isArray(parsedAppointments)) {
+        setAppointments(parsedAppointments);
+      }
+    } catch (err) {
+      console.error(err);
+    }
   }, []);
+
+  const upcomingAppointments = appointments
+    .filter((appointment) => appointment.status === "Upcoming")
+    .sort((leftAppointment, rightAppointment) => {
+      return appointmentDateTime(leftAppointment) - appointmentDateTime(rightAppointment);
+    });
+
+  const nextAppointment = upcomingAppointments[0];
+  const nextAppointmentMainText = nextAppointment ? formatAppointmentDate(nextAppointment.date) : "No upcoming";
+  const nextAppointmentSubText = nextAppointment
+    ? `${nextAppointment.time} - ${nextAppointment.doctorName}`
+    : "Book your next visit";
 
   useEffect(() => {
     (async () => {
@@ -162,8 +230,9 @@ export default function DashboardPatient() {
           />
           <DashboardCard
             title="📅 Next Appointment"
-            mainText="Mar 22"
-            subText="In 3 days"
+            mainText={nextAppointmentMainText}
+            subText={nextAppointmentSubText}
+            navPage="/patientAppointments"
           />
           <DashboardCard
             title="🤒 Last Symptom Logged"
@@ -179,9 +248,30 @@ export default function DashboardPatient() {
               Upcoming Appointments
             </h2>
 
-            <div className="text-slate-500 text-sm">
-              No upcoming appointments yet.
-            </div>
+            {upcomingAppointments.length > 0 ? (
+              <div className="space-y-3">
+                {upcomingAppointments.slice(0, 3).map((appointment) => (
+                  <div
+                    key={appointment.id}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-semibold text-slate-800">{appointment.doctorName}</p>
+                      <p className="text-sm text-slate-500">
+                        {formatAppointmentDate(appointment.date)} at {appointment.time}
+                      </p>
+                    </div>
+                    <p className="text-sm text-slate-500 mt-1">
+                      {appointment.specialty} • {appointment.reason}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-slate-500 text-sm">
+                No upcoming appointments yet.
+              </div>
+            )}
           </section>
 
           <aside className="bg-white rounded-3xl shadow p-6">
@@ -191,6 +281,7 @@ export default function DashboardPatient() {
 
             <div className="flex flex-col gap-3">
               <button
+                onClick={() => navigate("/patientAppointments")}
                 className="w-full px-4 py-2 rounded-xl bg-sky-100 text-sky-700 font-medium hover:bg-sky-200 transition"
               >
                 Book Appointment
@@ -203,6 +294,7 @@ export default function DashboardPatient() {
               </button>
 
               <button
+                onClick={() => navigate("/patientMessages")}
                 className="w-full px-4 py-2 rounded-xl bg-emerald-100 text-emerald-700 font-medium hover:bg-emerald-200 transition"
               >
                 Message Doctor

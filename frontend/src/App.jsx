@@ -13,6 +13,10 @@ import ProfileCaregiver from "./pages/ProfileCaregiver";
 import Medication from "./pages/medication";
 import LandingPage from "./pages/LandingPage";
 import Symptoms from "./pages/Symptoms";
+import DoctorMessages from "./pages/DoctorMessages";
+import PatientMessages from "./pages/PatientMessages";
+import DoctorAppointments from "./pages/DoctorAppointments";
+import PatientAppointments from "./pages/PatientAppointments";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 export default function App() {
@@ -35,21 +39,23 @@ export default function App() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/loginPage" element={<LoginPage />} />
+
         <Route
           path="/dashboardPatient"
           element={
             <ProtectedRoute allowedRoles={["patient"]}>
               <DashboardPatient />
             </ProtectedRoute>
-          } />
+          }
+        />
         <Route
           path="/dashboardDoctor"
           element={
             <ProtectedRoute allowedRoles={["doctor"]}>
               <DashboardDoctor />
             </ProtectedRoute>
-          } />
-
+          }
+        />
         <Route
           path="/dashboardCaregiver"
           element={
@@ -66,7 +72,6 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/profileDoctor"
           element={
@@ -75,7 +80,6 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/profileCaregiver"
           element={
@@ -84,7 +88,6 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/medication"
           element={
@@ -93,7 +96,6 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/symptoms"
           element={
@@ -102,7 +104,38 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
+        <Route
+          path="/doctorAppointments"
+          element={
+            <ProtectedRoute allowedRoles={["doctor"]}>
+              <DoctorAppointments />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/patientAppointments"
+          element={
+            <ProtectedRoute allowedRoles={["patient"]}>
+              <PatientAppointments />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/doctorMessages"
+          element={
+            <ProtectedRoute allowedRoles={["doctor"]}>
+              <DoctorMessages />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/patientMessages"
+          element={
+            <ProtectedRoute allowedRoles={["patient"]}>
+              <PatientMessages />
+            </ProtectedRoute>
+          }
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
