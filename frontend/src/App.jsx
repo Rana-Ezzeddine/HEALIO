@@ -36,7 +36,7 @@ export default function App() {
       </div>
 
       <Routes>
-        <Route path="/" element={<DoctorAppointments />} />
+        <Route path="/" element={<LandingPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/loginPage" element={<LoginPage />} />
 
