@@ -1,58 +1,44 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Navbar from "../components/Navbar";
 
-const appointments = [
+const PATIENT_APPOINTMENTS_STORAGE_KEY = "patientAppointments";
+const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+const fallbackAppointments = [
   {
-    id: "a1",
-    date: "2026-03-09",
-    time: "09:00 AM",
-    patientName: "Omar Haddad",
-    visitType: "Routine Check",
-    status: "Completed",
-  },
-  {
-    id: "a2",
-    date: "2026-03-09",
-    time: "11:30 AM",
-    patientName: "Lina Saad",
-    visitType: "Blood Pressure Follow-up",
-    status: "In Progress",
-  },
-  {
-    id: "a3",
-    date: "2026-03-09",
-    time: "02:30 PM",
-    patientName: "Sarah Khalil",
-    visitType: "Follow-up",
+    id: "pa1",
+    patientName: "Demo Patient",
+    doctorName: "Dr. Hadi Rahme",
+    specialty: "Internal Medicine",
+    date: "2026-03-22",
+    time: "10:30 AM",
+    reason: "Monthly follow-up",
     status: "Upcoming",
   },
   {
-    id: "a4",
-    date: "2026-03-11",
-    time: "04:00 PM",
-    patientName: "Maya Daher",
-    visitType: "Consultation",
-    status: "Upcoming",
-  },
-  {
-    id: "a5",
-    date: "2026-03-14",
-    time: "10:00 AM",
-    patientName: "Nour Fares",
-    visitType: "Medication Review",
-    status: "Upcoming",
-  },
-  {
-    id: "a6",
-    date: "2026-03-18",
-    time: "01:15 PM",
-    patientName: "Rami Tannous",
-    visitType: "Lab Results",
-    status: "Upcoming",
+    id: "pa2",
+    patientName: "Demo Patient",
+    doctorName: "Dr. Rania Khoury",
+    specialty: "Cardiology",
+    date: "2026-03-28",
+    time: "01:00 PM",
+    reason: "Blood pressure review",
+    status: "Requested",
   },
 ];
 
-const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+function readAppointments() {
+  try {
+    const stored = localStorage.getItem(PATIENT_APPOINTMENTS_STORAGE_KEY);
+    if (!stored) return fallbackAppointments;
+
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? parsed : fallbackAppointments;
+  } catch (error) {
+    console.error(error);
+    return fallbackAppointments;
+  }
+}
 
 function toDateKey(date) {
   const year = date.getFullYear();
@@ -62,33 +48,61 @@ function toDateKey(date) {
 }
 
 function statusClass(status) {
-  if (status === "Completed") {
-    return "bg-emerald-100 text-emerald-700";
-  }
-
-  if (status === "In Progress") {
-    return "bg-sky-100 text-sky-700";
-  }
-
-  return "bg-yellow-100 text-yellow-700";
+  if (status === "Requested") return "bg-amber-100 text-amber-700";
+  if (status === "Upcoming") return "bg-emerald-100 text-emerald-700";
+  if (status === "Completed") return "bg-sky-100 text-sky-700";
+  if (status === "Denied") return "bg-rose-100 text-rose-700";
+  return "bg-slate-100 text-slate-700";
 }
 
 export default function DoctorAppointments() {
-  const [appointmentsList, setAppointmentsList] = useState(appointments);
-  const [selectedDateKey, setSelectedDateKey] = useState("2026-03-09");
-  const [visibleMonth, setVisibleMonth] = useState(new Date(2026, 2, 1));
+  const [appointmentsList, setAppointmentsList] = useState(readAppointments);
+  const [decisionNotes, setDecisionNotes] = useState({});
+  const [selectedDateKey, setSelectedDateKey] = useState(toDateKey(new Date()));
   const [newPatientName, setNewPatientName] = useState("");
+  const [newDoctorName, setNewDoctorName] = useState(() => {
+    const firstName = localStorage.getItem("firstName") || "";
+    return firstName ? `Dr. ${firstName}` : "";
+  });
+  const [newSpecialty, setNewSpecialty] = useState("");
   const [newTime, setNewTime] = useState("");
-  const [newVisitType, setNewVisitType] = useState("");
-  const [newStatus, setNewStatus] = useState("Upcoming");
-  const [editingAppointmentId, setEditingAppointmentId] = useState(null);
+  const [newReason, setNewReason] = useState("");
+  const [visibleMonth, setVisibleMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
 
-  const appointmentsByDate = useMemo(() => {
-    return appointmentsList.reduce((accumulator, appointment) => {
-      accumulator[appointment.date] = (accumulator[appointment.date] || 0) + 1;
-      return accumulator;
-    }, {});
+  useEffect(() => {
+    try {
+      localStorage.setItem(PATIENT_APPOINTMENTS_STORAGE_KEY, JSON.stringify(appointmentsList));
+    } catch (error) {
+      console.error(error);
+    }
   }, [appointmentsList]);
+
+  const pendingRequests = useMemo(
+    () => appointmentsList.filter((appointment) => appointment.status === "Requested"),
+    [appointmentsList]
+  );
+
+  const approvedByDate = useMemo(() => {
+    return appointmentsList
+      .filter((appointment) => appointment.status === "Upcoming" || appointment.status === "Completed")
+      .reduce((accumulator, appointment) => {
+        accumulator[appointment.date] = (accumulator[appointment.date] || 0) + 1;
+        return accumulator;
+      }, {});
+  }, [appointmentsList]);
+
+  const selectedAppointments = useMemo(
+    () =>
+      appointmentsList.filter(
+        (appointment) =>
+          appointment.date === selectedDateKey &&
+          (appointment.status === "Upcoming" || appointment.status === "Completed")
+      ),
+    [appointmentsList, selectedDateKey]
+  );
 
   const monthDays = useMemo(() => {
     const year = visibleMonth.getFullYear();
@@ -108,52 +122,19 @@ export default function DoctorAppointments() {
     });
   }, [visibleMonth]);
 
-  const selectedAppointments = appointmentsList.filter((appointment) => appointment.date === selectedDateKey);
-  const upcomingCount = selectedAppointments.filter((appointment) => appointment.status === "Upcoming").length;
-
-  function changeMonth(direction) {
-    setVisibleMonth(
-      (previousMonth) =>
-        new Date(previousMonth.getFullYear(), previousMonth.getMonth() + direction, 1)
-    );
+  function updateDecisionNote(appointmentId, note) {
+    setDecisionNotes((previous) => ({ ...previous, [appointmentId]: note }));
   }
 
-  function handleDateSelect(dateKey, date) {
-    setSelectedDateKey(dateKey);
-    setVisibleMonth(new Date(date.getFullYear(), date.getMonth(), 1));
-  }
-
-  function toTimeInputValue(timeLabel) {
-    const [timePart, period] = timeLabel.split(" ");
-    const [hourString, minute] = timePart.split(":");
-    let hour = Number(hourString);
-
-    if (period === "PM" && hour !== 12) {
-      hour += 12;
-    }
-
-    if (period === "AM" && hour === 12) {
-      hour = 0;
-    }
-
-    return `${String(hour).padStart(2, "0")}:${minute}`;
-  }
-
-  function resetForm() {
-    setNewPatientName("");
-    setNewTime("");
-    setNewVisitType("");
-    setNewStatus("Upcoming");
-    setEditingAppointmentId(null);
-  }
-
-  function handleAddAppointment(e) {
+  function handleScheduleAppointment(e) {
     e.preventDefault();
 
-    const trimmedPatientName = newPatientName.trim();
-    const trimmedVisitType = newVisitType.trim();
+    const patientName = newPatientName.trim();
+    const doctorName = newDoctorName.trim();
+    const specialty = newSpecialty.trim();
+    const reason = newReason.trim();
 
-    if (!trimmedPatientName || !trimmedVisitType || !newTime) {
+    if (!patientName || !doctorName || !specialty || !newTime || !reason) {
       return;
     }
 
@@ -162,59 +143,80 @@ export default function DoctorAppointments() {
     timeDate.setHours(Number(hour), Number(minute), 0, 0);
     const formattedTime = timeDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-    if (editingAppointmentId) {
-      setAppointmentsList((previousAppointments) =>
-        previousAppointments.map((appointment) => {
-          if (appointment.id !== editingAppointmentId) {
-            return appointment;
-          }
-
-          return {
-            ...appointment,
-            date: selectedDateKey,
-            time: formattedTime,
-            patientName: trimmedPatientName,
-            visitType: trimmedVisitType,
-            status: newStatus,
-          };
-        })
-      );
-      resetForm();
-      return;
-    }
-
     const newAppointment = {
-      id: `a-${Date.now()}`,
+      id: `pa-${Date.now()}`,
+      patientName,
+      doctorName,
+      specialty,
       date: selectedDateKey,
       time: formattedTime,
-      patientName: trimmedPatientName,
-      visitType: trimmedVisitType,
-      status: newStatus,
+      reason,
+      status: "Upcoming",
+      decisionMessage: "Scheduled directly by doctor.",
+      reviewedAt: new Date().toISOString(),
     };
 
-    setAppointmentsList((previousAppointments) => [...previousAppointments, newAppointment]);
-    resetForm();
+    setAppointmentsList((previousAppointments) => [newAppointment, ...previousAppointments]);
+    setNewPatientName("");
+    setNewTime("");
+    setNewReason("");
   }
 
-  function handleEditAppointment(appointment) {
-    setEditingAppointmentId(appointment.id);
-    setSelectedDateKey(appointment.date);
-    const editDate = new Date(`${appointment.date}T00:00:00`);
-    setVisibleMonth(new Date(editDate.getFullYear(), editDate.getMonth(), 1));
-    setNewPatientName(appointment.patientName);
-    setNewTime(toTimeInputValue(appointment.time));
-    setNewVisitType(appointment.visitType);
-    setNewStatus(appointment.status);
-  }
-
-  function handleDeleteAppointment(appointmentId) {
+  function approveRequest(appointmentId) {
     setAppointmentsList((previousAppointments) =>
-      previousAppointments.filter((appointment) => appointment.id !== appointmentId)
-    );
+      previousAppointments.map((appointment) => {
+        if (appointment.id !== appointmentId) return appointment;
 
-    if (editingAppointmentId === appointmentId) {
-      resetForm();
-    }
+        const note = (decisionNotes[appointmentId] || "").trim();
+        return {
+          ...appointment,
+          status: "Upcoming",
+          decisionMessage: note || "Approved by doctor.",
+          reviewedAt: new Date().toISOString(),
+        };
+      })
+    );
+    setDecisionNotes((previous) => ({ ...previous, [appointmentId]: "" }));
+  }
+
+  function denyRequest(appointmentId) {
+    setAppointmentsList((previousAppointments) =>
+      previousAppointments.map((appointment) => {
+        if (appointment.id !== appointmentId) return appointment;
+
+        const note = (decisionNotes[appointmentId] || "").trim();
+        return {
+          ...appointment,
+          status: "Denied",
+          decisionMessage: note || "Request denied by doctor.",
+          reviewedAt: new Date().toISOString(),
+        };
+      })
+    );
+    setDecisionNotes((previous) => ({ ...previous, [appointmentId]: "" }));
+  }
+
+  function markCompleted(appointmentId) {
+    setAppointmentsList((previousAppointments) =>
+      previousAppointments.map((appointment) => {
+        if (appointment.id !== appointmentId) return appointment;
+        return {
+          ...appointment,
+          status: "Completed",
+        };
+      })
+    );
+  }
+
+  function changeMonth(direction) {
+    setVisibleMonth(
+      (previousMonth) => new Date(previousMonth.getFullYear(), previousMonth.getMonth() + direction, 1)
+    );
+  }
+
+  function handleDateSelect(dateKey, date) {
+    setSelectedDateKey(dateKey);
+    setVisibleMonth(new Date(date.getFullYear(), date.getMonth(), 1));
   }
 
   return (
@@ -225,24 +227,114 @@ export default function DoctorAppointments() {
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <h1 className="text-3xl text-slate-800 font-bold">Appointments</h1>
-            <p className="text-slate-500 mt-1">Manage your schedule with a calendar view.</p>
+            <p className="text-slate-500 mt-1">Review patient requests and manage approved appointments.</p>
           </div>
           <div className="rounded-2xl bg-white border border-slate-200 px-4 py-3 text-right">
-            <p className="text-xs text-slate-500">Upcoming On Selected Date</p>
-            <p className="text-2xl font-bold text-slate-800">{upcomingCount}</p>
+            <p className="text-xs text-slate-500">Pending Requests</p>
+            <p className="text-2xl font-bold text-slate-800">{pendingRequests.length}</p>
           </div>
         </div>
 
         <section className="bg-white rounded-3xl shadow p-6 mb-6">
-          <h2 className="text-xl font-semibold text-slate-800 mb-1">Selected Day Schedule</h2>
-          <p className="text-sm text-slate-500 mb-4">{selectedDateKey}</p>
+          <h2 className="text-xl font-semibold text-slate-800 mb-4">Patient Requests</h2>
 
-          <form onSubmit={handleAddAppointment} className="grid grid-cols-1 md:grid-cols-6 gap-2 mb-5">
+          <div className="overflow-x-auto">
+            <table className="min-h-full text-sm text-left w-full">
+              <thead className="text-slate-500 border-b">
+                <tr>
+                  <th className="py-3 px-4">Patient</th>
+                  <th className="py-3 px-4">Doctor</th>
+                  <th className="py-3 px-4">Specialty</th>
+                  <th className="py-3 px-4">Date</th>
+                  <th className="py-3 px-4">Time</th>
+                  <th className="py-3 px-4">Reason</th>
+                  <th className="py-3 px-4">Decision Note</th>
+                  <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {pendingRequests.length > 0 ? (
+                  pendingRequests.map((appointment) => (
+                    <tr key={appointment.id} className="hover:bg-slate-50">
+                      <td className="py-3 px-4 text-slate-800 font-medium">{appointment.patientName || "Patient"}</td>
+                      <td className="py-3 px-4 text-slate-700">{appointment.doctorName}</td>
+                      <td className="py-3 px-4 text-slate-600">{appointment.specialty}</td>
+                      <td className="py-3 px-4 text-slate-700">{appointment.date}</td>
+                      <td className="py-3 px-4 text-slate-700">{appointment.time}</td>
+                      <td className="py-3 px-4 text-slate-600">{appointment.reason}</td>
+                      <td className="py-3 px-4">
+                        <input
+                          type="text"
+                          value={decisionNotes[appointment.id] || ""}
+                          onChange={(e) => updateDecisionNote(appointment.id, e.target.value)}
+                          placeholder="Optional note for patient"
+                          className="w-52 rounded-lg border border-slate-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-sky-500"
+                        />
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`px-2 py-1 text-xs rounded-full ${statusClass(appointment.status)}`}>
+                          {appointment.status}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => approveRequest(appointment.id)}
+                            className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => denyRequest(appointment.id)}
+                            className="rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-600"
+                          >
+                            Deny
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={9} className="py-6 px-4 text-center text-slate-500">
+                      No pending requests.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="bg-white rounded-3xl shadow p-6 mb-6">
+          <h2 className="text-xl font-semibold text-slate-800 mb-1">Schedule For Patient</h2>
+          <p className="text-sm text-slate-500 mb-4">
+            Create an appointment directly on the selected date: {selectedDateKey}
+          </p>
+
+          <form onSubmit={handleScheduleAppointment} className="grid grid-cols-1 md:grid-cols-6 gap-2">
             <input
               type="text"
               placeholder="Patient name"
               value={newPatientName}
               onChange={(e) => setNewPatientName(e.target.value)}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+            />
+            <input
+              type="text"
+              placeholder="Doctor name"
+              value={newDoctorName}
+              onChange={(e) => setNewDoctorName(e.target.value)}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+            />
+            <input
+              type="text"
+              placeholder="Specialty"
+              value={newSpecialty}
+              onChange={(e) => setNewSpecialty(e.target.value)}
               className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
             />
             <input
@@ -253,36 +345,23 @@ export default function DoctorAppointments() {
             />
             <input
               type="text"
-              placeholder="Visit type"
-              value={newVisitType}
-              onChange={(e) => setNewVisitType(e.target.value)}
+              placeholder="Visit reason"
+              value={newReason}
+              onChange={(e) => setNewReason(e.target.value)}
               className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
             />
-            <select
-              value={newStatus}
-              onChange={(e) => setNewStatus(e.target.value)}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-            >
-              <option>Upcoming</option>
-              <option>In Progress</option>
-              <option>Completed</option>
-            </select>
             <button
               type="submit"
               className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 transition"
             >
-              {editingAppointmentId ? "Save Changes" : "Add Appointment"}
+              Schedule
             </button>
-            {editingAppointmentId && (
-              <button
-                type="button"
-                onClick={resetForm}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
-              >
-                Cancel
-              </button>
-            )}
           </form>
+        </section>
+
+        <section className="bg-white rounded-3xl shadow p-6 mb-6">
+          <h2 className="text-xl font-semibold text-slate-800 mb-1">Approved Schedule</h2>
+          <p className="text-sm text-slate-500 mb-4">Selected Date: {selectedDateKey}</p>
 
           <div className="overflow-x-auto">
             <table className="min-h-full text-sm text-left w-full">
@@ -292,45 +371,40 @@ export default function DoctorAppointments() {
                   <th className="py-3 px-4">Patient</th>
                   <th className="py-3 px-4">Visit Type</th>
                   <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Actions</th>
+                  <th className="py-3 px-4">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {selectedAppointments.length > 0 ? (
                   selectedAppointments.map((appointment) => (
                     <tr key={appointment.id} className="hover:bg-slate-50">
-                      <td className="py-3 px-4 font-medium text-slate-700">{appointment.time}</td>
-                      <td className="py-3 px-4 text-slate-800">{appointment.patientName}</td>
-                      <td className="py-3 px-4 text-slate-600">{appointment.visitType}</td>
+                      <td className="py-3 px-4 text-slate-700 font-medium">{appointment.time}</td>
+                      <td className="py-3 px-4 text-slate-800">{appointment.patientName || "Patient"}</td>
+                      <td className="py-3 px-4 text-slate-600">{appointment.reason}</td>
                       <td className="py-3 px-4">
                         <span className={`px-2 py-1 text-xs rounded-full ${statusClass(appointment.status)}`}>
                           {appointment.status}
                         </span>
                       </td>
                       <td className="py-3 px-4">
-                        <div className="flex items-center gap-3 text-sm">
+                        {appointment.status === "Upcoming" ? (
                           <button
                             type="button"
-                            onClick={() => handleEditAppointment(appointment)}
-                            className="text-sky-600 hover:text-sky-700"
+                            onClick={() => markCompleted(appointment.id)}
+                            className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                           >
-                            Edit
+                            Mark Completed
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteAppointment(appointment.id)}
-                            className="text-rose-600 hover:text-rose-700"
-                          >
-                            Delete
-                          </button>
-                        </div>
+                        ) : (
+                          <span className="text-xs text-slate-400">-</span>
+                        )}
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
                     <td colSpan={5} className="py-6 px-4 text-center text-slate-500">
-                      No appointments for this date.
+                      No approved appointments for this date.
                     </td>
                   </tr>
                 )}
@@ -373,7 +447,7 @@ export default function DoctorAppointments() {
           <div className="grid grid-cols-7 gap-2">
             {monthDays.map((day) => {
               const isSelected = day.dateKey === selectedDateKey;
-              const hasAppointments = Boolean(appointmentsByDate[day.dateKey]);
+              const hasAppointments = Boolean(approvedByDate[day.dateKey]);
 
               return (
                 <button
@@ -389,7 +463,7 @@ export default function DoctorAppointments() {
                   <p className="text-sm font-medium text-slate-700">{day.date.getDate()}</p>
                   {hasAppointments && (
                     <p className="text-[11px] mt-2 text-sky-700 font-medium">
-                      {appointmentsByDate[day.dateKey]} appt.
+                      {approvedByDate[day.dateKey]} approved
                     </p>
                   )}
                 </button>
@@ -397,8 +471,6 @@ export default function DoctorAppointments() {
             })}
           </div>
         </section>
-
-        
       </main>
     </div>
   );
