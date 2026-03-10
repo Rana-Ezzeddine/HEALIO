@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar"
 import { Plus, Clock, Pencil, Pill, Trash2, X, Check, Search, AlertCircle } from 'lucide-react';
 import { apiUrl, authHeaders } from "../api/http";
+import { getNextMedicationDose, formatDoseTime } from "../utils/medicationSchedule";
 
 const API_BASE_URL = apiUrl;
 
@@ -254,6 +255,11 @@ const MedicationManager = () => {
     (med.prescribedBy && med.prescribedBy.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
+  const nextDose = useMemo(() => getNextMedicationDose(medications), [medications]);
+  const nextDoseText = nextDose
+    ? `${nextDose.medication?.name || "Medication"} - ${formatDoseTime(nextDose.at)}`
+    : "No upcoming doses";
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-indigo-50 p-6">
       <Navbar
@@ -287,13 +293,16 @@ const MedicationManager = () => {
                 Next Dose
               </p>
               <p className="text-lg text-slate-800 font-semibold">
-                Paracetamol - 8:00 PM
+                {nextDoseText}
               </p>
             </div>
           </div>
-          <button className="text-white font-medium shadow bg-indigo-500 px-4 py-2 rounded-2xl hover:bg-indigo-600 transition">
+          {/* <button
+            disabled={!nextDose}
+            className="text-white font-medium shadow bg-indigo-500 px-4 py-2 rounded-2xl hover:bg-indigo-600 transition disabled:opacity-60 disabled:cursor-not-allowed"
+          >
             Mark as Taken
-          </button>
+          </button> */}
         </div>
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-md p-6 mb-6">

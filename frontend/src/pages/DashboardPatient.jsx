@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
 import { useNavigate } from "react-router-dom";
 import { apiUrl, authHeaders } from "../api/http";
+import { getNextMedicationDose, formatDoseTime } from "../utils/medicationSchedule";
 
 function startOfDayFromValue(value) {
   if (!value) return null;
@@ -145,8 +146,15 @@ export default function DashboardPatient() {
         const meds = await res.json().catch(() => []);
         const list = Array.isArray(meds) ? meds : [];
         setMedicationCount(list.length);
+
+        const nextDose = getNextMedicationDose(list);
+        if (!nextDose) {
+          setMedicationSubText(list.length > 0 ? "No upcoming doses" : "No medications added yet");
+          return;
+        }
+
         setMedicationSubText(
-          list.length > 0 ? `Latest: ${list[0]?.name || "Medication"}` : "No medications added yet"
+          `Next: ${nextDose.medication?.name || "Medication"} at ${formatDoseTime(nextDose.at)}`
         );
       } catch (err) {
         setMedicationCount(0);
