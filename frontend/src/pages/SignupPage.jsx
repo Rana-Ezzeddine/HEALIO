@@ -127,7 +127,7 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
       localStorage.setItem("licenseNb", licenseNb);
       localStorage.removeItem("pendingPatientLinkCode");
 
-      setSuccess("Account created. Check your email, open the verification link, then log in.");
+      setSuccess("Verification email sent. Open the link in your inbox to activate your account.");
     } catch (err) {
       setError(err?.message || "Failed to create account.");
     } finally {

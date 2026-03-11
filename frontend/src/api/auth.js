@@ -1,7 +1,13 @@
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5050";
 
+function makeApiError(data, fallback, status) {
+  const err = new Error(data.message || fallback);
+  err.code = data.code;
+  err.status = status;
+  return err;
+}
+
 export async function register({ firstName, lastName, email, password, role }) {
-  // TODO(backend): Requires POST /api/auth/register endpoint.
   const res = await fetch(`${API_BASE}/api/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -9,12 +15,11 @@ export async function register({ firstName, lastName, email, password, role }) {
   });
 
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || "Register failed");
+  if (!res.ok) throw makeApiError(data, "Register failed", res.status);
   return data;
 }
 
 export async function login(email, password) {
-  // TODO(backend): Requires POST /api/auth/login endpoint returning token and user role.
   const res = await fetch(`${API_BASE}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -22,7 +27,7 @@ export async function login(email, password) {
   });
 
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || "Login failed");
+  if (!res.ok) throw makeApiError(data, "Login failed", res.status);
   return data;
 }
 
@@ -34,6 +39,18 @@ export async function verifyEmail(token) {
   });
 
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || "Email verification failed");
+  if (!res.ok) throw makeApiError(data, "Email verification failed", res.status);
+  return data;
+}
+
+export async function resendVerification(email) {
+  const res = await fetch(`${API_BASE}/api/auth/resend-verification`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw makeApiError(data, "Failed to resend verification email", res.status);
   return data;
 }

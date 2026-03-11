@@ -18,7 +18,6 @@ import Conversation from './Conversation.js';
 import ConversationParticipant from './ConversationParticipant.js';
 import Message from './Message.js';
 import Reminder from './Reminder.js';
-import EmailVerificationToken from './EmailVerificationToken.js';
 import ActivityLog from './ActivityLog.js';
 import CaregiverNote from './CaregiverNote.js';
 
@@ -35,17 +34,6 @@ User.hasOne(PatientProfile, {
 PatientProfile.belongsTo(User, {
   foreignKey: 'userId',
   as: 'user'
-});
-
-// User ↔ EmailVerificationToken (1:Many)
-User.hasMany(EmailVerificationToken, {
-  foreignKey: 'userId',
-  as: 'emailVerificationTokens',
-  onDelete: 'CASCADE',
-});
-EmailVerificationToken.belongsTo(User, {
-  foreignKey: 'userId',
-  as: 'user',
 });
 
 // User ↔ ActivityLog (1:Many)
@@ -259,7 +247,6 @@ export {
   ConversationParticipant,
   Message,
   Reminder,
-  EmailVerificationToken,
   ActivityLog,
   CaregiverNote,
 };
@@ -278,7 +265,6 @@ export default {
   ConversationParticipant,
   Message,
   Reminder,
-  EmailVerificationToken,
   ActivityLog,
   CaregiverNote,
 };

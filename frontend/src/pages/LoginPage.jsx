@@ -1,7 +1,7 @@
 // src/pages/LoginPage.jsx
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { login as loginApi } from "../api/auth";
+import { login as loginApi, resendVerification } from "../api/auth";
 import { clearSession, setSession } from "../api/http";
 import logo from "../assets/logo.png";
 
@@ -11,7 +11,10 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
+  const [needsVerification, setNeedsVerification] = useState(false);
 
   useEffect(() => {
     if (!embedded) {
@@ -22,6 +25,8 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
   async function handleLogin(e) {
     e.preventDefault();
     setError("");
+    setInfo("");
+    setNeedsVerification(false);
     setLoading(true);
 
     try {
@@ -35,9 +40,31 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
 
       if (embedded) onClose?.();
     } catch (err) {
+      if (err?.code === "EMAIL_NOT_VERIFIED") {
+        setNeedsVerification(true);
+      }
       setError(err?.message || "Login failed");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleResendVerification() {
+    if (!email.trim()) {
+      setError("Enter your email first.");
+      return;
+    }
+
+    setError("");
+    setInfo("");
+    setResending(true);
+    try {
+      const data = await resendVerification(email.trim());
+      setInfo(data?.message || "Verification email sent.");
+    } catch (err) {
+      setError(err?.message || "Failed to resend verification email.");
+    } finally {
+      setResending(false);
     }
   }
 
@@ -105,6 +132,23 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
             <div className="text-sm text-red-700 bg-red-100 border border-red-200 rounded-lg p-2">
               {error}
             </div>
+          )}
+
+          {info && (
+            <div className="text-sm text-green-700 bg-green-100 border border-green-200 rounded-lg p-2">
+              {info}
+            </div>
+          )}
+
+          {needsVerification && (
+            <button
+              type="button"
+              onClick={handleResendVerification}
+              disabled={resending}
+              className="w-full h-11 rounded-xl border border-sky-300 text-sky-700 font-semibold hover:bg-sky-50 transition disabled:opacity-70"
+            >
+              {resending ? "Sending..." : "Resend verification email"}
+            </button>
           )}
 
           <button
