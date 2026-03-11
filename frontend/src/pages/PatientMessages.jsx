@@ -1,219 +1,359 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Navbar from "../components/Navbar";
+import { getUser } from "../api/http";
+import { getMyDoctors } from "../api/links";
+import {
+  createConversation,
+  getConversationMessages,
+  getConversations,
+  sendConversationMessage,
+} from "../api/messaging";
 
-const initialConversations = [
-    {
-        id: "dr-hadi-rahme",
-        doctorName: "Dr. Hadi Rahme",
-        specialty: "Internal Medicine",
-        lastUpdatedAt: "11:20 AM",
-        messages: [
-            {
-                id: "m1",
-                sender: "doctor",
-                text: "Good morning. How are your symptoms today?",
-                time: "10:50 AM",
-            },
-            {
-                id: "m2",
-                sender: "patient",
-                text: "Better than yesterday, but still a little dizzy.",
-                time: "11:05 AM",
-            },
-        ],
-    },
-    {
-        id: "dr-rania-khoury",
-        doctorName: "Dr. Rania Khoury",
-        specialty: "Cardiology",
-        lastUpdatedAt: "Yesterday",
-        messages: [
-            {
-                id: "m3",
-                sender: "doctor",
-                text: "Please continue tracking your blood pressure twice daily.",
-                time: "Yesterday",
-            },
-        ],
-    },
-    {
-        id: "dr-karim-nasr",
-        doctorName: "Dr. Karim Nasr",
-        specialty: "Neurology",
-        lastUpdatedAt: "Mon",
-        messages: [
-            {
-                id: "m4",
-                sender: "doctor",
-                text: "If headaches persist, book a follow-up this week.",
-                time: "Mon",
-            },
-        ],
-    },
-];
+function formatTimestamp(dateLike) {
+  return new Date(dateLike).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function getOtherParticipant(conversation, currentUserId) {
+  return (conversation.participants || []).find((participant) => participant.id !== currentUserId) || null;
+}
+
+function participantLabel(participant) {
+  return participant?.displayName || participant?.email || "Doctor";
+}
 
 export default function PatientMessages() {
-    const [searchTerm, setSearchTerm] = useState("");
-    const [conversations, setConversations] = useState(initialConversations);
-    const [selectedConversationId, setSelectedConversationId] = useState(initialConversations[0]?.id || null);
-    const [draftMessage, setDraftMessage] = useState("");
+  const user = getUser();
+  const currentUserId = user?.id;
 
-    const filteredConversations = useMemo(() => {
-        return conversations.filter((conversation) =>
-            conversation.doctorName.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-    }, [conversations, searchTerm]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [doctorOptions, setDoctorOptions] = useState([]);
+  const [selectedDoctorId, setSelectedDoctorId] = useState("");
+  const [conversations, setConversations] = useState([]);
+  const [selectedConversationId, setSelectedConversationId] = useState("");
+  const [messages, setMessages] = useState([]);
+  const [draftMessage, setDraftMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [createError, setCreateError] = useState("");
+  const [sendError, setSendError] = useState("");
 
-    const selectedConversation = conversations.find(
-        (conversation) => conversation.id === selectedConversationId
-    );
+  async function loadConversations() {
+    const data = await getConversations();
+    const list = data.conversations || [];
+    setConversations(list);
 
-    function handleSendMessage(e) {
-        e.preventDefault();
-        const trimmedMessage = draftMessage.trim();
+    if (!selectedConversationId && list[0]?.id) {
+      setSelectedConversationId(list[0].id);
+    } else if (selectedConversationId && !list.some((conversation) => conversation.id === selectedConversationId)) {
+      setSelectedConversationId(list[0]?.id || "");
+    }
+  }
 
-        if (!trimmedMessage || !selectedConversationId) {
-            return;
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPageData() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const [doctorsData, conversationsData] = await Promise.all([
+          getMyDoctors(),
+          getConversations(),
+        ]);
+
+        if (cancelled) return;
+
+        const doctors = doctorsData.doctors || [];
+        const conversationsList = conversationsData.conversations || [];
+        const doctorMap = new Map();
+
+        for (const record of doctors) {
+          if (record.doctor?.id) {
+            doctorMap.set(record.doctor.id, {
+              id: record.doctor.id,
+              label: participantLabel(record.doctor),
+            });
+          }
         }
 
-        const now = new Date();
-        const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        for (const conversation of conversationsList) {
+          const other = getOtherParticipant(conversation, currentUserId);
+          if (other?.id) {
+            doctorMap.set(other.id, {
+              id: other.id,
+              label: participantLabel(other),
+            });
+          }
+        }
 
-        setConversations((previousConversations) =>
-            previousConversations.map((conversation) => {
-                if (conversation.id !== selectedConversationId) {
-                    return conversation;
-                }
-
-                return {
-                    ...conversation,
-                    lastUpdatedAt: time,
-                    messages: [
-                        ...conversation.messages,
-                        {
-                            id: `${conversation.id}-${conversation.messages.length + 1}`,
-                            sender: "patient",
-                            text: trimmedMessage,
-                            time,
-                        },
-                    ],
-                };
-            })
-        );
-
-        setDraftMessage("");
+        setDoctorOptions(Array.from(doctorMap.values()).sort((left, right) => left.label.localeCompare(right.label)));
+        setConversations(conversationsList);
+        setSelectedConversationId((current) => current || conversationsList[0]?.id || "");
+      } catch (err) {
+        if (!cancelled) {
+          setError(err.message || "Failed to load messages.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
     }
 
-    return (
-        <div className="min-h-screen bg-slate-50">
-            <Navbar />
+    loadPageData();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUserId]);
 
-            <main className="pt-28 max-w-6xl mx-auto px-6 py-8">
-                <div className="mb-6">
-                    <h1 className="text-3xl font-bold text-slate-800">Messages</h1>
-                    <p className="mt-1 text-slate-500">Chat securely with your doctors.</p>
-                </div>
+  useEffect(() => {
+    let cancelled = false;
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <aside className="md:col-span-1 bg-white rounded-2xl shadow p-4">
-                        <input
-                            type="text"
-                            placeholder="Search doctor..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full mb-4 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                        />
+    async function loadMessages() {
+      if (!selectedConversationId) {
+        setMessages([]);
+        return;
+      }
 
-                        <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
-                            {filteredConversations.map((conversation) => {
-                                const isActive = conversation.id === selectedConversationId;
-                                const lastMessage = conversation.messages[conversation.messages.length - 1];
+      try {
+        setMessagesLoading(true);
+        setSendError("");
+        const data = await getConversationMessages(selectedConversationId);
+        if (!cancelled) {
+          setMessages(data.messages || []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setSendError(err.message || "Failed to load conversation.");
+        }
+      } finally {
+        if (!cancelled) {
+          setMessagesLoading(false);
+        }
+      }
+    }
 
-                                return (
-                                    <button
-                                        key={conversation.id}
-                                        type="button"
-                                        onClick={() => setSelectedConversationId(conversation.id)}
-                                        className={`w-full text-left rounded-xl p-3 border transition ${
-                                            isActive
-                                                ? "border-sky-300 bg-sky-50"
-                                                : "border-slate-200 bg-white hover:bg-slate-50"
-                                        }`}
-                                    >
-                                        <div className="flex items-center justify-between">
-                                            <p className="font-semibold text-slate-800">{conversation.doctorName}</p>
-                                            <span className="text-xs text-slate-400">{conversation.lastUpdatedAt}</span>
-                                        </div>
-                                        <p className="text-xs text-slate-500 mt-0.5">{conversation.specialty}</p>
-                                        <p className="text-sm text-slate-500 mt-1 truncate">{lastMessage?.text || "No messages yet"}</p>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </aside>
+    loadMessages();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedConversationId]);
 
-                    <section className="md:col-span-2 bg-white rounded-2xl shadow p-4 flex flex-col h-[620px]">
-                        {selectedConversation ? (
-                            <>
-                                <div className="border-b border-slate-200 pb-3 mb-3">
-                                    <h2 className="text-lg font-semibold text-slate-800">{selectedConversation.doctorName}</h2>
-                                    <p className="text-xs text-slate-500">{selectedConversation.specialty}</p>
-                                </div>
+  const filteredConversations = useMemo(() => {
+    return conversations.filter((conversation) => {
+      const other = getOtherParticipant(conversation, currentUserId);
+      return participantLabel(other).toLowerCase().includes(searchTerm.toLowerCase());
+    });
+  }, [conversations, currentUserId, searchTerm]);
 
-                                <div className="flex-1 overflow-y-auto pr-1 space-y-3">
-                                    {selectedConversation.messages.map((message) => {
-                                        const isPatientMessage = message.sender === "patient";
+  const selectedConversation =
+    conversations.find((conversation) => conversation.id === selectedConversationId) || null;
 
-                                        return (
-                                            <div
-                                                key={message.id}
-                                                className={`flex ${isPatientMessage ? "justify-end" : "justify-start"}`}
-                                            >
-                                                <div
-                                                    className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
-                                                        isPatientMessage
-                                                            ? "bg-sky-500 text-white"
-                                                            : "bg-slate-100 text-slate-800"
-                                                    }`}
-                                                >
-                                                    <p>{message.text}</p>
-                                                    <p
-                                                        className={`text-[11px] mt-1 ${
-                                                            isPatientMessage ? "text-sky-100" : "text-slate-500"
-                                                        }`}
-                                                    >
-                                                        {message.time}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
+  async function handleCreateConversation(event) {
+    event.preventDefault();
+    setCreateError("");
 
-                                <form onSubmit={handleSendMessage} className="pt-3 mt-3 border-t border-slate-200 flex gap-2">
-                                    <input
-                                        type="text"
-                                        value={draftMessage}
-                                        onChange={(e) => setDraftMessage(e.target.value)}
-                                        placeholder="Type your message..."
-                                        className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                                    />
-                                    <button
-                                        type="submit"
-                                        className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 transition"
-                                    >
-                                        Send
-                                    </button>
-                                </form>
-                            </>
-                        ) : (
-                            <div className="h-full flex items-center justify-center text-slate-500 text-sm">
-                                Select a conversation to start messaging.
-                            </div>
-                        )}
-                    </section>
-                </div>
-            </main>
+    if (!selectedDoctorId) {
+      setCreateError("Select a doctor first.");
+      return;
+    }
+
+    try {
+      const data = await createConversation({ recipientId: selectedDoctorId });
+      const conversationId = data.conversation?.id;
+      await loadConversations();
+      if (conversationId) {
+        setSelectedConversationId(conversationId);
+      }
+      setSelectedDoctorId("");
+    } catch (err) {
+      setCreateError(err.message || "Failed to start conversation.");
+    }
+  }
+
+  async function handleSendMessage(event) {
+    event.preventDefault();
+    setSendError("");
+    const trimmedMessage = draftMessage.trim();
+
+    if (!trimmedMessage || !selectedConversationId) {
+      return;
+    }
+
+    try {
+      const data = await sendConversationMessage(selectedConversationId, trimmedMessage);
+      setMessages((current) => [...current, data.data]);
+      setDraftMessage("");
+      await loadConversations();
+    } catch (err) {
+      setSendError(err.message || "Failed to send message.");
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <Navbar />
+
+      <main className="pt-28 max-w-6xl mx-auto px-6 py-8">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-slate-800">Messages</h1>
+          <p className="mt-1 text-slate-500">Chat securely with doctors linked to your care.</p>
         </div>
-    );
+
+        {error && (
+          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <aside className="md:col-span-1 bg-white rounded-2xl shadow p-4">
+            <input
+              type="text"
+              placeholder="Search doctor..."
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              className="w-full mb-4 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+            />
+
+            <form onSubmit={handleCreateConversation} className="space-y-2 mb-4">
+              <select
+                value={selectedDoctorId}
+                onChange={(event) => setSelectedDoctorId(event.target.value)}
+                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              >
+                <option value="">Start chat with doctor</option>
+                {doctorOptions.map((doctor) => (
+                  <option key={doctor.id} value={doctor.id}>
+                    {doctor.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                className="w-full rounded-xl bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600 transition"
+              >
+                Start Conversation
+              </button>
+              {createError && <p className="text-sm text-red-700">{createError}</p>}
+            </form>
+
+            <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+              {loading ? (
+                <p className="text-sm text-slate-500">Loading conversations...</p>
+              ) : filteredConversations.length > 0 ? (
+                filteredConversations.map((conversation) => {
+                  const isActive = conversation.id === selectedConversationId;
+                  const other = getOtherParticipant(conversation, currentUserId);
+
+                  return (
+                    <button
+                      key={conversation.id}
+                      type="button"
+                      onClick={() => setSelectedConversationId(conversation.id)}
+                      className={`w-full text-left rounded-xl p-3 border transition ${
+                        isActive
+                          ? "border-sky-300 bg-sky-50"
+                          : "border-slate-200 bg-white hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-semibold text-slate-800 truncate">{participantLabel(other)}</p>
+                        <span className="text-xs text-slate-400 whitespace-nowrap">
+                          {conversation.updatedAt ? formatTimestamp(conversation.updatedAt) : ""}
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-500 mt-1 truncate">
+                        {conversation.lastMessage?.body || "No messages yet"}
+                      </p>
+                    </button>
+                  );
+                })
+              ) : (
+                <p className="text-sm text-slate-500">No conversations found.</p>
+              )}
+            </div>
+          </aside>
+
+          <section className="md:col-span-2 bg-white rounded-2xl shadow p-4 flex flex-col h-[620px]">
+            {selectedConversation ? (
+              <>
+                <div className="border-b border-slate-200 pb-3 mb-3">
+                  <h2 className="text-lg font-semibold text-slate-800">
+                    {participantLabel(getOtherParticipant(selectedConversation, currentUserId))}
+                  </h2>
+                  <p className="text-xs text-slate-500">Secure chat</p>
+                </div>
+
+                <div className="flex-1 overflow-y-auto pr-1 space-y-3">
+                  {messagesLoading ? (
+                    <p className="text-sm text-slate-500">Loading messages...</p>
+                  ) : messages.length > 0 ? (
+                    messages.map((message) => {
+                      const isCurrentUser = message.sender?.id === currentUserId;
+
+                      return (
+                        <div
+                          key={message.id}
+                          className={`flex ${isCurrentUser ? "justify-end" : "justify-start"}`}
+                        >
+                          <div
+                            className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
+                              isCurrentUser
+                                ? "bg-sky-500 text-white"
+                                : "bg-slate-100 text-slate-800"
+                            }`}
+                          >
+                            <p>{message.body}</p>
+                            <p
+                              className={`text-[11px] mt-1 ${
+                                isCurrentUser ? "text-sky-100" : "text-slate-500"
+                              }`}
+                            >
+                              {formatTimestamp(message.sentAt)}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <p className="text-sm text-slate-500">No messages yet.</p>
+                  )}
+                </div>
+
+                {sendError && <p className="mt-3 text-sm text-red-700">{sendError}</p>}
+
+                <form onSubmit={handleSendMessage} className="pt-3 mt-3 border-t border-slate-200 flex gap-2">
+                  <input
+                    type="text"
+                    value={draftMessage}
+                    onChange={(event) => setDraftMessage(event.target.value)}
+                    placeholder="Type your message..."
+                    className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  />
+                  <button
+                    type="submit"
+                    className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 transition"
+                  >
+                    Send
+                  </button>
+                </form>
+              </>
+            ) : (
+              <div className="h-full flex items-center justify-center text-slate-500 text-sm">
+                Select or create a conversation to start messaging.
+              </div>
+            )}
+          </section>
+        </div>
+      </main>
+    </div>
+  );
 }

@@ -1,8 +1,8 @@
 // src/pages/LoginPage.jsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { login as loginApi } from "../api/auth";
-import { setSession } from "../api/http";
+import { clearSession, setSession } from "../api/http";
 import logo from "../assets/logo.png";
 
 export default function LoginPage({ embedded = false, onClose, onSwitchToSignup }) {
@@ -12,6 +12,12 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!embedded) {
+      clearSession();
+    }
+  }, [embedded]);
 
   async function handleLogin(e) {
     e.preventDefault();

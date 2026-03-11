@@ -26,13 +26,13 @@ function getTransporter() {
 export async function sendVerificationEmail({ to, token }) {
   if (process.env.NODE_ENV === 'test') return { skipped: true };
 
-  const tx = getTransporter();
-
-  // In local env, allow flow without SMTP configured.
-  if (!tx) return { skipped: true };
-
   const baseUrl = process.env.APP_BASE_URL || process.env.FRONTEND_URL || 'http://localhost:5173';
   const verifyUrl = `${baseUrl}/verify-email?token=${encodeURIComponent(token)}`;
+  const tx = getTransporter();
+
+  if (!tx) {
+    throw new Error('SMTP_NOT_CONFIGURED');
+  }
 
   await tx.sendMail({
     from: process.env.SMTP_FROM || 'HEALIO <no-reply@healio.local>',
@@ -42,7 +42,7 @@ export async function sendVerificationEmail({ to, token }) {
     html: `<p>Welcome to HEALIO.</p><p>Verify your account:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p>`,
   });
 
-  return { skipped: false };
+  return { skipped: false, verifyUrl };
 }
 
 export async function sendDoctorEmergencyAlert({ to, patientEmail, reason }) {

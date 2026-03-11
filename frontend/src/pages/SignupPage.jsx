@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { register as registerApi } from "../api/auth";
-import { login as loginApi } from "../api/auth";
+import { clearSession, getToken, getUser, setSession } from "../api/http";
 import logo from "../assets/logo.png";
 
 export default function SignupPage({ embedded = false, onClose, onSwitchToLogin }) {
@@ -14,7 +14,6 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [licenseNb, setLicenseNb] = useState("");
-  const [patientLinkCode, setPatientLinkCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
@@ -27,18 +26,49 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
     doctor: "Manage patient records, schedule appointments, and provide healthcare services.",
     caregiver: "Support loved ones by tracking care updates, appointments, and medications.",
   };
-  const dashboardPathByRole = {
-    doctor: "/dashboardDoctor",
-    patient: "/dashboardPatient",
-    caregiver: "/dashboardCaregiver",
-  };
-
   const isNameValid = (value) => /^[A-Za-z]{2,}$/.test(value.trim());
   const isStrongPassword = (value) =>
     value.length >= 10 &&
     /[A-Z]/.test(value) &&
     /[a-z]/.test(value) &&
     /[0-9]/.test(value);
+
+  useEffect(() => {
+    if (!success) return;
+
+    const dashboardPathByRole = {
+      doctor: "/dashboardDoctor",
+      patient: "/dashboardPatient",
+      caregiver: "/dashboardCaregiver",
+    };
+
+    function redirectIfVerified() {
+      const token = getToken();
+      const user = getUser();
+      if (!token || !user) return;
+      const target = dashboardPathByRole[user?.role] || "/dashboardPatient";
+      navigate(target, { replace: true });
+    }
+
+    redirectIfVerified();
+    const intervalId = window.setInterval(redirectIfVerified, 1000);
+    window.addEventListener("storage", redirectIfVerified);
+    window.addEventListener("focus", redirectIfVerified);
+    document.addEventListener("visibilitychange", redirectIfVerified);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("storage", redirectIfVerified);
+      window.removeEventListener("focus", redirectIfVerified);
+      document.removeEventListener("visibilitychange", redirectIfVerified);
+    };
+  }, [navigate, success]);
+
+  useEffect(() => {
+    if (!embedded) {
+      clearSession();
+    }
+  }, [embedded]);
 
   async function handleCreateAccount(e) {
     e.preventDefault();
@@ -48,6 +78,11 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
     const cleanFirstName = firstName.trim();
     const cleanLastName = lastName.trim();
     const cleanEmail = email.trim();
+    const dashboardPathByRole = {
+      doctor: "/dashboardDoctor",
+      patient: "/dashboardPatient",
+      caregiver: "/dashboardCaregiver",
+    };
 
     if (!isNameValid(cleanFirstName)) {
       setError("First name must be at least 2 characters and contain letters only.");
@@ -69,14 +104,9 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
       return;
     }
 
-    if (userType === "caregiver" && !patientLinkCode.trim()) {
-      setError("Patient Link Code is required for caregivers.");
-      return;
-    }
-
     setLoading(true);
     try {
-      await registerApi({
+      const registerResponse = await registerApi({
         firstName: cleanFirstName,
         lastName: cleanLastName,
         email: cleanEmail,
@@ -84,27 +114,20 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
         role: userType,
       });
 
-      const { token, user } = await loginApi(cleanEmail, password);
+      if (registerResponse?.token && registerResponse?.user) {
+        setSession({ token: registerResponse.token, user: registerResponse.user });
+        navigate(dashboardPathByRole[registerResponse.user.role] || "/dashboardPatient", { replace: true });
+        return;
+      }
 
       localStorage.setItem("requestedRole", userType);
-      localStorage.setItem("userRole", user.role  );
       localStorage.setItem("firstName", cleanFirstName);
       localStorage.setItem("lastName", cleanLastName);
       localStorage.setItem("email", cleanEmail);
-      localStorage.setItem("accessToken", token);
-      localStorage.setItem("user", JSON.stringify(user));
       localStorage.setItem("licenseNb", licenseNb);
-      if (userType === "caregiver") {
-        localStorage.setItem("pendingPatientLinkCode", patientLinkCode.trim());
-      } else {
-        localStorage.removeItem("pendingPatientLinkCode");
-      }
+      localStorage.removeItem("pendingPatientLinkCode");
 
-      const dashboardPath = dashboardPathByRole[user.role] || "/dashboardPatient";
-      setSuccess("Account created successfully.");
-
-      if (embedded) onClose?.();
-      navigate(dashboardPath);
+      setSuccess("Account created. Check your email, open the verification link, then log in.");
     } catch (err) {
       setError(err?.message || "Failed to create account.");
     } finally {
@@ -150,7 +173,6 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
               onClick={() => {
                 setUserType("patient");
                 setLicenseNb("");
-                setPatientLinkCode("");
               }}
               className={`flex-1 h-10 rounded-lg font-medium transition ${
                 userType === "patient"
@@ -164,7 +186,6 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
               type="button"
               onClick={() => {
                 setUserType("doctor");
-                setPatientLinkCode("");
               }}
               className={`flex-1 h-10 rounded-lg font-medium transition ${
                 userType === "doctor"
@@ -239,22 +260,6 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
               required
             />
           </div>
-
-          {userType === "caregiver" && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">
-                Patient Link Code
-              </label>
-              <input
-                type="text"
-                placeholder="Enter patient invitation code"
-                value={patientLinkCode}
-                onChange={(e) => setPatientLinkCode(e.target.value)}
-                className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-400 focus:ring-sky-400 transition"
-                required
-              />
-            </div>
-          )}
 
           {userType === "doctor" && (
           <div className="space-y-2">

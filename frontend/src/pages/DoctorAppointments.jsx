@@ -1,108 +1,215 @@
 import { useEffect, useMemo, useState } from "react";
 import Navbar from "../components/Navbar";
+import {
+  createAppointment,
+  getDoctorAvailability,
+  getMyAppointments,
+  reviewAppointmentRequest,
+  updateAppointmentStatus,
+} from "../api/appointments";
+import { apiUrl, authHeaders } from "../api/http";
 
-const PATIENT_APPOINTMENTS_STORAGE_KEY = "patientAppointments";
 const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-const fallbackAppointments = [
-  {
-    id: "pa1",
-    patientName: "Demo Patient",
-    doctorName: "Dr. Hadi Rahme",
-    specialty: "Internal Medicine",
-    date: "2026-03-22",
-    time: "10:30 AM",
-    reason: "Monthly follow-up",
-    status: "Upcoming",
-  },
-  {
-    id: "pa2",
-    patientName: "Demo Patient",
-    doctorName: "Dr. Rania Khoury",
-    specialty: "Cardiology",
-    date: "2026-03-28",
-    time: "01:00 PM",
-    reason: "Blood pressure review",
-    status: "Requested",
-  },
-];
-
-function readAppointments() {
-  try {
-    const stored = localStorage.getItem(PATIENT_APPOINTMENTS_STORAGE_KEY);
-    if (!stored) return fallbackAppointments;
-
-    const parsed = JSON.parse(stored);
-    return Array.isArray(parsed) ? parsed : fallbackAppointments;
-  } catch (error) {
-    console.error(error);
-    return fallbackAppointments;
-  }
-}
-
-function toDateKey(date) {
+function toDateKey(dateLike) {
+  const date = new Date(dateLike);
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
+function formatTime(dateLike) {
+  return new Date(dateLike).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatDateLabel(dateKey) {
+  return new Date(`${dateKey}T00:00:00`).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 function statusClass(status) {
-  if (status === "Requested") return "bg-amber-100 text-amber-700";
-  if (status === "Upcoming") return "bg-emerald-100 text-emerald-700";
-  if (status === "Completed") return "bg-sky-100 text-sky-700";
-  if (status === "Denied") return "bg-rose-100 text-rose-700";
+  if (status === "requested") return "bg-amber-100 text-amber-700";
+  if (status === "scheduled") return "bg-emerald-100 text-emerald-700";
+  if (status === "completed") return "bg-sky-100 text-sky-700";
+  if (status === "cancelled") return "bg-slate-200 text-slate-700";
+  if (status === "denied") return "bg-rose-100 text-rose-700";
   return "bg-slate-100 text-slate-700";
 }
 
-export default function DoctorAppointments() {
-  const [appointmentsList, setAppointmentsList] = useState(readAppointments);
-  const [decisionNotes, setDecisionNotes] = useState({});
-  const [selectedDateKey, setSelectedDateKey] = useState(toDateKey(new Date()));
-  const [newPatientName, setNewPatientName] = useState("");
-  const [newDoctorName, setNewDoctorName] = useState(() => {
-    const firstName = localStorage.getItem("firstName") || "";
-    return firstName ? `Dr. ${firstName}` : "";
+function statusLabel(status) {
+  if (status === "requested") return "Requested";
+  if (status === "scheduled") return "Scheduled";
+  if (status === "completed") return "Completed";
+  if (status === "cancelled") return "Cancelled";
+  if (status === "denied") return "Denied";
+  return status || "Unknown";
+}
+
+function patientLabel(patientRecord) {
+  return patientRecord.profile?.displayName || patientRecord.patient?.email || patientRecord.email || "Patient";
+}
+
+async function fetchAssignedPatients() {
+  const response = await fetch(`${apiUrl}/api/doctors/assigned-patients`, {
+    headers: { ...authHeaders() },
   });
-  const [newSpecialty, setNewSpecialty] = useState("");
-  const [newTime, setNewTime] = useState("");
-  const [newReason, setNewReason] = useState("");
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.message || "Failed to load assigned patients");
+  }
+  return data;
+}
+
+export default function DoctorAppointments() {
+  const [appointments, setAppointments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [assignedPatients, setAssignedPatients] = useState([]);
+  const [selectedDateKey, setSelectedDateKey] = useState(toDateKey(new Date()));
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [availableSlots, setAvailableSlots] = useState([]);
+  const [statusLoadingId, setStatusLoadingId] = useState("");
+  const [decisionNotes, setDecisionNotes] = useState({});
+  const [form, setForm] = useState({
+    patientId: "",
+    date: "",
+    timeSlot: "",
+    duration: "30",
+    location: "",
+    notes: "",
+  });
+
+  const patientNameById = useMemo(() => {
+    const map = new Map();
+    for (const record of assignedPatients) {
+      const patient = record.patient || record;
+      map.set(patient.id, patientLabel(record));
+    }
+    return map;
+  }, [assignedPatients]);
+
+  async function loadPageData() {
+    setLoading(true);
+    setError("");
+
+    try {
+      const [appointmentsData, patientsData] = await Promise.all([
+        getMyAppointments(),
+        fetchAssignedPatients(),
+      ]);
+
+      setAppointments(appointmentsData.appointments || []);
+      setAssignedPatients(patientsData.patients || []);
+    } catch (err) {
+      setError(err.message || "Failed to load appointments.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    try {
-      localStorage.setItem(PATIENT_APPOINTMENTS_STORAGE_KEY, JSON.stringify(appointmentsList));
-    } catch (error) {
-      console.error(error);
+    loadPageData();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAvailability() {
+      if (!form.date) {
+        setAvailableSlots([]);
+        return;
+      }
+
+      const durationMinutes = Number(form.duration || "30");
+      if (!Number.isInteger(durationMinutes) || durationMinutes <= 0) {
+        setAvailableSlots([]);
+        return;
+      }
+
+      try {
+        setSlotsLoading(true);
+        setCreateError("");
+
+        const dayStart = new Date(`${form.date}T00:00:00`);
+        const dayEnd = new Date(dayStart);
+        dayEnd.setDate(dayEnd.getDate() + 1);
+
+        const data = await getDoctorAvailability({
+          from: dayStart.toISOString(),
+          to: dayEnd.toISOString(),
+          slotMinutes: durationMinutes,
+        });
+
+        if (!cancelled) {
+          const now = Date.now();
+          const slots = (data.slots || []).filter((slot) => new Date(slot.startsAt).getTime() > now);
+          setAvailableSlots(slots);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setAvailableSlots([]);
+          setCreateError(err.message || "Failed to load availability.");
+        }
+      } finally {
+        if (!cancelled) {
+          setSlotsLoading(false);
+        }
+      }
     }
-  }, [appointmentsList]);
 
-  const pendingRequests = useMemo(
-    () => appointmentsList.filter((appointment) => appointment.status === "Requested"),
-    [appointmentsList]
+    loadAvailability();
+    return () => {
+      cancelled = true;
+    };
+  }, [form.date, form.duration]);
+
+  const requestedAppointments = useMemo(() => {
+    return appointments
+      .filter((appointment) => appointment.status === "requested")
+      .sort((left, right) => new Date(left.startsAt) - new Date(right.startsAt));
+  }, [appointments]);
+
+  const scheduledCount = useMemo(
+    () => appointments.filter((appointment) => appointment.status === "scheduled").length,
+    [appointments]
   );
 
-  const approvedByDate = useMemo(() => {
-    return appointmentsList
-      .filter((appointment) => appointment.status === "Upcoming" || appointment.status === "Completed")
-      .reduce((accumulator, appointment) => {
-        accumulator[appointment.date] = (accumulator[appointment.date] || 0) + 1;
-        return accumulator;
-      }, {});
-  }, [appointmentsList]);
-
-  const selectedAppointments = useMemo(
-    () =>
-      appointmentsList.filter(
-        (appointment) =>
-          appointment.date === selectedDateKey &&
-          (appointment.status === "Upcoming" || appointment.status === "Completed")
-      ),
-    [appointmentsList, selectedDateKey]
+  const completedCount = useMemo(
+    () => appointments.filter((appointment) => appointment.status === "completed").length,
+    [appointments]
   );
+
+  const cancelledCount = useMemo(
+    () => appointments.filter((appointment) => appointment.status === "cancelled").length,
+    [appointments]
+  );
+
+  const selectedAppointments = useMemo(() => {
+    return appointments
+      .filter((appointment) => toDateKey(appointment.startsAt) === selectedDateKey)
+      .sort((left, right) => new Date(left.startsAt) - new Date(right.startsAt));
+  }, [appointments, selectedDateKey]);
+
+  const appointmentCountsByDate = useMemo(() => {
+    return appointments.reduce((accumulator, appointment) => {
+      const dateKey = toDateKey(appointment.startsAt);
+      accumulator[dateKey] = (accumulator[dateKey] || 0) + 1;
+      return accumulator;
+    }, {});
+  }, [appointments]);
 
   const monthDays = useMemo(() => {
     const year = visibleMonth.getFullYear();
@@ -122,101 +229,89 @@ export default function DoctorAppointments() {
     });
   }, [visibleMonth]);
 
-  function updateDecisionNote(appointmentId, note) {
-    setDecisionNotes((previous) => ({ ...previous, [appointmentId]: note }));
-  }
+  async function handleScheduleAppointment(event) {
+    event.preventDefault();
+    setCreateError("");
 
-  function handleScheduleAppointment(e) {
-    e.preventDefault();
-
-    const patientName = newPatientName.trim();
-    const doctorName = newDoctorName.trim();
-    const specialty = newSpecialty.trim();
-    const reason = newReason.trim();
-
-    if (!patientName || !doctorName || !specialty || !newTime || !reason) {
+    if (!form.patientId || !form.timeSlot) {
+      setCreateError("Select a patient and an available time slot.");
       return;
     }
 
-    const [hour, minute] = newTime.split(":");
-    const timeDate = new Date();
-    timeDate.setHours(Number(hour), Number(minute), 0, 0);
-    const formattedTime = timeDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const startsAt = new Date(form.timeSlot);
+    const durationMinutes = Number(form.duration || "30");
+    const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
 
-    const newAppointment = {
-      id: `pa-${Date.now()}`,
-      patientName,
-      doctorName,
-      specialty,
-      date: selectedDateKey,
-      time: formattedTime,
-      reason,
-      status: "Upcoming",
-      decisionMessage: "Scheduled directly by doctor.",
-      reviewedAt: new Date().toISOString(),
-    };
+    const isAvailable = availableSlots.some((slot) => {
+      return (
+        new Date(slot.startsAt).getTime() === startsAt.getTime() &&
+        new Date(slot.endsAt).getTime() === endsAt.getTime()
+      );
+    });
 
-    setAppointmentsList((previousAppointments) => [newAppointment, ...previousAppointments]);
-    setNewPatientName("");
-    setNewTime("");
-    setNewReason("");
+    if (!isAvailable) {
+      setCreateError("Selected slot is no longer available.");
+      return;
+    }
+
+    try {
+      setCreateLoading(true);
+      await createAppointment({
+        patientId: form.patientId,
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString(),
+        location: form.location,
+        notes: form.notes,
+      });
+
+      setForm({
+        patientId: "",
+        date: "",
+        timeSlot: "",
+        duration: "30",
+        location: "",
+        notes: "",
+      });
+      setAvailableSlots([]);
+      await loadPageData();
+      setSelectedDateKey(toDateKey(startsAt));
+      setVisibleMonth(new Date(startsAt.getFullYear(), startsAt.getMonth(), 1));
+    } catch (err) {
+      setCreateError(err.message || "Failed to create appointment.");
+    } finally {
+      setCreateLoading(false);
+    }
   }
 
-  function approveRequest(appointmentId) {
-    setAppointmentsList((previousAppointments) =>
-      previousAppointments.map((appointment) => {
-        if (appointment.id !== appointmentId) return appointment;
-
-        const note = (decisionNotes[appointmentId] || "").trim();
-        return {
-          ...appointment,
-          status: "Upcoming",
-          decisionMessage: note || "Approved by doctor.",
-          reviewedAt: new Date().toISOString(),
-        };
-      })
-    );
-    setDecisionNotes((previous) => ({ ...previous, [appointmentId]: "" }));
+  async function handleStatusChange(appointmentId, status) {
+    try {
+      setStatusLoadingId(appointmentId);
+      await updateAppointmentStatus(appointmentId, status);
+      await loadPageData();
+    } catch (err) {
+      setError(err.message || "Failed to update appointment status.");
+    } finally {
+      setStatusLoadingId("");
+    }
   }
 
-  function denyRequest(appointmentId) {
-    setAppointmentsList((previousAppointments) =>
-      previousAppointments.map((appointment) => {
-        if (appointment.id !== appointmentId) return appointment;
-
-        const note = (decisionNotes[appointmentId] || "").trim();
-        return {
-          ...appointment,
-          status: "Denied",
-          decisionMessage: note || "Request denied by doctor.",
-          reviewedAt: new Date().toISOString(),
-        };
-      })
-    );
-    setDecisionNotes((previous) => ({ ...previous, [appointmentId]: "" }));
-  }
-
-  function markCompleted(appointmentId) {
-    setAppointmentsList((previousAppointments) =>
-      previousAppointments.map((appointment) => {
-        if (appointment.id !== appointmentId) return appointment;
-        return {
-          ...appointment,
-          status: "Completed",
-        };
-      })
-    );
+  async function handleReviewRequest(appointmentId, status) {
+    try {
+      setStatusLoadingId(appointmentId);
+      await reviewAppointmentRequest(appointmentId, status, decisionNotes[appointmentId] || "");
+      setDecisionNotes((current) => ({ ...current, [appointmentId]: "" }));
+      await loadPageData();
+    } catch (err) {
+      setError(err.message || "Failed to review appointment request.");
+    } finally {
+      setStatusLoadingId("");
+    }
   }
 
   function changeMonth(direction) {
     setVisibleMonth(
       (previousMonth) => new Date(previousMonth.getFullYear(), previousMonth.getMonth() + direction, 1)
     );
-  }
-
-  function handleDateSelect(dateKey, date) {
-    setSelectedDateKey(dateKey);
-    setVisibleMonth(new Date(date.getFullYear(), date.getMonth(), 1));
   }
 
   return (
@@ -227,13 +322,35 @@ export default function DoctorAppointments() {
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <h1 className="text-3xl text-slate-800 font-bold">Appointments</h1>
-            <p className="text-slate-500 mt-1">Review patient requests and manage approved appointments.</p>
+            <p className="text-slate-500 mt-1">
+              Review patient appointment requests, schedule visits, and manage appointment status updates.
+            </p>
           </div>
-          <div className="rounded-2xl bg-white border border-slate-200 px-4 py-3 text-right">
-            <p className="text-xs text-slate-500">Pending Requests</p>
-            <p className="text-2xl font-bold text-slate-800">{pendingRequests.length}</p>
+          <div className="flex gap-3">
+            <div className="rounded-2xl bg-white border border-slate-200 px-4 py-3 text-right">
+              <p className="text-xs text-slate-500">Requests</p>
+              <p className="text-2xl font-bold text-slate-800">{requestedAppointments.length}</p>
+            </div>
+            <div className="rounded-2xl bg-white border border-slate-200 px-4 py-3 text-right">
+              <p className="text-xs text-slate-500">Scheduled</p>
+              <p className="text-2xl font-bold text-slate-800">{scheduledCount}</p>
+            </div>
+            <div className="rounded-2xl bg-white border border-slate-200 px-4 py-3 text-right">
+              <p className="text-xs text-slate-500">Completed</p>
+              <p className="text-2xl font-bold text-slate-800">{completedCount}</p>
+            </div>
+            <div className="rounded-2xl bg-white border border-slate-200 px-4 py-3 text-right">
+              <p className="text-xs text-slate-500">Cancelled</p>
+              <p className="text-2xl font-bold text-slate-800">{cancelledCount}</p>
+            </div>
           </div>
         </div>
+
+        {error && (
+          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
 
         <section className="bg-white rounded-3xl shadow p-6 mb-6">
           <h2 className="text-xl font-semibold text-slate-800 mb-4">Patient Requests</h2>
@@ -243,53 +360,68 @@ export default function DoctorAppointments() {
               <thead className="text-slate-500 border-b">
                 <tr>
                   <th className="py-3 px-4">Patient</th>
-                  <th className="py-3 px-4">Doctor</th>
-                  <th className="py-3 px-4">Specialty</th>
                   <th className="py-3 px-4">Date</th>
                   <th className="py-3 px-4">Time</th>
-                  <th className="py-3 px-4">Reason</th>
+                  <th className="py-3 px-4">Location</th>
+                  <th className="py-3 px-4">Patient Note</th>
                   <th className="py-3 px-4">Decision Note</th>
-                  <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {pendingRequests.length > 0 ? (
-                  pendingRequests.map((appointment) => (
+                {loading ? (
+                  <tr>
+                    <td colSpan={7} className="py-6 px-4 text-center text-slate-500">
+                      Loading requests...
+                    </td>
+                  </tr>
+                ) : requestedAppointments.length > 0 ? (
+                  requestedAppointments.map((appointment) => (
                     <tr key={appointment.id} className="hover:bg-slate-50">
-                      <td className="py-3 px-4 text-slate-800 font-medium">{appointment.patientName || "Patient"}</td>
-                      <td className="py-3 px-4 text-slate-700">{appointment.doctorName}</td>
-                      <td className="py-3 px-4 text-slate-600">{appointment.specialty}</td>
-                      <td className="py-3 px-4 text-slate-700">{appointment.date}</td>
-                      <td className="py-3 px-4 text-slate-700">{appointment.time}</td>
-                      <td className="py-3 px-4 text-slate-600">{appointment.reason}</td>
+                      <td className="py-3 px-4 text-slate-800 font-medium">
+                        {patientNameById.get(appointment.patient?.id || appointment.patientId) ||
+                          appointment.patient?.email ||
+                          "Patient"}
+                      </td>
+                      <td className="py-3 px-4 text-slate-700">
+                        {new Date(appointment.startsAt).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </td>
+                      <td className="py-3 px-4 text-slate-700">{formatTime(appointment.startsAt)}</td>
+                      <td className="py-3 px-4 text-slate-600">{appointment.location || "-"}</td>
+                      <td className="py-3 px-4 text-slate-600">{appointment.notes || "-"}</td>
                       <td className="py-3 px-4">
                         <input
                           type="text"
                           value={decisionNotes[appointment.id] || ""}
-                          onChange={(e) => updateDecisionNote(appointment.id, e.target.value)}
-                          placeholder="Optional note for patient"
+                          onChange={(event) =>
+                            setDecisionNotes((current) => ({
+                              ...current,
+                              [appointment.id]: event.target.value,
+                            }))
+                          }
+                          placeholder="Optional note"
                           className="w-52 rounded-lg border border-slate-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-sky-500"
                         />
                       </td>
                       <td className="py-3 px-4">
-                        <span className={`px-2 py-1 text-xs rounded-full ${statusClass(appointment.status)}`}>
-                          {appointment.status}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
+                        <div className="flex gap-2">
                           <button
                             type="button"
-                            onClick={() => approveRequest(appointment.id)}
-                            className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600"
+                            disabled={statusLoadingId === appointment.id}
+                            onClick={() => handleReviewRequest(appointment.id, "scheduled")}
+                            className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600 disabled:opacity-70"
                           >
                             Approve
                           </button>
                           <button
                             type="button"
-                            onClick={() => denyRequest(appointment.id)}
-                            className="rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-600"
+                            disabled={statusLoadingId === appointment.id}
+                            onClick={() => handleReviewRequest(appointment.id, "denied")}
+                            className="rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-600 disabled:opacity-70"
                           >
                             Deny
                           </button>
@@ -299,7 +431,7 @@ export default function DoctorAppointments() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={9} className="py-6 px-4 text-center text-slate-500">
+                    <td colSpan={7} className="py-6 px-4 text-center text-slate-500">
                       No pending requests.
                     </td>
                   </tr>
@@ -310,58 +442,136 @@ export default function DoctorAppointments() {
         </section>
 
         <section className="bg-white rounded-3xl shadow p-6 mb-6">
-          <h2 className="text-xl font-semibold text-slate-800 mb-1">Schedule For Patient</h2>
+          <h2 className="text-xl font-semibold text-slate-800 mb-1">Schedule For Assigned Patient</h2>
           <p className="text-sm text-slate-500 mb-4">
-            Create an appointment directly on the selected date: {selectedDateKey}
+            Available time slots come from the backend availability endpoint for the selected day.
           </p>
 
-          <form onSubmit={handleScheduleAppointment} className="grid grid-cols-1 md:grid-cols-6 gap-2">
+          <form onSubmit={handleScheduleAppointment} className="grid grid-cols-1 md:grid-cols-6 gap-3">
+            <select
+              value={form.patientId}
+              onChange={(event) => setForm((current) => ({ ...current, patientId: event.target.value }))}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              required
+            >
+              <option value="">Select patient</option>
+              {assignedPatients.map((record) => {
+                const patient = record.patient || record;
+                return (
+                  <option key={patient.id} value={patient.id}>
+                    {patientLabel(record)}
+                  </option>
+                );
+              })}
+            </select>
+
+            <input
+              type="date"
+              value={form.date}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  date: event.target.value,
+                  timeSlot: "",
+                }))
+              }
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              required
+            />
+
+            <select
+              value={form.duration}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  duration: event.target.value,
+                  timeSlot: "",
+                }))
+              }
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              required
+            >
+              <option value="15">15 minutes</option>
+              <option value="30">30 minutes</option>
+              <option value="45">45 minutes</option>
+              <option value="60">60 minutes</option>
+            </select>
+
+            <select
+              value={form.timeSlot}
+              onChange={(event) => setForm((current) => ({ ...current, timeSlot: event.target.value }))}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              required
+              disabled={!form.date || slotsLoading}
+            >
+              <option value="">
+                {!form.date
+                  ? "Select date first"
+                  : slotsLoading
+                  ? "Loading slots..."
+                  : availableSlots.length === 0
+                  ? "No available slots"
+                  : "Select slot"}
+              </option>
+              {availableSlots.map((slot) => (
+                <option key={slot.startsAt} value={slot.startsAt}>
+                  {formatTime(slot.startsAt)} - {formatTime(slot.endsAt)}
+                </option>
+              ))}
+            </select>
+
             <input
               type="text"
-              placeholder="Patient name"
-              value={newPatientName}
-              onChange={(e) => setNewPatientName(e.target.value)}
+              placeholder="Location"
+              value={form.location}
+              onChange={(event) => setForm((current) => ({ ...current, location: event.target.value }))}
               className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
             />
-            <input
-              type="text"
-              placeholder="Doctor name"
-              value={newDoctorName}
-              onChange={(e) => setNewDoctorName(e.target.value)}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-            />
-            <input
-              type="text"
-              placeholder="Specialty"
-              value={newSpecialty}
-              onChange={(e) => setNewSpecialty(e.target.value)}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-            />
-            <input
-              type="time"
-              value={newTime}
-              onChange={(e) => setNewTime(e.target.value)}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-            />
-            <input
-              type="text"
-              placeholder="Visit reason"
-              value={newReason}
-              onChange={(e) => setNewReason(e.target.value)}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-            />
+
             <button
               type="submit"
-              className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 transition"
+              disabled={createLoading || assignedPatients.length === 0}
+              className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 transition disabled:opacity-70"
             >
-              Schedule
+              {createLoading ? "Scheduling..." : "Schedule"}
             </button>
+
+            <textarea
+              value={form.notes}
+              onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
+              className="md:col-span-6 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              rows={3}
+              placeholder="Notes for the visit"
+            />
           </form>
+
+          {assignedPatients.length === 0 && (
+            <p className="mt-3 text-sm text-amber-700">
+              No active patient assignments were found for this doctor account.
+            </p>
+          )}
+
+          {createError && (
+            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {createError}
+            </div>
+          )}
         </section>
 
         <section className="bg-white rounded-3xl shadow p-6 mb-6">
-          <h2 className="text-xl font-semibold text-slate-800 mb-1">Approved Schedule</h2>
-          <p className="text-sm text-slate-500 mb-4">Selected Date: {selectedDateKey}</p>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-800 mb-1">Appointments For {formatDateLabel(selectedDateKey)}</h2>
+              <p className="text-sm text-slate-500">Select a date in the calendar to review and update statuses.</p>
+            </div>
+            <button
+              type="button"
+              onClick={loadPageData}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
+            >
+              Refresh
+            </button>
+          </div>
 
           <div className="overflow-x-auto">
             <table className="min-h-full text-sm text-left w-full">
@@ -369,42 +579,66 @@ export default function DoctorAppointments() {
                 <tr>
                   <th className="py-3 px-4">Time</th>
                   <th className="py-3 px-4">Patient</th>
-                  <th className="py-3 px-4">Visit Type</th>
+                  <th className="py-3 px-4">Location</th>
+                  <th className="py-3 px-4">Notes</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {selectedAppointments.length > 0 ? (
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="py-6 px-4 text-center text-slate-500">
+                      Loading appointments...
+                    </td>
+                  </tr>
+                ) : selectedAppointments.length > 0 ? (
                   selectedAppointments.map((appointment) => (
                     <tr key={appointment.id} className="hover:bg-slate-50">
-                      <td className="py-3 px-4 text-slate-700 font-medium">{appointment.time}</td>
-                      <td className="py-3 px-4 text-slate-800">{appointment.patientName || "Patient"}</td>
-                      <td className="py-3 px-4 text-slate-600">{appointment.reason}</td>
+                      <td className="py-3 px-4 text-slate-700 font-medium">{formatTime(appointment.startsAt)}</td>
+                      <td className="py-3 px-4 text-slate-800">
+                        {patientNameById.get(appointment.patient?.id || appointment.patientId) ||
+                          appointment.patient?.displayName ||
+                          appointment.patient?.email ||
+                          "Patient"}
+                      </td>
+                      <td className="py-3 px-4 text-slate-600">{appointment.location || "-"}</td>
+                      <td className="py-3 px-4 text-slate-600">{appointment.notes || "-"}</td>
                       <td className="py-3 px-4">
                         <span className={`px-2 py-1 text-xs rounded-full ${statusClass(appointment.status)}`}>
-                          {appointment.status}
+                          {statusLabel(appointment.status)}
                         </span>
                       </td>
                       <td className="py-3 px-4">
-                        {appointment.status === "Upcoming" ? (
-                          <button
-                            type="button"
-                            onClick={() => markCompleted(appointment.id)}
-                            className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                          >
-                            Mark Completed
-                          </button>
+                        {appointment.status === "scheduled" ? (
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              disabled={statusLoadingId === appointment.id}
+                              onClick={() => handleStatusChange(appointment.id, "completed")}
+                              className="rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-600 disabled:opacity-70"
+                            >
+                              Complete
+                            </button>
+                            <button
+                              type="button"
+                              disabled={statusLoadingId === appointment.id}
+                              onClick={() => handleStatusChange(appointment.id, "cancelled")}
+                              className="rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-600 disabled:opacity-70"
+                            >
+                              Cancel
+                            </button>
+                          </div>
                         ) : (
-                          <span className="text-xs text-slate-400">-</span>
+                          <span className="text-xs text-slate-400">No action</span>
                         )}
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5} className="py-6 px-4 text-center text-slate-500">
-                      No approved appointments for this date.
+                    <td colSpan={6} className="py-6 px-4 text-center text-slate-500">
+                      No appointments found for this date.
                     </td>
                   </tr>
                 )}
@@ -447,13 +681,16 @@ export default function DoctorAppointments() {
           <div className="grid grid-cols-7 gap-2">
             {monthDays.map((day) => {
               const isSelected = day.dateKey === selectedDateKey;
-              const hasAppointments = Boolean(approvedByDate[day.dateKey]);
+              const appointmentCount = appointmentCountsByDate[day.dateKey] || 0;
 
               return (
                 <button
                   key={day.dateKey}
                   type="button"
-                  onClick={() => handleDateSelect(day.dateKey, day.date)}
+                  onClick={() => {
+                    setSelectedDateKey(day.dateKey);
+                    setVisibleMonth(new Date(day.date.getFullYear(), day.date.getMonth(), 1));
+                  }}
                   className={`rounded-xl border p-2 text-left min-h-[72px] transition ${
                     isSelected
                       ? "border-sky-400 bg-sky-50"
@@ -461,9 +698,9 @@ export default function DoctorAppointments() {
                   } ${!day.inCurrentMonth ? "opacity-50" : "opacity-100"}`}
                 >
                   <p className="text-sm font-medium text-slate-700">{day.date.getDate()}</p>
-                  {hasAppointments && (
+                  {appointmentCount > 0 && (
                     <p className="text-[11px] mt-2 text-sky-700 font-medium">
-                      {approvedByDate[day.dateKey]} approved
+                      {appointmentCount} appt{appointmentCount === 1 ? "" : "s"}
                     </p>
                   )}
                 </button>

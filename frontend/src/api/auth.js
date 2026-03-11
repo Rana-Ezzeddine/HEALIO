@@ -25,3 +25,15 @@ export async function login(email, password) {
   if (!res.ok) throw new Error(data.message || "Login failed");
   return data;
 }
+
+export async function verifyEmail(token) {
+  const res = await fetch(`${API_BASE}/api/auth/verify-email`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Email verification failed");
+  return data;
+}

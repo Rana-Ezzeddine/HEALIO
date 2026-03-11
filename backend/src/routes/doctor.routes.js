@@ -5,6 +5,9 @@ import {
   assignPatientToDoctor,
   getAssignedPatients,
   getDoctorDashboardOverview,
+  getDoctorLinkRequests,
+  getMyDoctors,
+  reviewDoctorLinkRequest,
 } from "../controllers/doctor.controller.js";
 
 const router = express.Router();
@@ -13,6 +16,10 @@ const router = express.Router();
 router.get("/assigned-patients", requireUser, requireVerified, getAssignedPatients);
 // GET /api/doctors/dashboard-overview
 router.get("/dashboard-overview", requireUser, getDoctorDashboardOverview);
+// GET /api/doctors/assignments/mine
+router.get("/assignments/mine", requireUser, getMyDoctors);
+router.get("/assignments/requests", requireUser, getDoctorLinkRequests);
+router.patch("/assignments/requests/:patientId", requireUser, reviewDoctorLinkRequest);
 // POST /api/doctors/assignments
 router.post("/assignments", requireUser, assignPatientToDoctor);
 

@@ -43,10 +43,74 @@ async function ensurePatientUser(patientId) {
   }
 }
 
+async function buildDoctorAvailability({
+  doctorId,
+  from,
+  to,
+  slotMinutes,
+  startHour,
+  endHour,
+}) {
+  const appointments = await Appointment.findAll({
+    where: {
+      doctorId,
+      status: { [Op.in]: ["requested", "scheduled"] },
+      startsAt: { [Op.lt]: to },
+      endsAt: { [Op.gt]: from },
+    },
+    attributes: ["startsAt", "endsAt"],
+    order: [["startsAt", "ASC"]],
+  });
+
+  const slots = [];
+  const cursor = new Date(from);
+
+  while (cursor < to) {
+    const dayStart = new Date(cursor);
+    dayStart.setHours(startHour, 0, 0, 0);
+
+    const dayEnd = new Date(cursor);
+    dayEnd.setHours(endHour, 0, 0, 0);
+
+    if (dayEnd > from && dayStart < to) {
+      const first = dayStart < from ? new Date(from) : dayStart;
+      let slotStart = new Date(first);
+
+      while (slotStart < dayEnd && slotStart < to) {
+        const slotEnd = new Date(slotStart.getTime() + slotMinutes * 60 * 1000);
+        if (slotEnd > dayEnd || slotEnd > to) break;
+
+        const overlaps = appointments.some((a) => a.startsAt < slotEnd && a.endsAt > slotStart);
+
+        if (!overlaps) {
+          slots.push({
+            startsAt: new Date(slotStart),
+            endsAt: new Date(slotEnd),
+          });
+        }
+
+        slotStart = slotEnd;
+      }
+    }
+
+    cursor.setDate(cursor.getDate() + 1);
+    cursor.setHours(0, 0, 0, 0);
+  }
+
+  return slots;
+}
+
+async function ensureDoctorUser(doctorId) {
+  const doctor = await User.findByPk(doctorId);
+  if (!doctor || doctor.role !== "doctor") {
+    throw new Error("Invalid doctorId");
+  }
+}
+
 async function hasDoctorConflict(doctorId, startsAt, endsAt, excludeAppointmentId = null) {
   const where = {
     doctorId,
-    status: "scheduled",
+    status: { [Op.in]: ["requested", "scheduled"] },
     startsAt: { [Op.lt]: endsAt },
     endsAt: { [Op.gt]: startsAt },
   };
@@ -76,7 +140,7 @@ export async function getDoctorSchedule(req, res) {
     };
 
     if (!includeCancelled) {
-      where.status = { [Op.ne]: "cancelled" };
+      where.status = { [Op.in]: ["scheduled", "completed"] };
     }
 
     const appointments = await Appointment.findAll({
@@ -167,6 +231,82 @@ export async function createAppointment(req, res) {
   }
 }
 
+export async function createAppointmentRequest(req, res) {
+  try {
+    const patientId = req.user.id;
+    const { doctorId, startsAt, endsAt, location, notes } = req.body || {};
+
+    if (!doctorId || !startsAt || !endsAt) {
+      return res.status(400).json({
+        message: "doctorId, startsAt, and endsAt are required",
+      });
+    }
+
+    const start = parseISODate(startsAt, "startsAt");
+    const end = parseISODate(endsAt, "endsAt");
+
+    if (start >= end) {
+      return res.status(400).json({ message: "startsAt must be before endsAt" });
+    }
+
+    if (start < new Date()) {
+      return res.status(400).json({ message: "Cannot request appointments in the past" });
+    }
+
+    await ensureDoctorUser(doctorId);
+    await validateDoctorPatientLink(doctorId, patientId);
+
+    const conflict = await hasDoctorConflict(doctorId, start, end);
+    if (conflict) {
+      return res.status(409).json({
+        message: "Doctor is not available in this time window",
+      });
+    }
+
+    const created = await Appointment.create({
+      doctorId,
+      patientId,
+      startsAt: start,
+      endsAt: end,
+      location: typeof location === "string" ? location.trim() || null : null,
+      notes: typeof notes === "string" ? notes.trim() || null : null,
+      status: "requested",
+    });
+
+    return res.status(201).json(created);
+  } catch (err) {
+    const status = err.message?.includes("doctor") || err.message?.includes("startsAt") ? 400 : 500;
+    return res.status(status).json({ message: err.message || "Failed to create appointment request." });
+  }
+}
+
+export async function getRequestableDoctors(req, res) {
+  try {
+    const patientId = req.user.id;
+    const patient = await User.findByPk(patientId);
+    if (!patient) {
+      return res.status(404).json({ message: "Patient not found." });
+    }
+
+    const doctors = await patient.getDoctors({
+      attributes: ["id", "email"],
+      joinTableAttributes: [],
+      through: { where: { status: "active" } },
+    });
+
+    return res.json({
+      count: doctors.length,
+      doctors: doctors.map((doctor) => ({
+        id: doctor.id,
+        email: doctor.email,
+        displayName: buildDisplayName(doctor.email, null, null),
+      })),
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || "Failed to fetch requestable doctors." });
+  }
+}
+
 export async function updateAppointment(req, res) {
   try {
     const doctorId = req.user.id;
@@ -219,12 +359,12 @@ export async function updateAppointmentStatus(req, res) {
   try {
     const doctorId = req.user.id;
     const { id } = req.params;
-    const { status } = req.body || {};
-    const allowed = new Set(["scheduled", "cancelled", "completed"]);
+    const { status, notes } = req.body || {};
+    const allowed = new Set(["requested", "scheduled", "cancelled", "completed", "denied"]);
 
     if (!allowed.has(status)) {
       return res.status(400).json({
-        message: "status must be one of: scheduled, cancelled, completed",
+        message: "status must be one of: requested, scheduled, cancelled, completed, denied",
       });
     }
 
@@ -235,7 +375,24 @@ export async function updateAppointmentStatus(req, res) {
       return res.status(404).json({ message: "Appointment not found" });
     }
 
-    await appt.update({ status });
+    const transitions = {
+      requested: new Set(["scheduled", "denied", "cancelled"]),
+      scheduled: new Set(["completed", "cancelled"]),
+      completed: new Set(),
+      cancelled: new Set(),
+      denied: new Set(),
+    };
+
+    if (!transitions[appt.status]?.has(status)) {
+      return res.status(400).json({
+        message: `Cannot change appointment status from ${appt.status} to ${status}`,
+      });
+    }
+
+    await appt.update({
+      status,
+      notes: typeof notes === "string" ? notes.trim() || appt.notes : appt.notes,
+    });
     return res.json(appt);
   } catch (err) {
     return res.status(500).json({ message: err.message || "Failed to update appointment status." });
@@ -263,53 +420,14 @@ export async function getDoctorAvailability(req, res) {
       return res.status(400).json({ message: "startHour/endHour are invalid" });
     }
 
-    const appointments = await Appointment.findAll({
-      where: {
-        doctorId,
-        status: "scheduled",
-        startsAt: { [Op.lt]: to },
-        endsAt: { [Op.gt]: from },
-      },
-      attributes: ["startsAt", "endsAt"],
-      order: [["startsAt", "ASC"]],
+    const slots = await buildDoctorAvailability({
+      doctorId,
+      from,
+      to,
+      slotMinutes,
+      startHour,
+      endHour,
     });
-
-    const slots = [];
-    const cursor = new Date(from);
-
-    while (cursor < to) {
-      const dayStart = new Date(cursor);
-      dayStart.setHours(startHour, 0, 0, 0);
-
-      const dayEnd = new Date(cursor);
-      dayEnd.setHours(endHour, 0, 0, 0);
-
-      if (dayEnd > from && dayStart < to) {
-        const first = dayStart < from ? new Date(from) : dayStart;
-        let slotStart = new Date(first);
-
-        while (slotStart < dayEnd && slotStart < to) {
-          const slotEnd = new Date(slotStart.getTime() + slotMinutes * 60 * 1000);
-          if (slotEnd > dayEnd || slotEnd > to) break;
-
-          const overlaps = appointments.some(
-            (a) => a.startsAt < slotEnd && a.endsAt > slotStart
-          );
-
-          if (!overlaps) {
-            slots.push({
-              startsAt: new Date(slotStart),
-              endsAt: new Date(slotEnd),
-            });
-          }
-
-          slotStart = slotEnd;
-        }
-      }
-
-      cursor.setDate(cursor.getDate() + 1);
-      cursor.setHours(0, 0, 0, 0);
-    }
 
     return res.json({
       doctorId,
@@ -322,6 +440,62 @@ export async function getDoctorAvailability(req, res) {
     });
   } catch (err) {
     const status = err.message?.includes("from") || err.message?.includes("Range") ? 400 : 500;
+    return res.status(status).json({ message: err.message || "Failed to fetch availability." });
+  }
+}
+
+export async function getPatientDoctorAvailability(req, res) {
+  try {
+    const patientId = req.user.id;
+    const doctorId = req.params.doctorId;
+    const { from, to } = parseRange(req);
+    const slotMinutes = Number(req.query.slotMinutes || 30);
+    const startHour = Number(req.query.startHour || 9);
+    const endHour = Number(req.query.endHour || 17);
+
+    if (!Number.isInteger(slotMinutes) || slotMinutes <= 0 || slotMinutes > 240) {
+      return res.status(400).json({ message: "slotMinutes must be an integer between 1 and 240" });
+    }
+    if (
+      !Number.isInteger(startHour) ||
+      !Number.isInteger(endHour) ||
+      startHour < 0 ||
+      endHour > 24 ||
+      startHour >= endHour
+    ) {
+      return res.status(400).json({ message: "startHour/endHour are invalid" });
+    }
+
+    await ensureDoctorUser(doctorId);
+    await validateDoctorPatientLink(doctorId, patientId);
+
+    const slots = await buildDoctorAvailability({
+      doctorId,
+      from,
+      to,
+      slotMinutes,
+      startHour,
+      endHour,
+    });
+
+    return res.json({
+      doctorId,
+      patientId,
+      from,
+      to,
+      slotMinutes,
+      workingHours: { startHour, endHour },
+      count: slots.length,
+      slots,
+    });
+  } catch (err) {
+    const status =
+      err.message?.includes("doctor") ||
+      err.message?.includes("patient") ||
+      err.message?.includes("from") ||
+      err.message?.includes("Range")
+        ? 400
+        : 500;
     return res.status(status).json({ message: err.message || "Failed to fetch availability." });
   }
 }

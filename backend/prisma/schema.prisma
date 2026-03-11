@@ -221,9 +221,11 @@ model users {
 }
 
 enum enum_appointments_status {
+  requested
   scheduled
   cancelled
   completed
+  denied
 }
 
 enum enum_diagnoses_status {

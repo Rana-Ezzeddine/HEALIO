@@ -7,9 +7,11 @@ import {
   getCaregiverPatientAppointments,
   getCaregiverPatientMedications,
   getCaregiverPatientSymptoms,
+  listCaregiverRequests,
   listMyCaregivers,
   listPatientsUnderCare,
   removeCaregiverAssignment,
+  reviewCaregiverRequest,
   updateCaregiverPermissions,
 } from "../controllers/caregiver.controller.js";
 
@@ -19,6 +21,8 @@ router.use(requireUser);
 // Patient-managed assignment and permission control
 router.post("/assignments", requireRole("patient"), assignCaregiver);
 router.get("/assignments/mine", requireRole("patient"), listMyCaregivers);
+router.get("/assignments/requests", listCaregiverRequests);
+router.patch("/assignments/requests/:patientId", requireRole("caregiver"), reviewCaregiverRequest);
 router.patch("/assignments/:caregiverId", requireRole("patient"), updateCaregiverPermissions);
 router.delete("/assignments/:caregiverId", requireRole("patient"), removeCaregiverAssignment);
 

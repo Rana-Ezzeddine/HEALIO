@@ -1,6 +1,44 @@
+import { Op } from "sequelize";
 import sequelize from "../../database.js";
 import User from "../models/User.js";
 import DoctorPatientAssignment from "../models/DoctorPatientAssignment.js";
+import PatientProfile from "../models/PatientProfile.js";
+
+async function resolveUserByIdOrEmail({ id, email }) {
+  if (id) {
+    return User.findByPk(id, { attributes: ["id", "email", "role"] });
+  }
+
+  if (email) {
+    return User.findOne({
+      where: { email: String(email).toLowerCase().trim() },
+      attributes: ["id", "email", "role"],
+    });
+  }
+
+  return null;
+}
+
+async function getPatientDisplayProfiles(patientIds) {
+  if (!patientIds.length) return new Map();
+  const profiles = await PatientProfile.findAll({
+    where: { userId: patientIds },
+    attributes: ["userId", "firstName", "lastName"],
+  });
+  return new Map(profiles.map((profile) => [profile.userId, profile]));
+}
+
+async function findOtherDoctorLinkForPatient(patientId, excludeDoctorId = null) {
+  const where = {
+    patientId,
+    status: { [Op.in]: ["pending", "active"] },
+  };
+  if (excludeDoctorId) {
+    where.doctorId = { [Op.ne]: excludeDoctorId };
+  }
+
+  return DoctorPatientAssignment.findOne({ where });
+}
 
 export const getAssignedPatients = async (req, res) => {
   try {
@@ -350,37 +388,104 @@ export const getDoctorDashboardOverview = async (req, res) => {
 
 export const assignPatientToDoctor = async (req, res) => {
   try {
-    if (req.user?.role !== "doctor") {
-      return res.status(403).json({ message: "Only doctors can access this." });
+    const actorId = req.user?.id;
+    const actorRole = req.user?.role;
+    const { patientId, patientEmail, doctorId, doctorEmail } = req.body || {};
+
+    if (actorRole === "patient") {
+      const patient = await User.findByPk(actorId, { attributes: ["id", "email", "role"] });
+      const doctor = await resolveUserByIdOrEmail({ id: doctorId, email: doctorEmail });
+
+      if (!doctor) {
+        return res.status(400).json({ message: "doctorId or doctorEmail is required." });
+      }
+      if (doctor.role !== "doctor") {
+        return res.status(400).json({ message: "Invalid doctor. Must reference a doctor user." });
+      }
+      if (!patient || patient.role !== "patient") {
+        return res.status(400).json({ message: "Invalid patient. Must reference a patient user." });
+      }
+
+      const conflictingLink = await findOtherDoctorLinkForPatient(patient.id, doctor.id);
+      if (conflictingLink) {
+        return res.status(409).json({
+          message: "Patient already has a doctor link or pending doctor request.",
+        });
+      }
+
+      const [assignment, created] = await DoctorPatientAssignment.findOrCreate({
+        where: { doctorId: doctor.id, patientId: patient.id },
+        defaults: { doctorId: doctor.id, patientId: patient.id, status: "pending" },
+      });
+
+      if (!created && assignment.status === "rejected") {
+        await assignment.update({ status: "pending" });
+      }
+
+      return res.status(created ? 201 : 200).json({
+        message:
+          assignment.status === "active"
+            ? "Doctor already linked."
+            : "Doctor link request sent.",
+        assignment: {
+          doctorId: doctor.id,
+          patientId: patient.id,
+          status: assignment.status,
+        },
+        doctor: {
+          id: doctor.id,
+          email: doctor.email,
+        },
+        patient: {
+          id: patient.id,
+          email: patient.email,
+        },
+      });
     }
 
-    const doctorId = req.user.id;
-    const { patientId } = req.body || {};
-
-    if (!patientId) {
-      return res.status(400).json({ message: "patientId is required." });
+    if (actorRole !== "doctor") {
+      return res.status(403).json({ message: "Only doctors or patients can create doctor-patient links." });
     }
 
-    const patient = await User.findByPk(patientId, { attributes: ["id", "email", "role"] });
+    const doctor = await User.findByPk(actorId, { attributes: ["id", "email", "role"] });
+    const patient = await resolveUserByIdOrEmail({ id: patientId, email: patientEmail });
+
+    if (!patient) {
+      return res.status(400).json({ message: "patientId or patientEmail is required." });
+    }
     if (!patient || patient.role !== "patient") {
-      return res.status(400).json({ message: "Invalid patientId. Must reference a patient user." });
+      return res.status(400).json({ message: "Invalid patient. Must reference a patient user." });
+    }
+    if (!doctor || doctor.role !== "doctor") {
+      return res.status(400).json({ message: "Invalid doctor. Must reference a doctor user." });
     }
 
-    const [assignment, created] = await DoctorPatientAssignment.findOrCreate({
-      where: { doctorId, patientId },
-      defaults: { doctorId, patientId, status: "active" },
+    const assignment = await DoctorPatientAssignment.findOne({
+      where: { doctorId: doctor.id, patientId: patient.id },
     });
-
-    if (!created && assignment.status !== "active") {
-      await assignment.update({ status: "active" });
+    if (!assignment) {
+      return res.status(404).json({ message: "No doctor request found for this patient." });
     }
 
-    return res.status(created ? 201 : 200).json({
-      message: created ? "Patient assigned to doctor." : "Patient already assigned (active).",
+    const conflictingLink = await findOtherDoctorLinkForPatient(patient.id, doctor.id);
+    if (conflictingLink) {
+      return res.status(409).json({
+        message: "Patient already has another doctor link or pending doctor request.",
+      });
+    }
+
+    await assignment.update({ status: "active" });
+
+    return res.status(200).json({
+      message: "Doctor request approved.",
       assignment: {
-        doctorId,
-        patientId,
+        doctorId: doctor.id,
+        patientId: patient.id,
         status: "active",
+      },
+      doctor: {
+        id: doctor.id,
+        email: doctor.email,
       },
       patient: {
         id: patient.id,
@@ -389,6 +494,206 @@ export const assignPatientToDoctor = async (req, res) => {
     });
   } catch (err) {
     console.error("doctor assign-patient error:", err);
+    return res.status(500).json({
+      message: "Server error.",
+      debug: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
+  }
+};
+
+export const getDoctorLinkRequests = async (req, res) => {
+  try {
+    if (req.user?.role === "doctor") {
+      const links = await DoctorPatientAssignment.findAll({
+        where: { doctorId: req.user.id, status: "pending" },
+        order: [["createdAt", "DESC"]],
+      });
+      const patientIds = links.map((link) => link.patientId);
+      const patients = patientIds.length
+        ? await User.findAll({
+            where: { id: patientIds },
+            attributes: ["id", "email", "role"],
+          })
+        : [];
+      const patientMap = new Map(patients.map((patient) => [patient.id, patient]));
+      const profileMap = await getPatientDisplayProfiles(patientIds);
+
+      return res.json({
+        requests: links.map((link) => {
+          const patient = patientMap.get(link.patientId);
+          const profile = profileMap.get(link.patientId);
+          return {
+            patientId: link.patientId,
+            doctorId: link.doctorId,
+            status: link.status,
+            createdAt: link.createdAt,
+            patient: patient
+              ? {
+                  id: patient.id,
+                  email: patient.email,
+                  role: patient.role,
+                  firstName: profile?.firstName || null,
+                  lastName: profile?.lastName || null,
+                  displayName:
+                    [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim() ||
+                    patient.email,
+                }
+              : null,
+          };
+        }),
+      });
+    }
+
+    if (req.user?.role === "patient") {
+      const links = await DoctorPatientAssignment.findAll({
+        where: { patientId: req.user.id, status: "pending" },
+        order: [["createdAt", "DESC"]],
+      });
+      const doctorIds = links.map((link) => link.doctorId);
+      const doctors = doctorIds.length
+        ? await User.findAll({
+            where: { id: doctorIds },
+            attributes: ["id", "email", "role"],
+          })
+        : [];
+      const profileMap = await getPatientDisplayProfiles(doctorIds);
+      const doctorMap = new Map(doctors.map((doctor) => [doctor.id, doctor]));
+
+      return res.json({
+        requests: links.map((link) => {
+          const doctor = doctorMap.get(link.doctorId);
+          const profile = profileMap.get(link.doctorId);
+          return {
+            doctorId: link.doctorId,
+            patientId: link.patientId,
+            status: link.status,
+            createdAt: link.createdAt,
+            doctor: doctor
+              ? {
+                  id: doctor.id,
+                  email: doctor.email,
+                  role: doctor.role,
+                  firstName: profile?.firstName || null,
+                  lastName: profile?.lastName || null,
+                  displayName:
+                    [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim() ||
+                    doctor.email,
+                }
+              : null,
+          };
+        }),
+      });
+    }
+
+    return res.status(403).json({ message: "Only doctors or patients can view doctor link requests." });
+  } catch (err) {
+    console.error("doctor link requests error:", err);
+    return res.status(500).json({ message: "Server error." });
+  }
+};
+
+export const reviewDoctorLinkRequest = async (req, res) => {
+  try {
+    if (req.user?.role !== "doctor") {
+      return res.status(403).json({ message: "Only doctors can review doctor link requests." });
+    }
+
+    const { patientId } = req.params;
+    const decision = String(req.body?.status || "").toLowerCase().trim();
+    if (!["active", "rejected"].includes(decision)) {
+      return res.status(400).json({ message: "status must be active or rejected." });
+    }
+
+    const assignment = await DoctorPatientAssignment.findOne({
+      where: { doctorId: req.user.id, patientId, status: "pending" },
+    });
+    if (!assignment) {
+      return res.status(404).json({ message: "Pending doctor request not found." });
+    }
+
+    if (decision === "active") {
+      const conflictingLink = await findOtherDoctorLinkForPatient(patientId, req.user.id);
+      if (conflictingLink) {
+        return res.status(409).json({
+          message: "Patient already has another doctor link or pending doctor request.",
+        });
+      }
+    }
+
+    await assignment.update({ status: decision });
+    return res.json({
+      message: decision === "active" ? "Doctor request approved." : "Doctor request rejected.",
+      assignment,
+    });
+  } catch (err) {
+    console.error("doctor review request error:", err);
+    return res.status(500).json({ message: "Server error." });
+  }
+};
+
+export const getMyDoctors = async (req, res) => {
+  try {
+    if (req.user?.role !== "patient") {
+      return res.status(403).json({ message: "Only patients can access this." });
+    }
+
+    const patientId = req.user.id;
+    const links = await DoctorPatientAssignment.findAll({
+      where: { patientId, status: "active" },
+      order: [["createdAt", "DESC"]],
+    });
+
+    const doctorIds = links.map((link) => link.doctorId);
+    const doctors = doctorIds.length
+      ? await User.findAll({
+          where: { id: doctorIds },
+          attributes: ["id", "email", "role", "isVerified"],
+        })
+      : [];
+    const profiles = doctorIds.length
+      ? await PatientProfile.findAll({
+          where: { userId: doctorIds },
+          attributes: ["userId", "firstName", "lastName"],
+        })
+      : [];
+
+    const doctorMap = new Map(doctors.map((doctor) => [doctor.id, doctor]));
+    const profileMap = new Map(profiles.map((profile) => [profile.userId, profile]));
+
+    return res.json({
+      patientId,
+      doctors: links.map((link) => {
+        const doctor = doctorMap.get(link.doctorId);
+        const profile = profileMap.get(link.doctorId);
+        return {
+          status: link.status,
+          assignedAt: link.createdAt,
+          doctor: doctor
+            ? {
+                id: doctor.id,
+                email: doctor.email,
+                role: doctor.role,
+                isVerified: doctor.isVerified,
+                firstName: profile?.firstName || null,
+                lastName: profile?.lastName || null,
+                displayName:
+                  [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim() ||
+                  doctor.email,
+              }
+            : {
+                id: link.doctorId,
+                email: null,
+                role: "doctor",
+                isVerified: false,
+                firstName: null,
+                lastName: null,
+                displayName: "Doctor",
+              },
+        };
+      }),
+    });
+  } catch (err) {
+    console.error("patient linked-doctors error:", err);
     return res.status(500).json({
       message: "Server error.",
       debug: process.env.NODE_ENV === "development" ? err.message : undefined,

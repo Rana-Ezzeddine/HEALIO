@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
 import { useNavigate } from "react-router-dom";
+import { apiUrl, authHeaders } from "../api/http";
 
 function DashboardCard({title, mainText, subText, navPage}){
   const navigate = useNavigate();
@@ -33,24 +34,28 @@ function DashboardCard({title, mainText, subText, navPage}){
 export default function DashboardCaregiver() {
   const navigate = useNavigate();
   const [name, setName] = useState("Caregiver");
-  const [linkedPatientLabel, setLinkedPatientLabel] = useState("Not linked yet");
+  const [linkedPatientLabel, setLinkedPatientLabel] = useState("No active patients linked yet");
 
   useEffect(() => {
-    try {
-      const firstName = localStorage.getItem("firstName") || "Caregiver";
-      setName(firstName);
+    const firstName = localStorage.getItem("firstName") || "Caregiver";
+    setName(firstName);
 
-      const linkedPatientName = localStorage.getItem("linkedPatientName");
-      const pendingCode = localStorage.getItem("pendingPatientLinkCode");
+    (async () => {
+      try {
+        const res = await fetch(`${apiUrl}/api/caregivers/patients`, {
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || "Failed to load caregiver patients.");
 
-      if (linkedPatientName) {
-        setLinkedPatientLabel(linkedPatientName);
-      } else if (pendingCode) {
-        setLinkedPatientLabel(`Pending link (${pendingCode})`);
+        const patients = data.patients || [];
+        if (patients.length > 0) {
+          setLinkedPatientLabel(patients.map(({ patient }) => patient?.email || "Patient").join(", "));
+        }
+      } catch (err) {
+        console.error(err);
       }
-    } catch (err) {
-      console.error(err);
-    }
+    })();
   }, []);
 
   return (

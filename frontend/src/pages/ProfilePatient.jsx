@@ -1,7 +1,17 @@
-import { apiUrl, authHeaders } from "../api/http";
+import { apiUrl, authHeaders, getUser } from "../api/http";
 import Navbar from "../components/Navbar";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  getCaregiverLinkRequests,
+  getMyCaregivers,
+  getDoctorLinkRequests,
+  getMyDoctors,
+  linkCaregiverByEmail,
+  linkDoctorByEmail,
+  removeCaregiverAssignment,
+  updateCaregiverPermissions,
+} from "../api/links";
 import userMale from "../assets/userMale.png";
 import userFemale from "../assets/userFemale.png";
 
@@ -91,7 +101,15 @@ export default function ProfilePatient(){
     const[emName, setEmName] = useState("");
     const[relationship, setRelationship] = useState("");
     const[emPhone, setEmPhone] = useState("");
-    const sessionUser = JSON.parse(localStorage.getItem("user") || "null");
+    const [linkedDoctors, setLinkedDoctors] = useState([]);
+    const [linkedCaregivers, setLinkedCaregivers] = useState([]);
+    const [doctorRequests, setDoctorRequests] = useState([]);
+    const [caregiverRequests, setCaregiverRequests] = useState([]);
+    const [doctorEmailToLink, setDoctorEmailToLink] = useState("");
+    const [caregiverEmailToLink, setCaregiverEmailToLink] = useState("");
+    const [linkError, setLinkError] = useState("");
+    const [linkSuccess, setLinkSuccess] = useState("");
+    const sessionUser = getUser();
     const accountEmail = sessionUser?.email || localStorage.getItem("email") || "";
 
     function hydrateFromSession() {
@@ -99,11 +117,29 @@ export default function ProfilePatient(){
       setLastName(localStorage.getItem("lastName") || "");
       setEmail(accountEmail);
     }
+
+    async function loadAssignments() {
+      try {
+        const [doctorsRes, caregiversRes, doctorRequestsRes, caregiverRequestsRes] = await Promise.all([
+          getMyDoctors(),
+          getMyCaregivers(),
+          getDoctorLinkRequests(),
+          getCaregiverLinkRequests(),
+        ]);
+        setLinkedDoctors(doctorsRes.doctors || []);
+        setLinkedCaregivers(caregiversRes.caregivers || []);
+        setDoctorRequests(doctorRequestsRes.requests || []);
+        setCaregiverRequests(caregiverRequestsRes.requests || []);
+      } catch (err) {
+        console.error("Failed to load assignments", err);
+      }
+    }
     
 
     useEffect(() => {
   (async () => {
     try {
+      await loadAssignments();
       const res = await fetch(`${apiUrl}/api/profile`, {
         headers: { "Content-Type": "application/json", ...authHeaders() },
       });
@@ -145,6 +181,63 @@ export default function ProfilePatient(){
     }
   })();
 }, []);
+
+    async function handleLinkDoctor() {
+      setLinkError("");
+      setLinkSuccess("");
+      try {
+        await linkDoctorByEmail(doctorEmailToLink.trim());
+        setDoctorEmailToLink("");
+        setLinkSuccess("Doctor request sent successfully.");
+        await loadAssignments();
+      } catch (err) {
+        setLinkError(err.message || "Failed to link doctor.");
+      }
+    }
+
+    async function handleLinkCaregiver() {
+      setLinkError("");
+      setLinkSuccess("");
+      try {
+        await linkCaregiverByEmail(caregiverEmailToLink.trim(), {
+          canViewMedications: true,
+          canViewSymptoms: true,
+          canViewAppointments: true,
+          canMessageDoctor: true,
+          canReceiveReminders: true,
+        });
+        setCaregiverEmailToLink("");
+        setLinkSuccess("Caregiver request sent successfully.");
+        await loadAssignments();
+      } catch (err) {
+        setLinkError(err.message || "Failed to link caregiver.");
+      }
+    }
+
+    async function handleToggleCaregiverPermission(caregiverId, permissions, key) {
+      setLinkError("");
+      setLinkSuccess("");
+      try {
+        await updateCaregiverPermissions(caregiverId, {
+          [key]: !permissions[key],
+        });
+        await loadAssignments();
+      } catch (err) {
+        setLinkError(err.message || "Failed to update caregiver permissions.");
+      }
+    }
+
+    async function handleRemoveCaregiver(caregiverId) {
+      setLinkError("");
+      setLinkSuccess("");
+      try {
+        await removeCaregiverAssignment(caregiverId);
+        setLinkSuccess("Caregiver removed.");
+        await loadAssignments();
+      } catch (err) {
+        setLinkError(err.message || "Failed to remove caregiver.");
+      }
+    }
 
 
     async function handleSave() {
@@ -309,6 +402,109 @@ export default function ProfilePatient(){
                 <FormInput label="Emergency Contact Name" type="text" value={emName} onChange={(e)=>setEmName(e.target.value)} isEditing={isEditing} />
                 <FormInput label="Relationship" type="text" value={relationship} onChange={(e)=>setRelationship(e.target.value)} isEditing={isEditing} />
                 <FormInput label="Phone Number" type="text" value={emPhone} onChange={(e)=>setEmPhone(e.target.value)} isEditing={isEditing} />
+              </div>
+            </section>
+
+            <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
+              <h2 className="text-xl font-semibold text-slate-800 mb-4">Care Team Links</h2>
+              <p className="text-sm text-slate-500 mb-4">
+                Link doctors and caregivers by email so appointments, messaging, and shared access work inside the app.
+              </p>
+
+              {linkError ? <div className="mb-3 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{linkError}</div> : null}
+              {linkSuccess ? <div className="mb-3 rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-700">{linkSuccess}</div> : null}
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <h3 className="font-semibold text-slate-800 mb-3">Linked Doctors</h3>
+                  <div className="flex gap-2 mb-4">
+                    <input
+                      type="email"
+                      value={doctorEmailToLink}
+                      onChange={(e) => setDoctorEmailToLink(e.target.value)}
+                      placeholder="doctor@email.com"
+                      className="flex-1 px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleLinkDoctor}
+                      className="px-4 py-2 rounded-lg bg-sky-500 text-white font-medium hover:bg-sky-600 transition"
+                    >
+                      Link
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {linkedDoctors.length > 0 ? linkedDoctors.map((record) => (
+                      <div key={record.doctor.id} className="rounded-xl border border-slate-200 px-3 py-2">
+                        <p className="font-medium text-slate-800">{record.doctor.displayName}</p>
+                        <p className="text-sm text-slate-500">{record.doctor.email}</p>
+                      </div>
+                    )) : <p className="text-sm text-slate-500">No doctors linked yet.</p>}
+                    {doctorRequests.length > 0 ? doctorRequests.map((record) => (
+                      <div key={`doctor-request-${record.doctorId}`} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                        <p className="font-medium text-slate-800">{record.doctor?.displayName || record.doctor?.email || "Doctor"}</p>
+                        <p className="text-sm text-amber-700">Pending doctor approval</p>
+                      </div>
+                    )) : null}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <h3 className="font-semibold text-slate-800 mb-3">Linked Caregivers</h3>
+                  <div className="flex gap-2 mb-4">
+                    <input
+                      type="email"
+                      value={caregiverEmailToLink}
+                      onChange={(e) => setCaregiverEmailToLink(e.target.value)}
+                      placeholder="caregiver@email.com"
+                      className="flex-1 px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleLinkCaregiver}
+                      className="px-4 py-2 rounded-lg bg-sky-500 text-white font-medium hover:bg-sky-600 transition"
+                    >
+                      Link
+                    </button>
+                  </div>
+                  <div className="space-y-3">
+                    {linkedCaregivers.length > 0 ? linkedCaregivers.map(({ caregiver, permissions }) => (
+                      <div key={caregiver.id} className="rounded-xl border border-slate-200 px-3 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-slate-800">{caregiver.email}</p>
+                            <p className="text-sm text-slate-500">Permissions</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveCaregiver(caregiver.id)}
+                            className="text-sm text-red-600 hover:text-red-700"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-700">
+                          {Object.entries(permissions).map(([key, value]) => (
+                            <label key={key} className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(value)}
+                                onChange={() => handleToggleCaregiverPermission(caregiver.id, permissions, key)}
+                              />
+                              <span>{key}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )) : <p className="text-sm text-slate-500">No caregivers linked yet.</p>}
+                    {caregiverRequests.length > 0 ? caregiverRequests.map((record) => (
+                      <div key={`caregiver-request-${record.caregiverId}`} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                        <p className="font-medium text-slate-800">{record.caregiver?.email || "Caregiver"}</p>
+                        <p className="text-sm text-amber-700">Pending caregiver approval</p>
+                      </div>
+                    )) : null}
+                  </div>
+                </div>
               </div>
             </section>
           </div>

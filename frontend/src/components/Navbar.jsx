@@ -1,18 +1,16 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { clearSession } from "../api/http";
+import { clearSession, getUser } from "../api/http";
 import logo from "../assets/logo.png";
 
 export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [userRole, setUserRole] = useState(
-    localStorage.getItem("userRole")?.toLowerCase()
-  );
+  const [userRole, setUserRole] = useState(getUser()?.role?.toLowerCase() || null);
 
   useEffect(() => {
-    const role = localStorage.getItem("userRole")?.toLowerCase();
+    const role = getUser()?.role?.toLowerCase() || null;
     setUserRole(role);
   }, [location]); // re-check role when route changes
 

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar"
 import { Plus, Clock, Pencil, Pill, Trash2, X, Check, Search, AlertCircle } from 'lucide-react';
 import { apiUrl, authHeaders } from "../api/http";
+import { getMedicationFilterOptions, searchAndFilterMedications } from "../api/search";
 import { getNextMedicationDose, formatDoseTime } from "../utils/medicationSchedule";
 
 const API_BASE_URL = apiUrl;
@@ -13,6 +14,12 @@ const MedicationManager = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingMed, setEditingMed] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [doctorFilter, setDoctorFilter] = useState("");
+  const [frequencyFilter, setFrequencyFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [sortBy, setSortBy] = useState("createdAt");
+  const [sortOrder, setSortOrder] = useState("DESC");
+  const [filterOptions, setFilterOptions] = useState({ doctors: [], frequencies: [] });
   const [backendAvailable, setBackendAvailable] = useState(true);
   const [error, setError] = useState(null);
   const [formData, setFormData] = useState({
@@ -62,6 +69,16 @@ const MedicationManager = () => {
     checkBackendAndFetchMedications();
   }, []);
 
+  useEffect(() => {
+    if (!backendAvailable) return undefined;
+
+    const timeoutId = window.setTimeout(() => {
+      fetchMedications();
+    }, 250);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [backendAvailable, searchTerm, doctorFilter, frequencyFilter, statusFilter, sortBy, sortOrder]);
+
   const checkBackendAndFetchMedications = async () => {
     setError(null);
 
@@ -75,8 +92,8 @@ const MedicationManager = () => {
       console.debug(healthResponse)
 
       if (healthResponse.ok) {
-        console.debug("OK")
         setBackendAvailable(true);
+        await fetchMedicationFilterOptions();
         await fetchMedications();
       } else {
         throw new Error('Backend health check failed');
@@ -88,29 +105,40 @@ const MedicationManager = () => {
     }
   };
 
+  const fetchMedicationFilterOptions = async () => {
+    try {
+      const data = await getMedicationFilterOptions();
+      setFilterOptions({
+        doctors: data.doctors || [],
+        frequencies: data.frequencies || [],
+      });
+    } catch (err) {
+      console.error("Error fetching medication filter options:", err);
+      setFilterOptions({ doctors: [], frequencies: [] });
+    }
+  };
+
   const fetchMedications = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/medications`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      const data = await searchAndFilterMedications({
+        q: searchTerm,
+        prescribedBy: doctorFilter,
+        frequency: frequencyFilter,
+        status: statusFilter,
+        sortBy,
+        sortOrder,
       });
 
-      if (response.status === 401 || response.status === 403) {
+      setMedications(data.medications || []);
+      setBackendAvailable(true);
+      setError(null);
+    } catch (err) {
+      if (/session expired|not authenticated|not authorized|verify/i.test(err?.message || "")) {
         setBackendAvailable(true);
         setMedications([]);
         setError("Your session expired. Please log in again.");
         return;
       }
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      setMedications(data);
-      setBackendAvailable(true);
-      setError(null);
-    } catch (err) {
       console.error('Error fetching medications:', err);
       setBackendAvailable(false);
       setMedications(fallbackMedications);
@@ -179,9 +207,7 @@ const MedicationManager = () => {
         }
 
         const updatedMed = await response.json();
-        setMedications(medications.map(med => 
-          med.id === editingMed.id ? updatedMed : med
-        ));
+        setMedications(medications.map(med => med.id === editingMed.id ? updatedMed : med));
       } else {
         // Create new medication
         const response = await fetch(`${API_BASE_URL}/api/medications`, {
@@ -200,10 +226,11 @@ const MedicationManager = () => {
           throw new Error(errData?.error || errData?.message || 'Failed to create medication');
         }
 
-        const newMed = await response.json();
-        setMedications([...medications, newMed]);
+        await response.json();
       }
 
+      await fetchMedicationFilterOptions();
+      await fetchMedications();
       closeModal();
       setBackendAvailable(true);
       setError(null);
@@ -233,8 +260,8 @@ const MedicationManager = () => {
         const errData = await response.json().catch(() => ({}));
         throw new Error(errData?.error || errData?.message || 'Failed to delete medication');
       }
-
-      setMedications(medications.filter(med => med.id !== id));
+      await fetchMedicationFilterOptions();
+      await fetchMedications();
       setBackendAvailable(true);
       setError(null);
     } catch (err) {
@@ -250,10 +277,38 @@ const MedicationManager = () => {
     });
   };
 
-  const filteredMedications = medications.filter(med =>
-    med.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (med.prescribedBy && med.prescribedBy.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredMedications = useMemo(() => {
+    if (backendAvailable) {
+      return medications;
+    }
+
+    const normalizedSearch = searchTerm.toLowerCase();
+    return medications
+      .filter((med) => {
+        const matchesSearch =
+          !normalizedSearch ||
+          med.name.toLowerCase().includes(normalizedSearch) ||
+          (med.prescribedBy && med.prescribedBy.toLowerCase().includes(normalizedSearch)) ||
+          (med.notes && med.notes.toLowerCase().includes(normalizedSearch));
+        const matchesDoctor =
+          !doctorFilter || (med.prescribedBy && med.prescribedBy.toLowerCase().includes(doctorFilter.toLowerCase()));
+        const matchesFrequency =
+          !frequencyFilter || (med.frequency && med.frequency.toLowerCase().includes(frequencyFilter.toLowerCase()));
+        const matchesStatus =
+          !statusFilter ||
+          (statusFilter === "active"
+            ? !med.endDate || new Date(med.endDate) >= new Date()
+            : med.endDate && new Date(med.endDate) < new Date());
+
+        return matchesSearch && matchesDoctor && matchesFrequency && matchesStatus;
+      })
+      .sort((left, right) => {
+        const leftValue = left[sortBy] || "";
+        const rightValue = right[sortBy] || "";
+        if (sortOrder === "ASC") return String(leftValue).localeCompare(String(rightValue));
+        return String(rightValue).localeCompare(String(leftValue));
+      });
+  }, [backendAvailable, doctorFilter, frequencyFilter, medications, searchTerm, sortBy, sortOrder, statusFilter]);
 
   const nextDose = useMemo(() => getNextMedicationDose(medications), [medications]);
   const nextDoseText = nextDose
@@ -330,8 +385,8 @@ const MedicationManager = () => {
             </button>
           </div>
 
-          {/* Search Bar */}
-          <div className="mb-4 mt-4 relative">
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-5 gap-3">
+            <div className="relative md:col-span-2">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <Search className="text-slate-400" size={20} />
             </div>
@@ -342,6 +397,71 @@ const MedicationManager = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
             />
+            </div>
+            <select
+              value={doctorFilter}
+              onChange={(e) => setDoctorFilter(e.target.value)}
+              className="w-full px-4 py-2.5 border border-slate-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-sky-500"
+            >
+              <option value="">All Doctors</option>
+              {filterOptions.doctors.map((doctor) => (
+                <option key={doctor} value={doctor}>{doctor}</option>
+              ))}
+            </select>
+            <select
+              value={frequencyFilter}
+              onChange={(e) => setFrequencyFilter(e.target.value)}
+              className="w-full px-4 py-2.5 border border-slate-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-sky-500"
+            >
+              <option value="">All Frequencies</option>
+              {filterOptions.frequencies.map((frequency) => (
+                <option key={frequency} value={frequency}>{frequency}</option>
+              ))}
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full px-4 py-2.5 border border-slate-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-sky-500"
+            >
+              <option value="">All Statuses</option>
+              <option value="active">Active</option>
+              <option value="past">Past</option>
+            </select>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-3">
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="px-4 py-2.5 border border-slate-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-sky-500"
+            >
+              <option value="createdAt">Sort by Added Date</option>
+              <option value="name">Sort by Name</option>
+              <option value="startDate">Sort by Start Date</option>
+              <option value="endDate">Sort by End Date</option>
+            </select>
+            <select
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value)}
+              className="px-4 py-2.5 border border-slate-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-sky-500"
+            >
+              <option value="DESC">Newest First</option>
+              <option value="ASC">Oldest First</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => {
+                setSearchTerm("");
+                setDoctorFilter("");
+                setFrequencyFilter("");
+                setStatusFilter("");
+                setSortBy("createdAt");
+                setSortOrder("DESC");
+              }}
+              className="px-4 py-2.5 rounded-2xl border border-slate-300 text-slate-700 hover:bg-slate-50 transition"
+            >
+              Reset Filters
+            </button>
           </div>
         
 

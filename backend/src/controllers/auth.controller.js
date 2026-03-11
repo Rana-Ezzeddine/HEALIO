@@ -2,11 +2,14 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import validator from 'validator';
 import crypto from 'crypto';
+import { Op } from 'sequelize';
 import User from '../models/User.js';
-import EmailVerificationToken from '../models/EmailVerificationToken.js';
+import PatientProfile from '../models/PatientProfile.js';
+import PendingRegistration from '../models/PendingRegistration.js';
 import { sendVerificationEmail } from '../services/mail.service.js';
 
 const EMAIL_TOKEN_TTL_MS = Number(process.env.EMAIL_VERIFICATION_TTL_MS || 86400000);
+const EMAIL_VERIFICATION_DISABLED = /^true$/i.test(process.env.DISABLE_EMAIL_VERIFICATION || '');
 
 const isValidName = (name) => {
   return (
@@ -37,19 +40,43 @@ const issueAccessToken = (user) => {
   );
 };
 
-const createVerificationToken = async (userId) => {
-  await EmailVerificationToken.destroy({ where: { userId, usedAt: null } });
-
+const createVerificationToken = async () => {
   const rawToken = crypto.randomBytes(32).toString('hex');
-  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+  return rawToken;
+};
 
-  await EmailVerificationToken.create({
-    userId,
-    tokenHash,
-    expiresAt: new Date(Date.now() + EMAIL_TOKEN_TTL_MS),
+const buildAuthUser = async (user) => {
+  const profile = await PatientProfile.findOne({
+    where: { userId: user.id },
+    attributes: ['firstName', 'lastName'],
   });
 
-  return rawToken;
+  return {
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    isVerified: user.isVerified,
+    firstName: profile?.firstName || null,
+    lastName: profile?.lastName || null,
+  };
+};
+
+const createVerifiedUserWithProfile = async ({ firstName, lastName, email, passwordHash, role }) => {
+  const user = await User.create({
+    email,
+    passwordHash,
+    role,
+    isVerified: true,
+  });
+
+  await PatientProfile.upsert({
+    userId: user.id,
+    firstName,
+    lastName,
+    email,
+  });
+
+  return user;
 };
 
 export const register = async (req, res) => {
@@ -92,34 +119,74 @@ export const register = async (req, res) => {
     const userRole = role;
 
     const cleanEmail = String(email || "").toLowerCase().trim();
+    await PendingRegistration.destroy({
+      where: {
+        email: cleanEmail,
+        expiresAt: { [Op.lt]: new Date() },
+      },
+    });
 
-    const existing = await User.findOne({ where: { email: cleanEmail } });
-    if (existing) {
+    const [existingUser, existingPending] = await Promise.all([
+      User.findOne({ where: { email: cleanEmail } }),
+      PendingRegistration.findOne({ where: { email: cleanEmail } }),
+    ]);
+    if (existingUser || existingPending) {
       return res.status(409).json({ message: 'Email already registered.' });
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
 
-    const user = await User.create({
-      email: cleanEmail,
-      passwordHash,
-      role: userRole,
-      isVerified: false,
-    });
+    if (EMAIL_VERIFICATION_DISABLED) {
+      const user = await createVerifiedUserWithProfile({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: cleanEmail,
+        passwordHash,
+        role: userRole,
+      });
+      const token = issueAccessToken(user);
+      const authUser = await buildAuthUser(user);
 
-    const rawToken = await createVerificationToken(user.id);
-    await sendVerificationEmail({ to: user.email, token: rawToken });
+      return res.status(201).json({
+        message: 'Registered successfully. Email verification is disabled for local testing.',
+        token,
+        user: authUser,
+      });
+    }
 
-    return res.status(201).json({
-      message: 'Registered successfully. Please verify your email.',
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        isVerified: user.isVerified,
-      },
-      ...(process.env.NODE_ENV === 'test' ? { verificationToken: rawToken } : {}),
-    });
+    const rawToken = await createVerificationToken();
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    try {
+      await PendingRegistration.create({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: cleanEmail,
+        passwordHash,
+        role: userRole,
+        tokenHash,
+        expiresAt: new Date(Date.now() + EMAIL_TOKEN_TTL_MS),
+      });
+      await sendVerificationEmail({ to: cleanEmail, token: rawToken });
+
+      return res.status(201).json({
+        message: 'Registered successfully. Please verify your email.',
+        ...(process.env.NODE_ENV === 'test' ? { verificationToken: rawToken } : {}),
+      });
+    } catch (mailErr) {
+      await PendingRegistration.destroy({ where: { email: cleanEmail } });
+
+      if (mailErr.message === 'SMTP_NOT_CONFIGURED') {
+        return res.status(503).json({
+          message: 'Email verification is not configured on the server. Add SMTP settings before allowing signup.',
+        });
+      }
+
+      console.error(mailErr);
+      return res.status(502).json({
+        message: 'Failed to send verification email. Please try again later.',
+      });
+    }
   } catch (err) {
     if (err.name === 'SequelizeUniqueConstraintError') {
       return res.status(409).json({ message: 'Email already registered.' });
@@ -137,47 +204,58 @@ export const verifyEmail = async (req, res) => {
     }
 
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    const tokenRow = await EmailVerificationToken.findOne({ where: { tokenHash } });
+    const pendingRegistration = await PendingRegistration.findOne({ where: { tokenHash } });
 
-    if (!tokenRow) {
+    if (!pendingRegistration) {
       return res.status(400).json({ message: 'Invalid verification token.' });
     }
 
-    if (tokenRow.usedAt) {
-      return res.status(400).json({ message: 'Token already used.' });
-    }
-
-    if (new Date(tokenRow.expiresAt) < new Date()) {
+    if (new Date(pendingRegistration.expiresAt) < new Date()) {
+      await PendingRegistration.destroy({ where: { id: pendingRegistration.id } });
       return res.status(400).json({ message: 'Token expired.' });
     }
 
-    const user = await User.findByPk(tokenRow.userId);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found.' });
+    const existingUser = await User.findOne({ where: { email: pendingRegistration.email } });
+    if (existingUser) {
+      await PendingRegistration.destroy({ where: { id: pendingRegistration.id } });
+      return res.status(409).json({ message: 'Email already registered.' });
     }
 
-    user.isVerified = true;
-    await user.save();
+    let user;
+    try {
+      user = await User.create({
+        email: pendingRegistration.email,
+        passwordHash: pendingRegistration.passwordHash,
+        role: pendingRegistration.role,
+        isVerified: true,
+      });
+    } catch (createErr) {
+      if (createErr.name !== 'SequelizeUniqueConstraintError') {
+        throw createErr;
+      }
 
-    tokenRow.usedAt = new Date();
-    await tokenRow.save();
+      const existingVerifiedUser = await User.findOne({ where: { email: pendingRegistration.email } });
+      if (!existingVerifiedUser) {
+        throw createErr;
+      }
+      user = existingVerifiedUser;
+    }
 
-    await EmailVerificationToken.update(
-      { usedAt: new Date() },
-      { where: { userId: user.id, usedAt: null } }
-    );
+    await PatientProfile.upsert({
+      userId: user.id,
+      firstName: pendingRegistration.firstName,
+      lastName: pendingRegistration.lastName,
+      email: pendingRegistration.email,
+    });
+    await PendingRegistration.destroy({ where: { id: pendingRegistration.id } });
 
     const token = issueAccessToken(user);
+    const authUser = await buildAuthUser(user);
 
     return res.status(200).json({
       message: 'Email verified successfully.',
       token,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        isVerified: user.isVerified,
-      },
+      user: authUser,
     });
   } catch (err) {
     console.error(err);
@@ -187,15 +265,21 @@ export const verifyEmail = async (req, res) => {
 
 export const resendVerification = async (req, res) => {
   try {
-    const user = await User.findByPk(req.user.id);
-    if (!user) return res.status(404).json({ message: 'User not found.' });
-
-    if (user.isVerified) {
-      return res.status(400).json({ message: 'Email already verified.' });
+    const cleanEmail = String(req.body?.email || '').toLowerCase().trim();
+    if (!validator.isEmail(cleanEmail)) {
+      return res.status(400).json({ message: 'Valid email is required.' });
     }
 
-    const rawToken = await createVerificationToken(user.id);
-    await sendVerificationEmail({ to: user.email, token: rawToken });
+    const pendingRegistration = await PendingRegistration.findOne({ where: { email: cleanEmail } });
+    if (!pendingRegistration) {
+      return res.status(404).json({ message: 'No pending registration found for this email.' });
+    }
+
+    const rawToken = await createVerificationToken();
+    pendingRegistration.tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    pendingRegistration.expiresAt = new Date(Date.now() + EMAIL_TOKEN_TTL_MS);
+    await pendingRegistration.save();
+    await sendVerificationEmail({ to: pendingRegistration.email, token: rawToken });
 
     return res.status(200).json({
       message: 'Verification email sent.',
@@ -231,7 +315,7 @@ export const login = async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials.' });
     }
 
-    if (!user.isVerified) {
+    if (!EMAIL_VERIFICATION_DISABLED && !user.isVerified) {
       return res.status(403).json({
         code: 'EMAIL_NOT_VERIFIED',
         message: 'Please verify your email before logging in.',
@@ -239,15 +323,11 @@ export const login = async (req, res) => {
     }
 
     const token = issueAccessToken(user);
+    const authUser = await buildAuthUser(user);
 
     return res.json({
       token,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        isVerified: user.isVerified,
-      },
+      user: authUser,
       message: 'Login successful',
     });
   } catch (err) {
@@ -262,7 +342,8 @@ export const me = async (req, res) => {
       attributes: ['id', 'email', 'role', 'isVerified', 'createdAt'],
     });
     if (!user) return res.status(404).json({ message: 'User not found.' });
-    return res.json({ user });
+    const authUser = await buildAuthUser(user);
+    return res.json({ user: { ...authUser, createdAt: user.createdAt } });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });

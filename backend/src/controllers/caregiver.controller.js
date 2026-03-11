@@ -38,7 +38,7 @@ async function resolveCaregiver({ caregiverId, caregiverEmail }) {
 
 async function getCaregiverPermission(caregiverId, patientId) {
   return CaregiverPatientPermission.findOne({
-    where: { caregiverId, patientId },
+    where: { caregiverId, patientId, status: "active" },
   });
 }
 
@@ -51,7 +51,7 @@ async function requireCaregiverPermissionOrThrow(caregiverId, patientId, permiss
 export async function assignCaregiver(req, res) {
   try {
     if (req.user?.role !== "patient") {
-      return res.status(403).json({ message: "Only patients can assign caregivers." });
+      return res.status(403).json({ message: "Only patients can request caregivers." });
     }
 
     const patientId = req.user.id;
@@ -62,26 +62,45 @@ export async function assignCaregiver(req, res) {
       return res.status(400).json({ message: "Caregiver not found or user is not a caregiver." });
     }
 
+    const conflictingLink = await CaregiverPatientPermission.findOne({
+      where: {
+        patientId,
+        status: { [Op.in]: ["pending", "active"] },
+        caregiverId: { [Op.ne]: caregiver.id },
+      },
+    });
+    if (conflictingLink) {
+      return res.status(409).json({
+        message: "Patient already has a caregiver link or pending caregiver request.",
+      });
+    }
+
     const permissionData = normalizePermissionPayload(permissions);
     const [link, created] = await CaregiverPatientPermission.findOrCreate({
       where: { caregiverId: caregiver.id, patientId },
       defaults: {
         caregiverId: caregiver.id,
         patientId,
+        status: "pending",
         ...permissionData,
       },
     });
 
-    if (!created && Object.keys(permissionData).length > 0) {
-      await link.update(permissionData);
+    if (!created) {
+      if (link.status === "rejected") {
+        await link.update({ ...permissionData, status: "pending" });
+      } else if (Object.keys(permissionData).length > 0) {
+        await link.update(permissionData);
+      }
     }
 
     return res.status(created ? 201 : 200).json({
-      message: created ? "Caregiver assigned." : "Caregiver assignment updated.",
+      message: link.status === "active" ? "Caregiver already linked." : "Caregiver request sent.",
       assignment: {
         caregiverId: caregiver.id,
         caregiverEmail: caregiver.email,
         patientId,
+        status: link.status,
         permissions: {
           canViewMedications: link.canViewMedications,
           canViewSymptoms: link.canViewSymptoms,
@@ -114,7 +133,9 @@ export async function updateCaregiverPermissions(req, res) {
       return res.status(400).json({ message: "No valid permission fields provided." });
     }
 
-    const link = await getCaregiverPermission(caregiverId, patientId);
+    const link = await CaregiverPatientPermission.findOne({
+      where: { caregiverId, patientId, status: "active" },
+    });
     if (!link) {
       return res.status(404).json({ message: "Caregiver assignment not found." });
     }
@@ -171,7 +192,7 @@ export async function listMyCaregivers(req, res) {
 
     const patientId = req.user.id;
     const links = await CaregiverPatientPermission.findAll({
-      where: { patientId },
+      where: { patientId, status: "active" },
       order: [["updatedAt", "DESC"]],
     });
 
@@ -218,7 +239,7 @@ export async function listPatientsUnderCare(req, res) {
 
     const caregiverId = req.user.id;
     const links = await CaregiverPatientPermission.findAll({
-      where: { caregiverId },
+      where: { caregiverId, status: "active" },
       order: [["updatedAt", "DESC"]],
     });
 
@@ -254,6 +275,128 @@ export async function listPatientsUnderCare(req, res) {
       message: "Server error.",
       debug: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
+  }
+}
+
+export async function listCaregiverRequests(req, res) {
+  try {
+    if (req.user?.role === "caregiver") {
+      const links = await CaregiverPatientPermission.findAll({
+        where: { caregiverId: req.user.id, status: "pending" },
+        order: [["createdAt", "DESC"]],
+      });
+      const patientIds = links.map((link) => link.patientId);
+      const patients = patientIds.length
+        ? await User.findAll({
+            where: { id: { [Op.in]: patientIds } },
+            attributes: ["id", "email", "role"],
+          })
+        : [];
+      const patientMap = new Map(patients.map((patient) => [patient.id, patient]));
+
+      return res.json({
+        requests: links.map((link) => ({
+          caregiverId: link.caregiverId,
+          patientId: link.patientId,
+          status: link.status,
+          createdAt: link.createdAt,
+          patient: patientMap.get(link.patientId) || null,
+          permissions: {
+            canViewMedications: link.canViewMedications,
+            canViewSymptoms: link.canViewSymptoms,
+            canViewAppointments: link.canViewAppointments,
+            canMessageDoctor: link.canMessageDoctor,
+            canReceiveReminders: link.canReceiveReminders,
+          },
+        })),
+      });
+    }
+
+    if (req.user?.role === "patient") {
+      const links = await CaregiverPatientPermission.findAll({
+        where: { patientId: req.user.id, status: "pending" },
+        order: [["createdAt", "DESC"]],
+      });
+      const caregiverIds = links.map((link) => link.caregiverId);
+      const caregivers = caregiverIds.length
+        ? await User.findAll({
+            where: { id: { [Op.in]: caregiverIds } },
+            attributes: ["id", "email", "role"],
+          })
+        : [];
+      const caregiverMap = new Map(caregivers.map((caregiver) => [caregiver.id, caregiver]));
+
+      return res.json({
+        requests: links.map((link) => ({
+          caregiverId: link.caregiverId,
+          patientId: link.patientId,
+          status: link.status,
+          createdAt: link.createdAt,
+          caregiver: caregiverMap.get(link.caregiverId) || null,
+          permissions: {
+            canViewMedications: link.canViewMedications,
+            canViewSymptoms: link.canViewSymptoms,
+            canViewAppointments: link.canViewAppointments,
+            canMessageDoctor: link.canMessageDoctor,
+            canReceiveReminders: link.canReceiveReminders,
+          },
+        })),
+      });
+    }
+
+    return res.status(403).json({ message: "Only caregivers or patients can view caregiver requests." });
+  } catch (err) {
+    console.error("list caregiver requests error:", err);
+    return res.status(500).json({ message: "Server error." });
+  }
+}
+
+export async function reviewCaregiverRequest(req, res) {
+  try {
+    if (req.user?.role !== "caregiver") {
+      return res.status(403).json({ message: "Only caregivers can review caregiver requests." });
+    }
+
+    const { patientId } = req.params;
+    const decision = String(req.body?.status || "").toLowerCase().trim();
+    if (!["active", "rejected"].includes(decision)) {
+      return res.status(400).json({ message: "status must be active or rejected." });
+    }
+
+    const link = await CaregiverPatientPermission.findOne({
+      where: { caregiverId: req.user.id, patientId, status: "pending" },
+    });
+    if (!link) {
+      return res.status(404).json({ message: "Pending caregiver request not found." });
+    }
+
+    if (decision === "active") {
+      const conflictingLink = await CaregiverPatientPermission.findOne({
+        where: {
+          patientId,
+          status: { [Op.in]: ["pending", "active"] },
+          caregiverId: { [Op.ne]: req.user.id },
+        },
+      });
+      if (conflictingLink) {
+        return res.status(409).json({
+          message: "Patient already has another caregiver link or pending caregiver request.",
+        });
+      }
+    }
+
+    await link.update({ status: decision });
+    return res.json({
+      message: decision === "active" ? "Caregiver request approved." : "Caregiver request rejected.",
+      assignment: {
+        caregiverId: link.caregiverId,
+        patientId: link.patientId,
+        status: link.status,
+      },
+    });
+  } catch (err) {
+    console.error("review caregiver request error:", err);
+    return res.status(500).json({ message: "Server error." });
   }
 }
 
