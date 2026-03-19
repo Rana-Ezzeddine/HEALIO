@@ -4,6 +4,8 @@ function makeApiError(data, fallback, status) {
   const err = new Error(data.message || fallback);
   err.code = data.code;
   err.status = status;
+  if (data.email) err.email = data.email;
+  if (data.user) err.user = data.user;
   return err;
 }
 

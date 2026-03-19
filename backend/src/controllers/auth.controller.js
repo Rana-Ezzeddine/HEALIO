@@ -61,6 +61,15 @@ const buildAuthUser = async (user) => {
   };
 };
 
+const buildPendingAuthUser = ({ firstName, lastName, email, role }) => ({
+  id: null,
+  email,
+  role,
+  isVerified: false,
+  firstName,
+  lastName,
+});
+
 const createVerifiedUserWithProfile = async ({ firstName, lastName, email, passwordHash, role }) => {
   const user = await User.create({
     email,
@@ -111,14 +120,17 @@ export const register = async (req, res) => {
       });
     }
 
-    const validRoles = ["patient", "doctor", "caregiver"];
+    const validRoles = ['patient', 'doctor', 'caregiver'];
 
     if (!role || !validRoles.includes(role)) {
-      return res.status(400).json({ message: "Invalid role" });
+      return res.status(400).json({ message: 'Invalid role' });
     }
     const userRole = role;
 
-    const cleanEmail = String(email || "").toLowerCase().trim();
+    const cleanEmail = String(email || '').toLowerCase().trim();
+    const cleanFirstName = firstName.trim();
+    const cleanLastName = lastName.trim();
+
     await PendingRegistration.destroy({
       where: {
         email: cleanEmail,
@@ -138,8 +150,8 @@ export const register = async (req, res) => {
 
     if (EMAIL_VERIFICATION_DISABLED) {
       const user = await createVerifiedUserWithProfile({
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
+        firstName: cleanFirstName,
+        lastName: cleanLastName,
         email: cleanEmail,
         passwordHash,
         role: userRole,
@@ -151,16 +163,23 @@ export const register = async (req, res) => {
         message: 'Registered successfully. Email verification is disabled for local testing.',
         token,
         user: authUser,
+        verificationRequired: false,
       });
     }
 
     const rawToken = await createVerificationToken();
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const pendingUser = buildPendingAuthUser({
+      firstName: cleanFirstName,
+      lastName: cleanLastName,
+      email: cleanEmail,
+      role: userRole,
+    });
 
     try {
       await PendingRegistration.create({
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
+        firstName: cleanFirstName,
+        lastName: cleanLastName,
         email: cleanEmail,
         passwordHash,
         role: userRole,
@@ -171,6 +190,8 @@ export const register = async (req, res) => {
 
       return res.status(201).json({
         message: 'Registered successfully. Please verify your email.',
+        user: pendingUser,
+        verificationRequired: true,
         ...(process.env.NODE_ENV === 'test' ? { verificationToken: rawToken } : {}),
       });
     } catch (mailErr) {
@@ -200,25 +221,37 @@ export const verifyEmail = async (req, res) => {
   try {
     const rawToken = String(req.body?.token || req.query?.token || '').trim();
     if (!rawToken) {
-      return res.status(400).json({ message: 'Verification token is required.' });
+      return res.status(400).json({
+        code: 'VERIFICATION_TOKEN_MISSING',
+        message: 'Verification token is required.',
+      });
     }
 
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
     const pendingRegistration = await PendingRegistration.findOne({ where: { tokenHash } });
 
     if (!pendingRegistration) {
-      return res.status(400).json({ message: 'Invalid verification token.' });
+      return res.status(400).json({
+        code: 'VERIFICATION_TOKEN_INVALID',
+        message: 'Invalid verification token.',
+      });
     }
 
     if (new Date(pendingRegistration.expiresAt) < new Date()) {
-      await PendingRegistration.destroy({ where: { id: pendingRegistration.id } });
-      return res.status(400).json({ message: 'Token expired.' });
+      return res.status(400).json({
+        code: 'VERIFICATION_TOKEN_EXPIRED',
+        message: 'Verification link expired. Request a new email and try again.',
+        email: pendingRegistration.email,
+      });
     }
 
     const existingUser = await User.findOne({ where: { email: pendingRegistration.email } });
     if (existingUser) {
       await PendingRegistration.destroy({ where: { id: pendingRegistration.id } });
-      return res.status(409).json({ message: 'Email already registered.' });
+      return res.status(409).json({
+        code: 'EMAIL_ALREADY_REGISTERED',
+        message: 'Email already registered.',
+      });
     }
 
     let user;
@@ -279,7 +312,17 @@ export const resendVerification = async (req, res) => {
     pendingRegistration.tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
     pendingRegistration.expiresAt = new Date(Date.now() + EMAIL_TOKEN_TTL_MS);
     await pendingRegistration.save();
-    await sendVerificationEmail({ to: pendingRegistration.email, token: rawToken });
+
+    try {
+      await sendVerificationEmail({ to: pendingRegistration.email, token: rawToken });
+    } catch (mailErr) {
+      if (mailErr.message === 'SMTP_NOT_CONFIGURED') {
+        return res.status(503).json({
+          message: 'Email verification is not configured on the server. Add SMTP settings before resending.',
+        });
+      }
+      throw mailErr;
+    }
 
     return res.status(200).json({
       message: 'Verification email sent.',
@@ -306,8 +349,23 @@ export const login = async (req, res) => {
     const cleanEmail = String(email || '').toLowerCase().trim();
 
     const user = await User.scope('withPassword').findOne({ where: { email: cleanEmail } });
+
     if (!user) {
-      return res.status(401).json({ message: 'Invalid credentials.' });
+      const pendingRegistration = await PendingRegistration.findOne({ where: { email: cleanEmail } });
+      if (!pendingRegistration) {
+        return res.status(401).json({ message: 'Invalid credentials.' });
+      }
+
+      const okPending = await bcrypt.compare(password, pendingRegistration.passwordHash);
+      if (!okPending) {
+        return res.status(401).json({ message: 'Invalid credentials.' });
+      }
+
+      return res.status(403).json({
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'Please verify your email before logging in.',
+        email: cleanEmail,
+      });
     }
 
     const ok = await bcrypt.compare(password, user.passwordHash);
@@ -319,6 +377,7 @@ export const login = async (req, res) => {
       return res.status(403).json({
         code: 'EMAIL_NOT_VERIFIED',
         message: 'Please verify your email before logging in.',
+        email: cleanEmail,
       });
     }
 

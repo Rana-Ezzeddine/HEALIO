@@ -1,5 +1,4 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
 import { clearSession, getUser } from "../api/http";
 import logo from "../assets/logo.png";
 
@@ -7,13 +6,7 @@ export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [userRole, setUserRole] = useState(getUser()?.role?.toLowerCase() || null);
-
-  useEffect(() => {
-    const role = getUser()?.role?.toLowerCase() || null;
-    setUserRole(role);
-  }, [location]); // re-check role when route changes
-
+  const userRole = getUser()?.role?.toLowerCase() || null;
   const isDoctor = userRole === "doctor";
   const isPatient = userRole === "patient";
   const dashboardPathByRole = {
@@ -41,7 +34,6 @@ export default function Navbar() {
 
   function handleLogout() {
     clearSession();
-    setUserRole(null);
     navigate("/");
   }
 
@@ -53,7 +45,6 @@ export default function Navbar() {
                      bg-white/70 backdrop-blur-md border border-white/60
                      shadow-sm px-6 py-3"
         >
-
           <button
             onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
             className="flex items-center gap-2"
@@ -62,7 +53,6 @@ export default function Navbar() {
             <span className="font-bold text-slate-800">Healio</span>
           </button>
 
-          {/* Actions */}
           <div className="flex items-center gap-6">
             {isLanding ? (
               <>
@@ -82,23 +72,22 @@ export default function Navbar() {
                 </button>
               </>
             ) : (
-
               <>
                 <button
                   onClick={() => navigate(dashboardPath)}
                   className={`text-sm font-medium transition ${isDashboard ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
-                    }`}>
+                    }`}
+                >
                   Dashboard
                 </button>
                 {!isDoctor && (
-                  <>
-                    <button
-                      onClick={() => navigate("/medication")}
-                      className={`text-sm font-medium transition ${isMedication ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
-                        }`}>
-                      Medications
-                    </button>
-                  </>
+                  <button
+                    onClick={() => navigate("/medication")}
+                    className={`text-sm font-medium transition ${isMedication ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                      }`}
+                  >
+                    Medications
+                  </button>
                 )}
 
                 {isDoctor && (
@@ -145,7 +134,8 @@ export default function Navbar() {
                 <button
                   onClick={() => navigate(profilePath)}
                   className={`text-sm font-medium transition ${isProfile ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
-                    }`}>
+                    }`}
+                >
                   Profile
                 </button>
 
