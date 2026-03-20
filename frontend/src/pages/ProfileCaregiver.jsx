@@ -1,6 +1,7 @@
-import { apiUrl, authHeaders } from "../api/http";
+import { apiUrl, authHeaders, getUser } from "../api/http";
 import Navbar from "../components/Navbar";
 import { useState, useEffect } from "react";
+import { getCaregiverLinkRequests, reviewCaregiverLinkRequest } from "../api/links";
 import userMale from "../assets/userMale.png"
 import userFemale from "../assets/userFemale.png"
 
@@ -78,24 +79,45 @@ export default function ProfileCaregiver(){
 
   //caregiver info
   const[relationshipToPatient, setRelationshipToPatient] = useState("");
-  const[linkedPatientName, setLinkedPatientName] = useState("");
-  const[patientLinkCode, setPatientLinkCode] = useState("");
   const[supportNotes, setSupportNotes] = useState("");
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const [activePatients, setActivePatients] = useState([]);
+  const [requestError, setRequestError] = useState("");
 
     //contact info
     const[email, setEmail] = useState("");
     const[phone, setPhone] = useState("");
 
     function hydrateFromSession() {
-      const storedUser = JSON.parse(localStorage.getItem("user") || "null");
-      setFirstName(localStorage.getItem("firstName") || "");
-      setLastName(localStorage.getItem("lastName") || "");
-      setEmail(storedUser?.email || localStorage.getItem("email") || "");
+      const storedUser = getUser();
+      setFirstName(storedUser?.firstName || "");
+      setLastName(storedUser?.lastName || "");
+      setEmail(storedUser?.email || "");
+    }
+
+    async function loadCaregiverLinks() {
+      try {
+        const [requestsRes, patientsRes] = await Promise.all([
+          getCaregiverLinkRequests(),
+          fetch(`${apiUrl}/api/caregivers/patients`, {
+            headers: { "Content-Type": "application/json", ...authHeaders() },
+          }).then(async (res) => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.message || "Failed to load linked patients.");
+            return data;
+          }),
+        ]);
+        setPendingRequests(requestsRes.requests || []);
+        setActivePatients(patientsRes.patients || []);
+      } catch (err) {
+        console.error("Failed to load caregiver links", err);
+      }
     }
 
     useEffect(() => {
   (async () => {
     try {
+      await loadCaregiverLinks();
       const res = await fetch(`${apiUrl}/api/profile`, {
         headers: { "Content-Type": "application/json", ...authHeaders() },
       });
@@ -119,8 +141,6 @@ export default function ProfileCaregiver(){
       setDateOfBirth(p.dateOfBirth || "");
 
       setRelationshipToPatient(p.relationshipToPatient || "");
-      setLinkedPatientName(p.linkedPatientName || "");
-      setPatientLinkCode(p.patientLinkCode || localStorage.getItem("pendingPatientLinkCode") || "");
       setSupportNotes(p.supportNotes || "");
 
       setPhone(p.phoneNumber || "");
@@ -132,6 +152,16 @@ export default function ProfileCaregiver(){
     }
   })();
 }, []);
+
+    async function handleReviewRequest(patientId, status) {
+      setRequestError("");
+      try {
+        await reviewCaregiverLinkRequest(patientId, status);
+        await loadCaregiverLinks();
+      } catch (err) {
+        setRequestError(err.message || "Failed to review request.");
+      }
+    }
 
 
     async function handleSave() {
@@ -146,8 +176,6 @@ export default function ProfileCaregiver(){
       email,
 
       relationshipToPatient,
-      linkedPatientName,
-      patientLinkCode,
       supportNotes
       
     };
@@ -171,16 +199,10 @@ export default function ProfileCaregiver(){
     setDateOfBirth(data.dateOfBirth || "");
 
     setRelationshipToPatient(data.relationshipToPatient || "");
-    setLinkedPatientName(data.linkedPatientName || "");
-    setPatientLinkCode(data.patientLinkCode || patientLinkCode);
     setSupportNotes(data.supportNotes || "");
     
     setPhone(data.phoneNumber || "");
     setEmail(data.email || "");
-
-    if (data.patientLinkCode || patientLinkCode) {
-      localStorage.setItem("pendingPatientLinkCode", data.patientLinkCode || patientLinkCode);
-    }
 
     // Keep dashboard/session name in sync with profile edits
     localStorage.setItem("firstName", data.firstName || firstName);
@@ -196,17 +218,15 @@ export default function ProfileCaregiver(){
 
     function handleCancel() {
         setIsEditing(false);
-        setFirstName(localStorage.getItem("firstName") || "");
-        setLastName(localStorage.getItem("lastName") || "");
+        setFirstName(getUser()?.firstName || "");
+        setLastName(getUser()?.lastName || "");
         setGender(localStorage.getItem("gender") || "");
         setDateOfBirth(localStorage.getItem("dateOfBirth") || "");
 
-        setEmail(localStorage.getItem("email") || "");
+        setEmail(getUser()?.email || "");
         setPhone(localStorage.getItem("phone") || "");
 
         setRelationshipToPatient(localStorage.getItem("relationshipToPatient") || "");
-        setLinkedPatientName(localStorage.getItem("linkedPatientName") || "");
-        setPatientLinkCode(localStorage.getItem("pendingPatientLinkCode") || "");
         setSupportNotes(localStorage.getItem("supportNotes") || "");
     }
 
@@ -271,11 +291,7 @@ export default function ProfileCaregiver(){
             <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
               <h2 className="text-xl font-semibold text-slate-800 mb-4">Caregiving Information</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> 
-                <div className="sm:col-span-2">
-                    <FormInput label="Linked Patient Name" type="text" value={linkedPatientName} onChange={(e)=>setLinkedPatientName(e.target.value)} isEditing={isEditing} />
-                </div>
                 <FormInput label="Relationship to Patient" type="text" value={relationshipToPatient} onChange={(e)=>setRelationshipToPatient(e.target.value)} isEditing={isEditing} />
-                <FormInput label="Patient Link Code" type="text" value={patientLinkCode} onChange={(e)=>setPatientLinkCode(e.target.value)} isEditing={isEditing} />
                 <div className="sm:col-span-2">
                   <FormInput label="Support Notes" type="textarea" value={supportNotes} onChange={(e)=>setSupportNotes(e.target.value)} isEditing={isEditing} />
                 </div>
@@ -287,6 +303,45 @@ export default function ProfileCaregiver(){
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> 
                 <FormInput label="Phone Number" type="text" value={phone} onChange={(e)=>setPhone(e.target.value)} isEditing={isEditing} />
                 <FormInput label="Email" type="text" value={email} onChange={(e)=>setEmail(e.target.value)} isEditing={isEditing} />
+              </div>
+            </section>
+
+            <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
+              <h2 className="text-xl font-semibold text-slate-800 mb-4">Patient Link Requests</h2>
+              {requestError ? <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{requestError}</div> : null}
+              <div className="space-y-3">
+                {pendingRequests.length > 0 ? pendingRequests.map((request) => (
+                  <div key={request.patientId} className="rounded-xl border border-slate-200 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-slate-800">{request.patient?.email || "Patient"}</p>
+                        <p className="text-sm text-slate-500">Pending patient request</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => handleReviewRequest(request.patientId, "active")} className="rounded-lg bg-emerald-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-600">
+                          Approve
+                        </button>
+                        <button type="button" onClick={() => handleReviewRequest(request.patientId, "rejected")} className="rounded-lg bg-rose-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-600">
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )) : <p className="text-sm text-slate-500">No pending patient requests.</p>}
+              </div>
+            </section>
+
+            <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
+              <h2 className="text-xl font-semibold text-slate-800 mb-4">Patients Under Care</h2>
+              <div className="space-y-2">
+                {activePatients.length > 0 ? activePatients.map(({ patient, permissions }) => (
+                  <div key={patient.id} className="rounded-xl border border-slate-200 px-3 py-2">
+                    <p className="font-medium text-slate-800">{patient.email}</p>
+                    <p className="text-sm text-slate-500">
+                      Permissions: {Object.entries(permissions).filter(([, value]) => Boolean(value)).map(([key]) => key).join(", ") || "None"}
+                    </p>
+                  </div>
+                )) : <p className="text-sm text-slate-500">No active patients linked yet.</p>}
               </div>
             </section>
           </div>

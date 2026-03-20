@@ -40,7 +40,7 @@ const Appointment = sequelize.define('Appointment', {
     allowNull: true
   },
   status: {
-    type: DataTypes.ENUM('scheduled', 'cancelled', 'completed'),
+    type: DataTypes.ENUM('requested', 'scheduled', 'cancelled', 'completed', 'denied'),
     allowNull: false,
     defaultValue: 'scheduled'
   },

@@ -35,6 +35,7 @@ import "./src/models/index.js";
 
 // Middleware
 import activityLogger from './src/middleware/activityLogger.js';
+import { startPendingRegistrationCleanupJob } from './src/services/pendingRegistrationCleanup.service.js';
 
 // Routes
 import authRoutes from "./src/routes/auth.routes.js";
@@ -59,6 +60,7 @@ import searchRoutes from './src/routes/search.routes.js';
 /////////////////////////////////////////////////
 const app = express();
 const PORT = process.env.PORT || 5050;
+let pendingRegistrationCleanupInterval = null;
 
 /////////////////////////////////////////////////
 // Middlewares
@@ -173,6 +175,8 @@ const startServer = async () => {
       console.log("✓ Migrations detected (database schema ready)");
     }
 
+    pendingRegistrationCleanupInterval = startPendingRegistrationCleanupJob();
+
     app.listen(PORT, () => {
       console.log(`
 ╔═══════════════════════════════════════╗
@@ -200,6 +204,10 @@ const shutdown = async () => {
   console.log("\nShutting down gracefully...");
 
   try {
+    if (pendingRegistrationCleanupInterval) {
+      clearInterval(pendingRegistrationCleanupInterval);
+      pendingRegistrationCleanupInterval = null;
+    }
     await sequelize.close();
     console.log("PostgreSQL connection closed");
     process.exit(0);

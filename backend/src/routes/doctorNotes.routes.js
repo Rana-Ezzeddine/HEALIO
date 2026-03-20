@@ -9,11 +9,13 @@ import {
 } from '../controllers/doctorNotesController.js';
 import requireUser from '../middleware/requireUser.js';
 import requireVerified from '../middleware/requireVerified.js';
+import requireDoctorProductAccessIfDoctor from '../middleware/requireDoctorProductAccessIfDoctor.js';
 
 const router = express.Router();
 
 router.use(requireUser);
 router.use(requireVerified);
+router.use(requireDoctorProductAccessIfDoctor);
 
 //Patient view of doctor notes and treatment plans
 

@@ -1,85 +1,56 @@
-import sequelize from '../database.js';
+import sequelize from "../database.js";
 
-export const addPerformanceIndexes = async () => {
+const INDEXES = [
+  { table: "medications", columns: ["patientId"], name: "idx_medications_patient_id" },
+  { table: "medications", columns: ["prescribedBy"], name: "idx_medications_prescribed_by" },
+  { table: "medications", columns: ["startDate"], name: "idx_medications_start_date" },
+  { table: "medications", columns: ["endDate"], name: "idx_medications_end_date" },
+  { table: "medications", columns: ["createdAt"], name: "idx_medications_created_at" },
+  { table: "symptoms", columns: ["patientId"], name: "idx_symptoms_patient_id" },
+  { table: "symptoms", columns: ["severity"], name: "idx_symptoms_severity" },
+  { table: "symptoms", columns: ["createdAt"], name: "idx_symptoms_created_at" },
+  { table: "appointments", columns: ["patientId"], name: "idx_appointments_patient_id" },
+  { table: "appointments", columns: ["doctorId"], name: "idx_appointments_doctor_id" },
+  { table: "appointments", columns: ["createdAt"], name: "idx_appointments_date" },
+  { table: "appointments", columns: ["status"], name: "idx_appointments_status" },
+  { table: "diagnoses", columns: ["patientId"], name: "idx_diagnoses_patient_id" },
+  { table: "diagnoses", columns: ["diagnosedAt"], name: "idx_diagnoses_diagnosis_date" },
+  { table: "medications", columns: ["patientId", "endDate"], name: "idx_medications_patient_active" },
+  { table: "symptoms", columns: ["patientId", "createdAt"], name: "idx_symptoms_patient_recent" },
+];
+
+async function addIndexes() {
   const queryInterface = sequelize.getQueryInterface();
 
-  const indexes = [
-    // Medication indexes
-    { table: 'medications', column: ['patientId'], name: 'idx_medications_patient_id' },
-    { table: 'medications', column: ['prescribedBy'], name: 'idx_medications_prescribed_by' },
-    { table: 'medications', column: ['startDate'], name: 'idx_medications_start_date' },
-    { table: 'medications', column: ['endDate'], name: 'idx_medications_end_date' },
-    { table: 'medications', column: ['createdAt'], name: 'idx_medications_created_at' },
-
-    // Symptom indexes
-    { table: 'symptoms', column: ['patientId'], name: 'idx_symptoms_patient_id' },
-    { table: 'symptoms', column: ['severity'], name: 'idx_symptoms_severity' },
-    { table: 'symptoms', column: ['createdAt'], name: 'idx_symptoms_created_at' },
-
-    // Appointment indexes
-    { table: 'appointments', column: ['patientId'], name: 'idx_appointments_patient_id' },
-    { table: 'appointments', column: ['doctorId'], name: 'idx_appointments_doctor_id' },
-    { table: 'appointments', column: ['createdAt'], name: 'idx_appointments_date' },
-    { table: 'appointments', column: ['status'], name: 'idx_appointments_status' },
-
-    // Diagnosis indexes
-    { table: 'diagnoses', column: ['patientId'], name: 'idx_diagnoses_patient_id' },
-    { table: 'diagnoses', column: ['diagnosedAt'], name: 'idx_diagnoses_diagnosis_date' },
-
-    // Composite indexes
-    { table: 'medications', column: ['patientId', 'endDate'], name: 'idx_medications_patient_active' },
-    { table: 'symptoms', column: ['patientId', 'createdAt'], name: 'idx_symptoms_patient_recent' },
-  ];
-
-  console.log('Adding performance indexes...');
-  for (const { table, column, name } of indexes) {
+  for (const { table, columns, name } of INDEXES) {
     try {
-      await queryInterface.addIndex(table, column, { name });
-      console.log(`✓ Index created: ${name}`);
+      await queryInterface.addIndex(table, columns, { name });
     } catch (err) {
-      if (err.original && err.original.code === '42P07') {
-        console.log(`Index already exists, skipping: ${name}`);
-      } else {
-        console.error(`Error adding index ${name}:`, err);
+      if (err.original?.code !== "42P07") {
+        throw err;
       }
     }
   }
-  console.log('✓ All indexes processed');
-};
+}
 
-export const removePerformanceIndexes = async () => {
+async function removeIndexes() {
   const queryInterface = sequelize.getQueryInterface();
 
-  const indexes = [
-    { table: 'medications', name: 'idx_medications_patient_id' },
-    { table: 'medications', name: 'idx_medications_prescribed_by' },
-    { table: 'medications', name: 'idx_medications_start_date' },
-    { table: 'medications', name: 'idx_medications_end_date' },
-    { table: 'medications', name: 'idx_medications_created_at' },
-
-    { table: 'symptoms', name: 'idx_symptoms_patient_id' },
-    { table: 'symptoms', name: 'idx_symptoms_severity' },
-    { table: 'symptoms', name: 'idx_symptoms_created_at' },
-
-    { table: 'appointments', name: 'idx_appointments_patient_id' },
-    { table: 'appointments', name: 'idx_appointments_doctor_id' },
-    { table: 'appointments', name: 'idx_appointments_date' },
-    { table: 'appointments', name: 'idx_appointments_status' },
-
-    { table: 'diagnoses', name: 'idx_diagnoses_patient_id' },
-    { table: 'diagnoses', name: 'idx_diagnoses_diagnosis_date' },
-
-    { table: 'medications', name: 'idx_medications_patient_active' },
-    { table: 'symptoms', name: 'idx_symptoms_patient_recent' },
-  ];
-
-  for (const { table, name } of indexes) {
+  for (const { table, name } of INDEXES) {
     try {
       await queryInterface.removeIndex(table, name);
-      console.log(`✓ Index removed: ${name}`);
-    } catch (err) {
-      console.log(`Index ${name} not found or could not be removed, skipping...`);
+    } catch {
+      // Ignore missing indexes so rollback remains idempotent.
     }
   }
-  console.log('✓ All indexes removal attempted');
-};
+}
+
+export async function up() {
+  await addIndexes();
+}
+
+export async function down() {
+  await removeIndexes();
+}
+
+export default { up, down };

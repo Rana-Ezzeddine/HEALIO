@@ -25,9 +25,9 @@ const DoctorPatientAssignment = sequelize.define('DoctorPatientAssignment', {
     onUpdate: 'CASCADE'
   },
   status: {
-    type: DataTypes.ENUM('active', 'inactive'),
+    type: DataTypes.STRING,
     allowNull: false,
-    defaultValue: 'active'
+    defaultValue: 'pending',
   }
 }, {
   tableName: 'doctor_patient_assignments',

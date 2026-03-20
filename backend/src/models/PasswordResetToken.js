@@ -1,7 +1,7 @@
 import { DataTypes } from 'sequelize';
 import sequelize from '../../database.js';
 
-const EmailVerificationToken = sequelize.define('EmailVerificationToken', {
+const PasswordResetToken = sequelize.define('PasswordResetToken', {
   id: {
     type: DataTypes.UUID,
     defaultValue: DataTypes.UUIDV4,
@@ -12,7 +12,7 @@ const EmailVerificationToken = sequelize.define('EmailVerificationToken', {
     allowNull: false,
   },
   tokenHash: {
-    type: DataTypes.STRING,
+    type: DataTypes.STRING(64),
     allowNull: false,
     unique: true,
   },
@@ -20,17 +20,21 @@ const EmailVerificationToken = sequelize.define('EmailVerificationToken', {
     type: DataTypes.DATE,
     allowNull: false,
   },
-  usedAt: {
-    type: DataTypes.DATE,
-    allowNull: true,
-  },
 }, {
-  tableName: 'email_verification_tokens',
+  tableName: 'password_reset_tokens',
   timestamps: true,
   indexes: [
-    { fields: ['userId'] },
-    { fields: ['expiresAt'] },
+    {
+      fields: ['userId'],
+    },
+    {
+      unique: true,
+      fields: ['tokenHash'],
+    },
+    {
+      fields: ['expiresAt'],
+    },
   ],
 });
 
-export default EmailVerificationToken;
+export default PasswordResetToken;

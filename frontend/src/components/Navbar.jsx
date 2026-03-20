@@ -1,23 +1,39 @@
-import { useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
-import { clearSession } from "../api/http";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { clearSession, getUser } from "../api/http";
+import { needsDoctorApprovalHold } from "../utils/authRouting";
 import logo from "../assets/logo.png";
 
-export default function Navbar() {
+const PUBLIC_PATHS = new Set(["/", "/support", "/privacy", "/terms"]);
+
+function PublicNavLink({ to, children }) {
+  const isAnchor = to.startsWith("#");
+
+  if (isAnchor) {
+    return (
+      <a href={to} className="text-sm font-medium text-slate-600 transition hover:text-slate-900">
+        {children}
+      </a>
+    );
+  }
+
+  return (
+    <Link to={to} className="text-sm font-medium text-slate-600 transition hover:text-slate-900">
+      {children}
+    </Link>
+  );
+}
+
+export default function Navbar({ onLogin, onSignup }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-  const [userRole, setUserRole] = useState(
-    localStorage.getItem("userRole")?.toLowerCase()
-  );
-
-  useEffect(() => {
-    const role = localStorage.getItem("userRole")?.toLowerCase();
-    setUserRole(role);
-  }, [location]); // re-check role when route changes
-
+  const user = getUser();
+  const userRole = user?.role?.toLowerCase() || null;
   const isDoctor = userRole === "doctor";
   const isPatient = userRole === "patient";
+  const doctorApprovalHeld = needsDoctorApprovalHold(user);
   const dashboardPathByRole = {
     doctor: "/dashboardDoctor",
     patient: "/dashboardPatient",
@@ -30,53 +46,91 @@ export default function Navbar() {
   };
   const dashboardPath = dashboardPathByRole[userRole] || "/dashboardPatient";
   const profilePath = profilePathByRole[userRole] || "/profilePatient";
+  const homePath = isDoctor && doctorApprovalHeld ? "/doctor-approval-status" : dashboardPath;
 
   const path = location.pathname;
   const isDashboard = path.toLowerCase().startsWith("/dashboard");
   const isProfile = path.toLowerCase().startsWith("/profile");
+  const isDoctorApprovalStatus = path.toLowerCase().startsWith("/doctor-approval-status");
   const isMedication = path.toLowerCase().startsWith("/medication");
   const isDoctorAppointments = path.toLowerCase().startsWith("/doctorappointments");
   const isPatientAppointments = path.toLowerCase().startsWith("/patientappointments");
   const isDoctorMessages = path.toLowerCase().startsWith("/doctormessages");
   const isPatientMessages = path.toLowerCase().startsWith("/patientmessages");
   const isLanding = path === "/";
+  const isPublicPage = PUBLIC_PATHS.has(path.toLowerCase());
 
   function handleLogout() {
     clearSession();
-    setUserRole(null);
+    setShowLogoutConfirm(false);
     navigate("/");
   }
 
   return (
     <header className="fixed top-0 left-0 w-full z-40">
+      {showLogoutConfirm ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-6 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl">
+            <h2 className="text-2xl font-extrabold text-slate-900">Log Out?</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              Are you sure you want to log out? Your current session will be cleared on this device.
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                className="h-11 flex-1 rounded-xl border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="h-11 flex-1 rounded-xl bg-sky-500 text-white font-semibold hover:bg-sky-600 transition"
+              >
+                Log Out
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="mx-auto max-w-7xl px-6 py-4">
         <div
           className="flex items-center justify-between rounded-2xl
                      bg-white/70 backdrop-blur-md border border-white/60
                      shadow-sm px-6 py-3"
         >
-
           <button
-            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+            onClick={() => navigate("/")}
             className="flex items-center gap-2"
           >
             <img src={logo} alt="Healio logo" className="h-8 w-auto" />
             <span className="font-bold text-slate-800">Healio</span>
           </button>
 
-          {/* Actions */}
           <div className="flex items-center gap-6">
-            {isLanding ? (
+            {isPublicPage ? (
               <>
+                <nav className="hidden items-center gap-5 lg:flex">
+                  <PublicNavLink to={isLanding ? "#roles" : "/#roles"}>Roles</PublicNavLink>
+                  <PublicNavLink to={isLanding ? "#features" : "/#features"}>Features</PublicNavLink>
+                  <PublicNavLink to={isLanding ? "#how-it-works" : "/#how-it-works"}>How It Works</PublicNavLink>
+                  <PublicNavLink to={isLanding ? "#trust" : "/#trust"}>Trust & Safety</PublicNavLink>
+                  <PublicNavLink to="/support">Support</PublicNavLink>
+                  <PublicNavLink to="/privacy">Privacy</PublicNavLink>
+                  <PublicNavLink to="/terms">Terms</PublicNavLink>
+                </nav>
+
                 <button
-                  onClick={() => navigate("/loginPage")}
+                  onClick={() => (isLanding && onLogin ? onLogin() : navigate("/loginPage"))}
                   className="text-sm font-medium text-slate-600 hover:text-slate-900 transition"
                 >
                   Login
                 </button>
 
                 <button
-                  onClick={() => navigate("/signup")}
+                  onClick={() => (isLanding && onSignup ? onSignup() : navigate("/signup"))}
                   className="rounded-lg bg-sky-500 px-5 py-2 text-sm font-semibold text-white
                             hover:bg-sky-600 transition shadow"
                 >
@@ -84,26 +138,32 @@ export default function Navbar() {
                 </button>
               </>
             ) : (
-
               <>
                 <button
-                  onClick={() => navigate(dashboardPath)}
-                  className={`text-sm font-medium transition ${isDashboard ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
-                    }`}>
-                  Dashboard
+                  onClick={() => navigate(homePath)}
+                  className={`text-sm font-medium transition ${
+                    isDoctor && doctorApprovalHeld
+                      ? isDoctorApprovalStatus
+                        ? "text-sky-700 font-semibold"
+                        : "text-slate-600 hover:text-slate-900"
+                      : isDashboard
+                        ? "text-sky-700 font-semibold"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                >
+                  {isDoctor && doctorApprovalHeld ? "Application Status" : "Dashboard"}
                 </button>
                 {!isDoctor && (
-                  <>
-                    <button
-                      onClick={() => navigate("/medication")}
-                      className={`text-sm font-medium transition ${isMedication ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
-                        }`}>
-                      Medications
-                    </button>
-                  </>
+                  <button
+                    onClick={() => navigate("/medication")}
+                    className={`text-sm font-medium transition ${isMedication ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                      }`}
+                  >
+                    Medications
+                  </button>
                 )}
 
-                {isDoctor && (
+                {isDoctor && !doctorApprovalHeld && (
                   <button
                     onClick={() => navigate("/doctorAppointments")}
                     className={`text-sm font-medium transition ${
@@ -123,7 +183,7 @@ export default function Navbar() {
                     Appointments
                   </button>
                 )}
-                {isDoctor && (
+                {isDoctor && !doctorApprovalHeld && (
                   <button
                     onClick={() => navigate("/doctorMessages")}
                     className={`text-sm font-medium transition ${
@@ -147,12 +207,13 @@ export default function Navbar() {
                 <button
                   onClick={() => navigate(profilePath)}
                   className={`text-sm font-medium transition ${isProfile ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
-                    }`}>
+                    }`}
+                >
                   Profile
                 </button>
 
                 <button
-                  onClick={handleLogout}
+                  onClick={() => setShowLogoutConfirm(true)}
                   className="rounded-lg bg-sky-500 px-5 py-2 text-sm font-semibold text-white
                             hover:bg-sky-600 transition shadow"
                 >

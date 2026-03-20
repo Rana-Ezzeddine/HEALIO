@@ -24,6 +24,11 @@ const CaregiverPatientPermission = sequelize.define('CaregiverPatientPermission'
     onDelete: 'CASCADE',
     onUpdate: 'CASCADE'
   },
+  status: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    defaultValue: 'pending'
+  },
   canViewMedications: {
     type: DataTypes.BOOLEAN,
     allowNull: false,
@@ -58,6 +63,9 @@ const CaregiverPatientPermission = sequelize.define('CaregiverPatientPermission'
     },
     {
       fields: ['patientId']
+    },
+    {
+      fields: ['status']
     }
   ]
 });

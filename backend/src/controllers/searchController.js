@@ -159,6 +159,7 @@ export const filterMedications = async (req, res) => {
     }
 
     const {
+      q,
       status,
       prescribedBy,
       startDate,
@@ -189,6 +190,18 @@ export const filterMedications = async (req, res) => {
 
     if (prescribedBy) whereConditions.prescribedBy = { [Op.iLike]: `%${prescribedBy}%` };
     if (frequency) whereConditions.frequency = { [Op.iLike]: `%${frequency}%` };
+    if (q && q.trim().length >= 2) {
+      whereConditions[Op.and] = [
+        ...(whereConditions[Op.and] || []),
+        {
+          [Op.or]: [
+            { name: { [Op.iLike]: `%${q.trim()}%` } },
+            { prescribedBy: { [Op.iLike]: `%${q.trim()}%` } },
+            { notes: { [Op.iLike]: `%${q.trim()}%` } },
+          ],
+        },
+      ];
+    }
 
     // Status filter
     if (status === 'active') {

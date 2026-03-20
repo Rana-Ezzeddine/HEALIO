@@ -2,6 +2,11 @@ import User from '../models/User.js';
 
 export default async function requireVerified(req, res, next) {
   try {
+    if (/^true$/i.test(process.env.DISABLE_EMAIL_VERIFICATION || '')) {
+      req.user.isVerified = true;
+      return next();
+    }
+
     if (!req.user?.id) {
       return res.status(401).json({ message: 'Not authenticated.' });
     }

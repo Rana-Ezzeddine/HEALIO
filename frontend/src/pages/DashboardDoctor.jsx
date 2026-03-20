@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import Navbar from "../components/Navbar";
-import { apiUrl, authHeaders } from "../api/http";
+import { apiUrl, authHeaders, getUser } from "../api/http";
+import {
+  createAppointment,
+  getDoctorAvailability,
+  getDoctorSchedule,
+} from "../api/appointments";
+import { getConversations } from "../api/messaging";
 
 function DashboardCard({ title, mainText, subText }) {
   return (
@@ -17,18 +23,18 @@ function DashboardCard({ title, mainText, subText }) {
 }
 
 function startOfToday() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  return date;
 }
 
 function endOfToday() {
-  const d = startOfToday();
-  d.setDate(d.getDate() + 1);
-  return d;
+  const date = startOfToday();
+  date.setDate(date.getDate() + 1);
+  return date;
 }
 
-function fmtTime(dateLike) {
+function formatTime(dateLike) {
   return new Date(dateLike).toLocaleTimeString([], {
     hour: "numeric",
     minute: "2-digit",
@@ -49,12 +55,29 @@ function statusLabel(status) {
   return status || "Unknown";
 }
 
+function patientDisplayName(patient) {
+  return patient.profile?.displayName || patient.email || "Patient";
+}
+
+async function fetchAssignedPatients() {
+  const response = await fetch(`${apiUrl}/api/doctors/dashboard-overview`, {
+    headers: { ...authHeaders() },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.message || "Failed to load doctor overview");
+  }
+  return data;
+}
+
 export default function DashboardDoctor() {
-  const [name, setName] = useState("Doctor");
+  const user = getUser();
+  const greetingName = user?.firstName || user?.email || "Doctor";
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const [scheduleError, setScheduleError] = useState("");
   const [schedule, setSchedule] = useState([]);
   const [assignedPatients, setAssignedPatients] = useState([]);
+  const [conversationCount, setConversationCount] = useState(0);
   const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState("");
@@ -71,78 +94,60 @@ export default function DashboardDoctor() {
 
   const patientNameById = useMemo(() => {
     const map = new Map();
-    for (const p of assignedPatients) {
-      map.set(p.id, p.profile?.displayName || p.email || "Patient");
+    for (const patient of assignedPatients) {
+      map.set(patient.id, patientDisplayName(patient));
     }
     return map;
   }, [assignedPatients]);
 
   const todayAppointments = useMemo(
-    () => schedule.filter((a) => a.status !== "cancelled"),
+    () => schedule.filter((appointment) => appointment.status !== "cancelled"),
     [schedule]
   );
 
   const nextAppointment = useMemo(() => {
     const now = Date.now();
-    return todayAppointments.find((a) => new Date(a.startsAt).getTime() >= now) || null;
+    return todayAppointments.find((appointment) => new Date(appointment.startsAt).getTime() >= now) || null;
   }, [todayAppointments]);
 
   const nextAppointmentSubText = nextAppointment
-    ? `Next: ${fmtTime(nextAppointment.startsAt)} - ${
+    ? `Next: ${formatTime(nextAppointment.startsAt)} - ${
         patientNameById.get(nextAppointment.patientId) || nextAppointment.patient?.email || "Patient"
       }`
     : "No more appointments today";
 
-  const loadSchedule = async () => {
+  async function loadDashboard() {
     setScheduleLoading(true);
     setScheduleError("");
 
     try {
-      const params = new URLSearchParams({
-        from: startOfToday().toISOString(),
-        to: endOfToday().toISOString(),
-      });
+      const [scheduleData, overviewData, conversationsData] = await Promise.all([
+        getDoctorSchedule({
+          from: startOfToday().toISOString(),
+          to: endOfToday().toISOString(),
+        }),
+        fetchAssignedPatients(),
+        getConversations(),
+      ]);
 
-      const res = await fetch(`${apiUrl}/api/appointments/doctor/schedule?${params}`, {
-        headers: { ...authHeaders() },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Failed to load schedule");
-      setSchedule(data.appointments || []);
+      setSchedule(scheduleData.appointments || []);
+      setAssignedPatients(overviewData.assignedPatients || []);
+      setConversationCount((conversationsData.conversations || []).length);
     } catch (err) {
-      setScheduleError(err.message || "Failed to load schedule");
+      setScheduleError(err.message || "Failed to load dashboard.");
     } finally {
       setScheduleLoading(false);
     }
-  };
-
-  const loadAssignedPatients = async () => {
-    try {
-      const res = await fetch(`${apiUrl}/api/doctors/dashboard-overview`, {
-        headers: { ...authHeaders() },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Failed to load patients");
-      setAssignedPatients(data.assignedPatients || []);
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  }
 
   useEffect(() => {
-    try {
-      const firstName = localStorage.getItem("firstName") || "Doctor";
-      setName(firstName);
-    } catch (err) {
-      console.error(err);
-    }
-
-    loadSchedule();
-    loadAssignedPatients();
+    loadDashboard();
   }, []);
 
   useEffect(() => {
-    const loadAvailability = async () => {
+    let cancelled = false;
+
+    async function loadAvailability() {
       if (!showScheduleForm || !form.date) {
         setAvailableSlots([]);
         return;
@@ -156,93 +161,76 @@ export default function DashboardDoctor() {
 
       try {
         setSlotsLoading(true);
+        setCreateError("");
+
         const dayStart = new Date(`${form.date}T00:00:00`);
         const dayEnd = new Date(dayStart);
         dayEnd.setDate(dayEnd.getDate() + 1);
 
-        const params = new URLSearchParams({
+        const data = await getDoctorAvailability({
           from: dayStart.toISOString(),
           to: dayEnd.toISOString(),
-          slotMinutes: String(durationMinutes),
+          slotMinutes: durationMinutes,
         });
 
-        const res = await fetch(`${apiUrl}/api/appointments/doctor/availability?${params}`, {
-          headers: { ...authHeaders() },
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.message || "Failed to load available slots");
-
-        const now = Date.now();
-        const slots = (data.slots || []).filter((slot) => new Date(slot.startsAt).getTime() > now);
-        setAvailableSlots(slots);
+        if (!cancelled) {
+          const now = Date.now();
+          const slots = (data.slots || []).filter((slot) => new Date(slot.startsAt).getTime() > now);
+          setAvailableSlots(slots);
+        }
       } catch (err) {
-        setCreateError(err.message || "Failed to load available slots");
-        setAvailableSlots([]);
+        if (!cancelled) {
+          setCreateError(err.message || "Failed to load available slots.");
+          setAvailableSlots([]);
+        }
       } finally {
-        setSlotsLoading(false);
+        if (!cancelled) {
+          setSlotsLoading(false);
+        }
       }
-    };
+    }
 
     loadAvailability();
+    return () => {
+      cancelled = true;
+    };
   }, [form.date, form.duration, showScheduleForm]);
 
-  async function submitSchedule(e) {
-    e.preventDefault();
+  async function submitSchedule(event) {
+    event.preventDefault();
     setCreateError("");
 
-    if (!form.patientId || !form.date || !form.timeSlot) {
-      setCreateError("Please select patient, date, and an available time slot.");
+    if (!form.patientId || !form.timeSlot) {
+      setCreateError("Please select patient and an available time slot.");
       return;
     }
 
     const startsAt = new Date(form.timeSlot);
-    if (Number.isNaN(startsAt.getTime())) {
-      setCreateError("Invalid date/time.");
-      return;
-    }
-
     const durationMinutes = Number(form.duration || "30");
-    if (!Number.isInteger(durationMinutes) || durationMinutes <= 0) {
-      setCreateError("Duration must be a positive integer.");
+    const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
+
+    const isAvailable = availableSlots.some((slot) => {
+      return (
+        new Date(slot.startsAt).getTime() === startsAt.getTime() &&
+        new Date(slot.endsAt).getTime() === endsAt.getTime()
+      );
+    });
+
+    if (!isAvailable) {
+      setCreateError("Selected slot is no longer available.");
       return;
     }
-
-    const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
 
     try {
       setCreateLoading(true);
 
-      const dayStart = new Date(startsAt);
-      dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date(dayStart);
-      dayEnd.setDate(dayEnd.getDate() + 1);
-
-      const isAvailable = availableSlots.some((slot) => {
-        const slotStart = new Date(slot.startsAt).getTime();
-        const slotEnd = new Date(slot.endsAt).getTime();
-        return slotStart === startsAt.getTime() && slotEnd === endsAt.getTime();
+      await createAppointment({
+        patientId: form.patientId,
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString(),
+        location: form.location,
+        notes: form.notes,
       });
-
-      if (!isAvailable) {
-        setCreateError("Selected slot is not available. Pick another time.");
-        return;
-      }
-
-      const createRes = await fetch(`${apiUrl}/api/appointments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({
-          patientId: form.patientId,
-          startsAt: startsAt.toISOString(),
-          endsAt: endsAt.toISOString(),
-          location: form.location,
-          notes: form.notes,
-        }),
-      });
-      const createData = await createRes.json().catch(() => ({}));
-      if (!createRes.ok) {
-        throw new Error(createData.message || "Failed to create appointment");
-      }
 
       setForm({
         patientId: "",
@@ -253,9 +241,9 @@ export default function DashboardDoctor() {
         notes: "",
       });
       setShowScheduleForm(false);
-      await loadSchedule();
+      await loadDashboard();
     } catch (err) {
-      setCreateError(err.message || "Failed to create appointment");
+      setCreateError(err.message || "Failed to create appointment.");
     } finally {
       setCreateLoading(false);
     }
@@ -267,18 +255,28 @@ export default function DashboardDoctor() {
 
       <main className="pt-28 max-w-6xl mx-auto px-6 py-8">
         <div className="mb-6">
-          <h1 className="text-3xl text-slate-800 font-bold">Welcome Back, Dr. {name} 👋</h1>
-          <p className="text-slate-500 mt-1">Here's a quick overview of your health</p>
+          <h1 className="text-3xl text-slate-800 font-bold">
+            Welcome Back, {greetingName}
+          </h1>
+          <p className="text-slate-500 mt-1">Here is the current view of your schedule and patient activity</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
           <DashboardCard
-            title="🗓 Today's Appointments"
+            title="Today's Appointments"
             mainText={`${todayAppointments.length} appointments`}
             subText={nextAppointmentSubText}
           />
-          <DashboardCard title="📩 New Messages" mainText="3 unread" />
-          <DashboardCard title="⚠️ Critical Alerts" mainText="2 patients flagged" />
+          <DashboardCard
+            title="Conversations"
+            mainText={`${conversationCount}`}
+            subText="Secure patient chats"
+          />
+          <DashboardCard
+            title="Assigned Patients"
+            mainText={`${assignedPatients.length}`}
+            subText="Active doctor-patient links"
+          />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -286,7 +284,7 @@ export default function DashboardDoctor() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-slate-800">Today's Schedule</h2>
               <button
-                onClick={loadSchedule}
+                onClick={loadDashboard}
                 className="text-sm px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700"
               >
                 Refresh
@@ -300,53 +298,44 @@ export default function DashboardDoctor() {
             )}
 
             <div className="overflow-x-auto">
-              <table className="min-h-full text-sm text-left">
+              <table className="min-h-full text-sm text-left w-full">
                 <thead className="text-slate-500 border-b">
                   <tr>
                     <th className="py-3 px-4">Time</th>
                     <th className="py-3 px-4">Patient</th>
-                    <th className="py-3 px-4">Visit Type</th>
+                    <th className="py-3 px-4">Location</th>
                     <th className="py-3 px-4">Status</th>
-                    <th className="py-3 px-4">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {scheduleLoading && (
+                  {scheduleLoading ? (
                     <tr>
-                      <td className="py-3 px-4 text-slate-500" colSpan={5}>
+                      <td className="py-3 px-4 text-slate-500" colSpan={4}>
                         Loading schedule...
                       </td>
                     </tr>
-                  )}
-
-                  {!scheduleLoading && todayAppointments.length === 0 && (
+                  ) : todayAppointments.length > 0 ? (
+                    todayAppointments.map((appointment) => (
+                      <tr key={appointment.id} className="hover:bg-slate-50">
+                        <td className="py-3 px-4">{formatTime(appointment.startsAt)}</td>
+                        <td className="py-3 px-4 font-medium">
+                          {patientNameById.get(appointment.patientId) || appointment.patient?.email || "Patient"}
+                        </td>
+                        <td className="py-3 px-4">{appointment.location || "-"}</td>
+                        <td className="py-3 px-4">
+                          <span className={`px-2 py-1 text-xs rounded-full ${statusClasses(appointment.status)}`}>
+                            {statusLabel(appointment.status)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
                     <tr>
-                      <td className="py-3 px-4 text-slate-500" colSpan={5}>
+                      <td className="py-3 px-4 text-slate-500" colSpan={4}>
                         No appointments for today.
                       </td>
                     </tr>
                   )}
-
-                  {!scheduleLoading &&
-                    todayAppointments.map((a) => (
-                      <tr key={a.id} className="hover:bg-slate-50">
-                        <td className="py-3 px-4">{fmtTime(a.startsAt)}</td>
-                        <td className="py-3 px-4 font-medium">
-                          {patientNameById.get(a.patientId) || a.patient?.email || "Patient"}
-                        </td>
-                        <td className="py-3 px-4">Consultation</td>
-                        <td className="py-3 px-4">
-                          <span className={`px-2 py-1 text-xs rounded-full ${statusClasses(a.status)}`}>
-                            {statusLabel(a.status)}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <button className="text-slate-400 cursor-not-allowed" disabled>
-                            Open
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
                 </tbody>
               </table>
             </div>
@@ -356,23 +345,17 @@ export default function DashboardDoctor() {
             <h2 className="text-lg font-semibold text-slate-800 mb-4">Doctor Tools</h2>
 
             <div className="flex flex-col gap-3">
-              <button className="w-full px-4 py-2 rounded-xl bg-sky-100 text-sky-700 font-medium hover:bg-sky-200 transition">
-                ➕ Add Prescription
-              </button>
-              <button className="w-full px-4 py-2 rounded-xl bg-indigo-100 text-indigo-700 font-medium hover:bg-indigo-200 transition">
-                📝 Create Medical Report
-              </button>
               <button
                 onClick={() => {
                   setCreateError("");
-                  setShowScheduleForm((s) => !s);
+                  setShowScheduleForm((current) => !current);
                 }}
                 className="w-full px-4 py-2 rounded-xl bg-emerald-100 text-emerald-700 font-medium hover:bg-emerald-200 transition"
               >
-                📅 Schedule Appointment
+                Schedule Appointment
               </button>
-              <button className="w-full px-4 py-2 rounded-xl bg-cyan-100 text-cyan-700 font-medium hover:bg-cyan-200 transition">
-                📂 View All Patients
+              <button className="w-full px-4 py-2 rounded-xl bg-cyan-100 text-cyan-700 font-medium">
+                Assigned Patients: {assignedPatients.length}
               </button>
             </div>
 
@@ -382,43 +365,32 @@ export default function DashboardDoctor() {
 
                 <select
                   value={form.patientId}
-                  onChange={(e) => setForm((f) => ({ ...f, patientId: e.target.value }))}
+                  onChange={(event) => setForm((current) => ({ ...current, patientId: event.target.value }))}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
                   required
                 >
                   <option value="">Select patient</option>
-                  {assignedPatients.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.profile?.displayName || p.email}
+                  {assignedPatients.map((patient) => (
+                    <option key={patient.id} value={patient.id}>
+                      {patientDisplayName(patient)}
                     </option>
                   ))}
                 </select>
-                <p className="text-xs text-slate-500">
-                  Only your linked/assigned patients appear in this list.
-                </p>
-                {assignedPatients.length === 0 && (
-                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
-                    No linked patients found. Link patients to your account first.
-                  </p>
-                )}
 
-                <div className="grid grid-cols-1 gap-2">
-                  <input
-                    type="date"
-                    value={form.date}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, date: e.target.value, timeSlot: "" }))
-                    }
-                    className="border rounded-lg px-3 py-2 text-sm"
-                    required
-                  />
-                </div>
+                <input
+                  type="date"
+                  value={form.date}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, date: event.target.value, timeSlot: "" }))
+                  }
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  required
+                />
 
-                <label className="text-sm text-slate-700 font-medium">Duration</label>
                 <select
                   value={form.duration}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, duration: e.target.value, timeSlot: "" }))
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, duration: event.target.value, timeSlot: "" }))
                   }
                   className="w-full border rounded-lg px-3 py-2 text-sm"
                   required
@@ -429,10 +401,9 @@ export default function DashboardDoctor() {
                   <option value="60">60 minutes</option>
                 </select>
 
-                <label className="text-sm text-slate-700 font-medium">Available Time Slot</label>
                 <select
                   value={form.timeSlot}
-                  onChange={(e) => setForm((f) => ({ ...f, timeSlot: e.target.value }))}
+                  onChange={(event) => setForm((current) => ({ ...current, timeSlot: event.target.value }))}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
                   required
                   disabled={!form.date || slotsLoading}
@@ -448,25 +419,22 @@ export default function DashboardDoctor() {
                   </option>
                   {availableSlots.map((slot) => (
                     <option key={slot.startsAt} value={slot.startsAt}>
-                      {fmtTime(slot.startsAt)} - {fmtTime(slot.endsAt)}
+                      {formatTime(slot.startsAt)} - {formatTime(slot.endsAt)}
                     </option>
                   ))}
                 </select>
 
-                <label className="text-sm text-slate-700 font-medium">
-                  Location (optional)
-                </label>
                 <input
                   type="text"
                   value={form.location}
-                  onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
+                  onChange={(event) => setForm((current) => ({ ...current, location: event.target.value }))}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
-                  placeholder="Clinic/location (optional)"
+                  placeholder="Clinic/location"
                 />
 
                 <textarea
                   value={form.notes}
-                  onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                  onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
                   placeholder="Notes"
                   rows={3}

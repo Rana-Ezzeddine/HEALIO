@@ -18,9 +18,9 @@ import Conversation from './Conversation.js';
 import ConversationParticipant from './ConversationParticipant.js';
 import Message from './Message.js';
 import Reminder from './Reminder.js';
-import EmailVerificationToken from './EmailVerificationToken.js';
 import ActivityLog from './ActivityLog.js';
 import CaregiverNote from './CaregiverNote.js';
+import PasswordResetToken from './PasswordResetToken.js';
 
 // ========================================
 // ASSOCIATIONS
@@ -37,17 +37,6 @@ PatientProfile.belongsTo(User, {
   as: 'user'
 });
 
-// User ↔ EmailVerificationToken (1:Many)
-User.hasMany(EmailVerificationToken, {
-  foreignKey: 'userId',
-  as: 'emailVerificationTokens',
-  onDelete: 'CASCADE',
-});
-EmailVerificationToken.belongsTo(User, {
-  foreignKey: 'userId',
-  as: 'user',
-});
-
 // User ↔ ActivityLog (1:Many)
 User.hasMany(ActivityLog, {
   foreignKey: 'userId',
@@ -55,6 +44,17 @@ User.hasMany(ActivityLog, {
   onDelete: 'SET NULL',
 });
 ActivityLog.belongsTo(User, {
+  foreignKey: 'userId',
+  as: 'user',
+});
+
+// User ↔ Password Reset Tokens (1:Many)
+User.hasMany(PasswordResetToken, {
+  foreignKey: 'userId',
+  as: 'passwordResetTokens',
+  onDelete: 'CASCADE',
+});
+PasswordResetToken.belongsTo(User, {
   foreignKey: 'userId',
   as: 'user',
 });
@@ -259,7 +259,6 @@ export {
   ConversationParticipant,
   Message,
   Reminder,
-  EmailVerificationToken,
   ActivityLog,
   CaregiverNote,
 };
@@ -278,7 +277,6 @@ export default {
   ConversationParticipant,
   Message,
   Reminder,
-  EmailVerificationToken,
   ActivityLog,
   CaregiverNote,
 };

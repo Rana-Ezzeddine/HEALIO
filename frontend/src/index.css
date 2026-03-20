@@ -17,4 +17,320 @@ html {
   -webkit-overflow-scrolling: touch;
 }
 
+@keyframes float-slow {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -18px, 0) scale(1.04);
+  }
+}
 
+@keyframes drift-sideways {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(22px, -12px, 0);
+  }
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes fade-slide-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 26px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes modal-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-pop-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 28px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes auth-page-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 20px, 0) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes route-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes gradient-wave {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes grid-shift {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(18px, 12px, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.landing-grid {
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.09) 1px, transparent 1px);
+  background-size: 36px 36px;
+  background-position: center center;
+}
+
+.landing-aurora {
+  background:
+    radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.28), transparent 32%),
+    radial-gradient(circle at 80% 25%, rgba(45, 212, 191, 0.24), transparent 30%),
+    radial-gradient(circle at 50% 75%, rgba(251, 191, 36, 0.18), transparent 28%),
+    linear-gradient(120deg, rgba(240, 249, 255, 0.95), rgba(236, 253, 245, 0.92), rgba(255, 251, 235, 0.92), rgba(239, 246, 255, 0.95));
+  background-size: 140% 140%;
+  animation: gradient-wave 16s ease-in-out infinite;
+}
+
+.landing-float {
+  animation: float-slow 10s ease-in-out infinite;
+}
+
+.landing-drift {
+  animation: drift-sideways 14s ease-in-out infinite;
+}
+
+.landing-glow {
+  animation: glow-pulse 8s ease-in-out infinite;
+}
+
+.landing-reveal {
+  opacity: 0;
+  animation: fade-slide-up 0.8s ease forwards;
+}
+
+.landing-delay-1 {
+  animation-delay: 0.12s;
+}
+
+.landing-delay-2 {
+  animation-delay: 0.22s;
+}
+
+.landing-delay-3 {
+  animation-delay: 0.32s;
+}
+
+.landing-delay-4 {
+  animation-delay: 0.42s;
+}
+
+.modal-fade-in {
+  animation: modal-fade-in 0.24s ease forwards;
+}
+
+.modal-pop-in {
+  animation: modal-pop-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.page-enter {
+  opacity: 0;
+  animation: page-enter 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.auth-page-enter {
+  opacity: 0;
+  animation: auth-page-enter 0.32s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.route-enter {
+  opacity: 0;
+  animation: route-enter 0.22s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.landing-grid-motion {
+  animation: grid-shift 18s ease-in-out infinite;
+}
+
+@keyframes float-orb-1 {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(18px, -24px, 0);
+  }
+}
+
+@keyframes float-orb-2 {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(-22px, 18px, 0);
+  }
+}
+
+@keyframes float-orb-3 {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(12px, -18px, 0) scale(1.06);
+  }
+}
+
+@keyframes float-line {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(10px, -12px, 0) rotate(4deg);
+  }
+}
+
+.landing-orb-1 {
+  animation: float-orb-1 11s ease-in-out infinite;
+}
+
+.landing-orb-2 {
+  animation: float-orb-2 13s ease-in-out infinite;
+}
+
+.landing-orb-3 {
+  animation: float-orb-3 9s ease-in-out infinite;
+}
+
+.landing-line {
+  animation: float-line 14s ease-in-out infinite;
+}
+
+@keyframes guide-bob {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(0, -8px, 0) rotate(4deg);
+  }
+}
+
+.landing-guide {
+  animation: guide-bob 2.8s ease-in-out infinite;
+}
+
+@keyframes sparkle-burst {
+  0%, 100% {
+    opacity: 0.2;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+@keyframes light-pulse {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.22);
+  }
+}
+
+@keyframes mascot-section-hop {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+  18% {
+    transform: translate3d(10px, -10px, 0) rotate(4deg) scale(1.03, 0.97);
+  }
+  36% {
+    transform: translate3d(22px, -28px, 0) rotate(8deg) scale(0.98, 1.05);
+  }
+  52% {
+    transform: translate3d(6px, 4px, 0) rotate(-4deg) scale(1.05, 0.94);
+  }
+  68% {
+    transform: translate3d(-8px, -12px, 0) rotate(-6deg) scale(0.99, 1.02);
+  }
+  82% {
+    transform: translate3d(-3px, 1px, 0) rotate(2deg) scale(1.01, 0.99);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+}
+
+.landing-mascot-hop {
+  animation: mascot-section-hop 0.95s cubic-bezier(0.2, 0.9, 0.25, 1) both;
+}
+
+.landing-sparkle {
+  animation: sparkle-burst 1.8s ease-in-out infinite;
+}
+
+.landing-light {
+  animation: light-pulse 2.8s ease-in-out infinite;
+}

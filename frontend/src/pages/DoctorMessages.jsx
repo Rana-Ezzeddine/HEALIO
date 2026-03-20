@@ -1,291 +1,351 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Navbar from "../components/Navbar";
+import { apiUrl, authHeaders, getUser } from "../api/http";
+import {
+  createConversation,
+  getConversationMessages,
+  getConversations,
+  sendConversationMessage,
+} from "../api/messaging";
 
-const initialConversations = [
-    {
-        id: "sarah-khalil",
-        patientName: "Sarah Khalil",
-        lastUpdatedAt: "10:45 AM",
-        messages: [
-            {
-                id: "m1",
-                sender: "patient",
-                text: "Hi doctor, I have a mild headache since this morning.",
-                time: "10:10 AM",
-            },
-            {
-                id: "m2",
-                sender: "doctor",
-                text: "Thanks for the update. Please drink water and monitor for 2-3 hours.",
-                time: "10:20 AM",
-            },
-        ],
-    },
-    {
-        id: "omar-haddad",
-        patientName: "Omar Haddad",
-        lastUpdatedAt: "Yesterday",
-        messages: [
-            {
-                id: "m3",
-                sender: "patient",
-                text: "Can I take my evening dose earlier today?",
-                time: "Yesterday",
-            },
-        ],
-    },
-    {
-        id: "lina-saad",
-        patientName: "Lina Saad",
-        lastUpdatedAt: "Mon",
-        messages: [
-            {
-                id: "m4",
-                sender: "patient",
-                text: "My blood pressure was 135/88 this morning.",
-                time: "Mon",
-            },
-        ],
-    },
-];
+function formatTimestamp(dateLike) {
+  return new Date(dateLike).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function getOtherParticipant(conversation, currentUserId) {
+  return (conversation.participants || []).find((participant) => participant.id !== currentUserId) || null;
+}
+
+function participantLabel(participant) {
+  return participant?.email || "Patient";
+}
+
+async function fetchAssignedPatients() {
+  const response = await fetch(`${apiUrl}/api/doctors/assigned-patients`, {
+    headers: { ...authHeaders() },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.message || "Failed to load assigned patients");
+  }
+  return data;
+}
 
 export default function DoctorMessages() {
-    const [searchTerm, setSearchTerm] = useState("");
-    const [newPatientName, setNewPatientName] = useState("");
-    const [isAddingConversation, setIsAddingConversation] = useState(false);
-    const [conversations, setConversations] = useState(initialConversations);
-    const [selectedConversationId, setSelectedConversationId] = useState(initialConversations[0]?.id || null);
-    const [draftMessage, setDraftMessage] = useState("");
+  const user = getUser();
+  const currentUserId = user?.id;
 
-    const filteredConversations = useMemo(() => {
-        return conversations.filter((conversation) =>
-            conversation.patientName.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-    }, [conversations, searchTerm]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [patientOptions, setPatientOptions] = useState([]);
+  const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [conversations, setConversations] = useState([]);
+  const [selectedConversationId, setSelectedConversationId] = useState("");
+  const [messages, setMessages] = useState([]);
+  const [draftMessage, setDraftMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [createError, setCreateError] = useState("");
+  const [sendError, setSendError] = useState("");
 
-    const selectedConversation = conversations.find(
-        (conversation) => conversation.id === selectedConversationId
-    );
+  async function loadConversations() {
+    const data = await getConversations();
+    const list = data.conversations || [];
+    setConversations(list);
 
-    function handleAddConversation(e) {
-        e.preventDefault();
-        const trimmedName = newPatientName.trim();
+    if (!selectedConversationId && list[0]?.id) {
+      setSelectedConversationId(list[0].id);
+    } else if (selectedConversationId && !list.some((conversation) => conversation.id === selectedConversationId)) {
+      setSelectedConversationId(list[0]?.id || "");
+    }
+  }
 
-        if (!trimmedName) {
-            return;
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPageData() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const [patientsData, conversationsData] = await Promise.all([
+          fetchAssignedPatients(),
+          getConversations(),
+        ]);
+
+        if (cancelled) return;
+
+        const patients = (patientsData.patients || []).map((record) => ({
+          id: record.patient?.id,
+          label: record.patient?.email || "Patient",
+        }));
+
+        setPatientOptions(patients);
+        setConversations(conversationsData.conversations || []);
+        setSelectedConversationId((current) => current || conversationsData.conversations?.[0]?.id || "");
+      } catch (err) {
+        if (!cancelled) {
+          setError(err.message || "Failed to load messages.");
         }
-
-        const existingConversation = conversations.find(
-            (conversation) => conversation.patientName.toLowerCase() === trimmedName.toLowerCase()
-        );
-
-        if (existingConversation) {
-            setSelectedConversationId(existingConversation.id);
-            setSearchTerm("");
-            setNewPatientName("");
-            return;
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
         }
-
-        const generatedId = `${trimmedName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
-        const newConversation = {
-            id: generatedId,
-            patientName: trimmedName,
-            lastUpdatedAt: "Just now",
-            messages: [],
-        };
-
-        setConversations((previousConversations) => [newConversation, ...previousConversations]);
-        setSelectedConversationId(generatedId);
-        setSearchTerm("");
-        setNewPatientName("");
-        setIsAddingConversation(false);
+      }
     }
 
-    function handleSendMessage(e) {
-        e.preventDefault(); //to prevent errors
-        const trimmedMessage = draftMessage.trim();
+    loadPageData();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-        if (!trimmedMessage || !selectedConversationId) {
-            return;
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMessages() {
+      if (!selectedConversationId) {
+        setMessages([]);
+        return;
+      }
+
+      try {
+        setMessagesLoading(true);
+        setSendError("");
+        const data = await getConversationMessages(selectedConversationId);
+        if (!cancelled) {
+          setMessages(data.messages || []);
         }
-
-        const now = new Date();
-        const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
-        setConversations((previousConversations) =>
-            previousConversations.map((conversation) => {
-                if (conversation.id !== selectedConversationId) {
-                    return conversation;
-                }
-
-                return {
-                    ...conversation,
-                    lastUpdatedAt: time,
-                    messages: [
-                        ...conversation.messages,
-                        {
-                            id: `${conversation.id}-${conversation.messages.length + 1}`,
-                            sender: "doctor",
-                            text: trimmedMessage,
-                            time,
-                        },
-                    ],
-                };
-            })
-        );
-
-        setDraftMessage("");
+      } catch (err) {
+        if (!cancelled) {
+          setSendError(err.message || "Failed to load conversation.");
+        }
+      } finally {
+        if (!cancelled) {
+          setMessagesLoading(false);
+        }
+      }
     }
 
-    return (
-        <div className="min-h-screen bg-slate-50">
-            <Navbar />
+    loadMessages();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedConversationId]);
 
-            <main className="pt-28 max-w-6xl mx-auto px-6 py-8">
-                <div className="mb-6">
-                    <h1 className="text-3xl font-bold text-slate-800">Patient Messages</h1>
-                    <p className="mt-1 text-slate-500">Review and reply to your patients in one place.</p>
-                </div>
+  const filteredConversations = useMemo(() => {
+    return conversations.filter((conversation) => {
+      const other = getOtherParticipant(conversation, currentUserId);
+      return participantLabel(other).toLowerCase().includes(searchTerm.toLowerCase());
+    });
+  }, [conversations, currentUserId, searchTerm]);
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <aside className="md:col-span-1 bg-white rounded-2xl shadow p-4">
-                        <input
-                            type="text"
-                            placeholder="Search patient..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full mb-4 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                        />
+  const selectedConversation =
+    conversations.find((conversation) => conversation.id === selectedConversationId) || null;
 
-                        <div className="mb-4">
-                            {!isAddingConversation ? (
-                                <button
-                                    type="button"
-                                    onClick={() => setIsAddingConversation(true)}
-                                    className="w-full rounded-xl bg-sky-500 text-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-sky-400 transition"
-                                >
-                                    + New Patient Chat
-                                </button>
-                            ) : (
-                                <form onSubmit={handleAddConversation} className="space-y-2">
-                                    <input
-                                        type="text"
-                                        placeholder="Patient full name"
-                                        value={newPatientName}
-                                        onChange={(e) => setNewPatientName(e.target.value)}
-                                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                                    />
-                                    <div className="flex gap-2">
-                                        <button
-                                            type="submit"
-                                            className="flex-1 rounded-xl bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600 transition"
-                                        >
-                                            Create Chat
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setIsAddingConversation(false);
-                                                setNewPatientName("");
-                                            }}
-                                            className="flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
-                                        >
-                                            Cancel
-                                        </button>
-                                    </div>
-                                </form>
-                            )}
-                        </div>
+  async function handleCreateConversation(event) {
+    event.preventDefault();
+    setCreateError("");
 
-                        <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
-                            {filteredConversations.map((conversation) => {
-                                const isActive = conversation.id === selectedConversationId;
-                                const lastMessage = conversation.messages[conversation.messages.length - 1];
+    if (!selectedPatientId) {
+      setCreateError("Select a patient first.");
+      return;
+    }
 
-                                return (
-                                    <button
-                                        key={conversation.id}
-                                        type="button"
-                                        onClick={() => setSelectedConversationId(conversation.id)}
-                                        className={`w-full text-left rounded-xl p-3 border transition ${
-                                            isActive
-                                                ? "border-sky-300 bg-sky-50"
-                                                : "border-slate-200 bg-white hover:bg-slate-50"
-                                        }`}
-                                    >
-                                        <div className="flex items-center justify-between">
-                                            <p className="font-semibold text-slate-800">{conversation.patientName}</p>
-                                            <span className="text-xs text-slate-400">{conversation.lastUpdatedAt}</span>
-                                        </div>
-                                        <p className="text-sm text-slate-500 mt-1 truncate">{lastMessage?.text || "No messages yet"}</p>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </aside>
+    try {
+      const data = await createConversation({ recipientId: selectedPatientId });
+      const conversationId = data.conversation?.id;
+      await loadConversations();
+      if (conversationId) {
+        setSelectedConversationId(conversationId);
+      }
+      setSelectedPatientId("");
+    } catch (err) {
+      setCreateError(err.message || "Failed to start conversation.");
+    }
+  }
 
-                    <section className="md:col-span-2 bg-white rounded-2xl shadow p-4 flex flex-col h-[620px]">
-                        {selectedConversation ? (
-                            <>
-                                <div className="border-b border-slate-200 pb-3 mb-3">
-                                    <h2 className="text-lg font-semibold text-slate-800">{selectedConversation.patientName}</h2>
-                                    <p className="text-xs text-slate-500">Secure chat</p>
-                                </div>
+  async function handleSendMessage(event) {
+    event.preventDefault();
+    setSendError("");
+    const trimmedMessage = draftMessage.trim();
 
-                                <div className="flex-1 overflow-y-auto pr-1 space-y-3">
-                                    {selectedConversation.messages.map((message) => {
-                                        const isDoctorMessage = message.sender === "doctor";
+    if (!trimmedMessage || !selectedConversationId) {
+      return;
+    }
 
-                                        return (
-                                            <div
-                                                key={message.id}
-                                                className={`flex ${isDoctorMessage ? "justify-end" : "justify-start"}`}
-                                            >
-                                                <div
-                                                    className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
-                                                        isDoctorMessage
-                                                            ? "bg-sky-500 text-white"
-                                                            : "bg-slate-100 text-slate-800"
-                                                    }`}
-                                                >
-                                                    <p>{message.text}</p>
-                                                    <p
-                                                        className={`text-[11px] mt-1 ${
-                                                            isDoctorMessage ? "text-sky-100" : "text-slate-500"
-                                                        }`}
-                                                    >
-                                                        {message.time}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
+    try {
+      const data = await sendConversationMessage(selectedConversationId, trimmedMessage);
+      setMessages((current) => [...current, data.data]);
+      setDraftMessage("");
+      await loadConversations();
+    } catch (err) {
+      setSendError(err.message || "Failed to send message.");
+    }
+  }
 
-                                <form onSubmit={handleSendMessage} className="pt-3 mt-3 border-t border-slate-200 flex gap-2">
-                                    <input
-                                        type="text"
-                                        value={draftMessage}
-                                        onChange={(e) => setDraftMessage(e.target.value)}
-                                        placeholder="Type your reply..."
-                                        className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                                    />
-                                    <button
-                                        type="submit"
-                                        className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 transition"
-                                    >
-                                        Send
-                                    </button>
-                                </form>
-                            </>
-                        ) : (
-                            <div className="h-full flex items-center justify-center text-slate-500 text-sm">
-                                Select a conversation to start messaging.
-                            </div>
-                        )}
-                    </section>
-                </div>
-            </main>
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <Navbar />
+
+      <main className="pt-28 max-w-6xl mx-auto px-6 py-8">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-slate-800">Patient Messages</h1>
+          <p className="mt-1 text-slate-500">Review and reply to assigned patients in one place.</p>
         </div>
-    );
+
+        {error && (
+          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <aside className="md:col-span-1 bg-white rounded-2xl shadow p-4">
+            <input
+              type="text"
+              placeholder="Search patient..."
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              className="w-full mb-4 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+            />
+
+            <form onSubmit={handleCreateConversation} className="space-y-2 mb-4">
+              <select
+                value={selectedPatientId}
+                onChange={(event) => setSelectedPatientId(event.target.value)}
+                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              >
+                <option value="">Start chat with patient</option>
+                {patientOptions.map((patient) => (
+                  <option key={patient.id} value={patient.id}>
+                    {patient.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                className="w-full rounded-xl bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600 transition"
+              >
+                Start Conversation
+              </button>
+              {createError && <p className="text-sm text-red-700">{createError}</p>}
+            </form>
+
+            <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+              {loading ? (
+                <p className="text-sm text-slate-500">Loading conversations...</p>
+              ) : filteredConversations.length > 0 ? (
+                filteredConversations.map((conversation) => {
+                  const isActive = conversation.id === selectedConversationId;
+                  const other = getOtherParticipant(conversation, currentUserId);
+
+                  return (
+                    <button
+                      key={conversation.id}
+                      type="button"
+                      onClick={() => setSelectedConversationId(conversation.id)}
+                      className={`w-full text-left rounded-xl p-3 border transition ${
+                        isActive
+                          ? "border-sky-300 bg-sky-50"
+                          : "border-slate-200 bg-white hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-semibold text-slate-800 truncate">{participantLabel(other)}</p>
+                        <span className="text-xs text-slate-400 whitespace-nowrap">
+                          {conversation.updatedAt ? formatTimestamp(conversation.updatedAt) : ""}
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-500 mt-1 truncate">
+                        {conversation.lastMessage?.body || "No messages yet"}
+                      </p>
+                    </button>
+                  );
+                })
+              ) : (
+                <p className="text-sm text-slate-500">No conversations found.</p>
+              )}
+            </div>
+          </aside>
+
+          <section className="md:col-span-2 bg-white rounded-2xl shadow p-4 flex flex-col h-[620px]">
+            {selectedConversation ? (
+              <>
+                <div className="border-b border-slate-200 pb-3 mb-3">
+                  <h2 className="text-lg font-semibold text-slate-800">
+                    {participantLabel(getOtherParticipant(selectedConversation, currentUserId))}
+                  </h2>
+                  <p className="text-xs text-slate-500">Secure chat</p>
+                </div>
+
+                <div className="flex-1 overflow-y-auto pr-1 space-y-3">
+                  {messagesLoading ? (
+                    <p className="text-sm text-slate-500">Loading messages...</p>
+                  ) : messages.length > 0 ? (
+                    messages.map((message) => {
+                      const isCurrentUser = message.sender?.id === currentUserId;
+
+                      return (
+                        <div
+                          key={message.id}
+                          className={`flex ${isCurrentUser ? "justify-end" : "justify-start"}`}
+                        >
+                          <div
+                            className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
+                              isCurrentUser
+                                ? "bg-sky-500 text-white"
+                                : "bg-slate-100 text-slate-800"
+                            }`}
+                          >
+                            <p>{message.body}</p>
+                            <p
+                              className={`text-[11px] mt-1 ${
+                                isCurrentUser ? "text-sky-100" : "text-slate-500"
+                              }`}
+                            >
+                              {formatTimestamp(message.sentAt)}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <p className="text-sm text-slate-500">No messages yet.</p>
+                  )}
+                </div>
+
+                {sendError && <p className="mt-3 text-sm text-red-700">{sendError}</p>}
+
+                <form onSubmit={handleSendMessage} className="pt-3 mt-3 border-t border-slate-200 flex gap-2">
+                  <input
+                    type="text"
+                    value={draftMessage}
+                    onChange={(event) => setDraftMessage(event.target.value)}
+                    placeholder="Type your reply..."
+                    className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  />
+                  <button
+                    type="submit"
+                    className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 transition"
+                  >
+                    Send
+                  </button>
+                </form>
+              </>
+            ) : (
+              <div className="h-full flex items-center justify-center text-slate-500 text-sm">
+                Select or create a conversation to start messaging.
+              </div>
+            )}
+          </section>
+        </div>
+      </main>
+    </div>
+  );
 }

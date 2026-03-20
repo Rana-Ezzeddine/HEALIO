@@ -83,6 +83,7 @@ async function canStartConversation(requester, recipientId, patientId = null) {
             where: {
                 caregiverId: requesterId,
                 patientId,
+                status: "active",
                 canMessageDoctor: true,
             },
         });

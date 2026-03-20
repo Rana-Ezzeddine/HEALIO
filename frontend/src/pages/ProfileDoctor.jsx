@@ -1,7 +1,7 @@
-import { apiUrl, authHeaders } from "../api/http";
+import { apiUrl, authHeaders, getUser } from "../api/http";
 import Navbar from "../components/Navbar";
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useCallback } from "react";
+import { getDoctorLinkRequests, reviewDoctorLinkRequest } from "../api/links";
 import userMale from "../assets/userMale.png"
 import userFemale from "../assets/userFemale.png"
 
@@ -70,7 +70,6 @@ function FormInput({ label, type = "text", value, onChange, isEditing, options }
 
 export default function ProfileDoctor(){
     const [isEditing, setIsEditing] = useState(false);
-    const navigate = useNavigate();
 
     //personal info
     const[firstName, setFirstName] = useState("");
@@ -88,19 +87,42 @@ export default function ProfileDoctor(){
     //contact info
     const[email, setEmail] = useState("");
     const[phone, setPhone] = useState("");
-    const sessionUser = JSON.parse(localStorage.getItem("user") || "null");
-    const accountEmail = sessionUser?.email || localStorage.getItem("email") || "";
+    const [pendingRequests, setPendingRequests] = useState([]);
+    const [assignedPatients, setAssignedPatients] = useState([]);
+    const [requestError, setRequestError] = useState("");
+    const sessionUser = getUser();
+    const accountEmail = sessionUser?.email || "";
 
-    function hydrateFromSession() {
-      setFirstName(localStorage.getItem("firstName") || "");
-      setLastName(localStorage.getItem("lastName") || "");
+    const hydrateFromSession = useCallback(() => {
+      setFirstName(sessionUser?.firstName || "");
+      setLastName(sessionUser?.lastName || "");
       setEmail(accountEmail);
       setLicenseNb(localStorage.getItem("licenseNb") || "");
+    }, [accountEmail, sessionUser?.firstName, sessionUser?.lastName]);
+
+    async function loadDoctorLinks() {
+      try {
+        const [requestsRes, patientsRes] = await Promise.all([
+          getDoctorLinkRequests(),
+          fetch(`${apiUrl}/api/doctors/assigned-patients`, {
+            headers: { "Content-Type": "application/json", ...authHeaders() },
+          }).then(async (res) => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.message || "Failed to load assigned patients.");
+            return data;
+          }),
+        ]);
+        setPendingRequests(requestsRes.requests || []);
+        setAssignedPatients(patientsRes.patients || []);
+      } catch (err) {
+        console.error("Failed to load doctor link data", err);
+      }
     }
 
     useEffect(() => {
   (async () => {
     try {
+      await loadDoctorLinks();
       const res = await fetch(`${apiUrl}/api/profile`, {
         headers: { "Content-Type": "application/json", ...authHeaders() },
       });
@@ -137,7 +159,17 @@ export default function ProfileDoctor(){
       hydrateFromSession();
     }
   })();
-}, []);
+}, [accountEmail, hydrateFromSession]);
+
+    async function handleReviewRequest(patientId, status) {
+      setRequestError("");
+      try {
+        await reviewDoctorLinkRequest(patientId, status);
+        await loadDoctorLinks();
+      } catch (err) {
+        setRequestError(err.message || "Failed to review request.");
+      }
+    }
 
 
     async function handleSave() {
@@ -201,12 +233,12 @@ export default function ProfileDoctor(){
 
     function handleCancel() {
         setIsEditing(false);
-        setFirstName(localStorage.getItem("firstName") || "");
-        setLastName(localStorage.getItem("lastName") || "");
+        setFirstName(sessionUser?.firstName || "");
+        setLastName(sessionUser?.lastName || "");
         setGender(localStorage.getItem("gender") || "");
         setDateOfBirth(localStorage.getItem("dateOfBirth") || "");
 
-        setEmail(localStorage.getItem("email") || "");
+        setEmail(accountEmail);
         setPhone(localStorage.getItem("phone") || "");
 
         setSpecialization(localStorage.getItem("specialization") || "");
@@ -292,6 +324,43 @@ export default function ProfileDoctor(){
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> 
                 <FormInput label="Phone Number" type="text" value={phone} onChange={(e)=>setPhone(e.target.value)} isEditing={isEditing} />
                 <FormInput label="Email" type="text" value={email} onChange={(e)=>setEmail(e.target.value)} isEditing={false} />
+              </div>
+            </section>
+
+            <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
+              <h2 className="text-xl font-semibold text-slate-800 mb-4">Patient Link Requests</h2>
+              {requestError ? <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{requestError}</div> : null}
+              <div className="space-y-3">
+                {pendingRequests.length > 0 ? pendingRequests.map((request) => (
+                  <div key={request.patientId} className="rounded-xl border border-slate-200 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-slate-800">{request.patient?.displayName || request.patient?.email || "Patient"}</p>
+                        <p className="text-sm text-slate-500">{request.patient?.email || "-"}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => handleReviewRequest(request.patientId, "active")} className="rounded-lg bg-emerald-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-600">
+                          Approve
+                        </button>
+                        <button type="button" onClick={() => handleReviewRequest(request.patientId, "rejected")} className="rounded-lg bg-rose-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-600">
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )) : <p className="text-sm text-slate-500">No pending patient requests.</p>}
+              </div>
+            </section>
+
+            <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
+              <h2 className="text-xl font-semibold text-slate-800 mb-4">Assigned Patients</h2>
+              <div className="space-y-2">
+                {assignedPatients.length > 0 ? assignedPatients.map((record) => (
+                  <div key={record.patient.id} className="rounded-xl border border-slate-200 px-3 py-2">
+                    <p className="font-medium text-slate-800">{record.patient.email}</p>
+                    <p className="text-sm text-slate-500">Status: {record.status}</p>
+                  </div>
+                )) : <p className="text-sm text-slate-500">No active patients linked yet.</p>}
               </div>
             </section>
           </div>
