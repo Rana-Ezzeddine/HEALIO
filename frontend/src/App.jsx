@@ -19,6 +19,8 @@ import DoctorAppointments from "./pages/DoctorAppointments";
 import PatientAppointments from "./pages/PatientAppointments";
 import VerifyEmailPage from "./pages/VerifyEmailPage";
 import SocialAuthCompletePage from "./pages/SocialAuthCompletePage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 function AuthSync() {
@@ -49,6 +51,8 @@ function AuthSync() {
         currentPath === "/" ||
         currentPath.startsWith("/signup") ||
         currentPath.startsWith("/loginpage") ||
+        currentPath.startsWith("/forgot-password") ||
+        currentPath.startsWith("/reset-password") ||
         currentPath.startsWith("/verify-email") ||
         currentPath.startsWith("/social-auth-complete");
 
@@ -136,6 +140,8 @@ export default function App() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/loginPage" element={<LoginPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/social-auth-complete" element={<SocialAuthCompletePage />} />
 

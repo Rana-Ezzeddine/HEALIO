@@ -144,6 +144,15 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
                 {showPassword ? "Hide" : "Show"}
               </button>
             </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => navigate("/forgot-password")}
+                className="text-sm font-medium text-sky-600 hover:text-sky-700 hover:underline"
+              >
+                Forgot Password?
+              </button>
+            </div>
           </div>
 
           {error && (

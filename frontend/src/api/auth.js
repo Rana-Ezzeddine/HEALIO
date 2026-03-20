@@ -57,6 +57,38 @@ export async function resendVerification(email) {
   return data;
 }
 
+export async function requestPasswordReset(email) {
+  const res = await fetch(`${API_BASE}/api/auth/forgot-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw makeApiError(data, "Failed to request password reset", res.status);
+  return data;
+}
+
+export async function validatePasswordResetToken(token) {
+  const res = await fetch(`${API_BASE}/api/auth/reset-password?token=${encodeURIComponent(token)}`);
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw makeApiError(data, "Password reset link is not valid", res.status);
+  return data;
+}
+
+export async function resetPassword(token, password) {
+  const res = await fetch(`${API_BASE}/api/auth/reset-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, password }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw makeApiError(data, "Failed to reset password", res.status);
+  return data;
+}
+
 export function startSocialAuth(provider, options = {}) {
   const search = new URLSearchParams();
   const normalizedProvider = provider === "apple" ? "apple" : "google";

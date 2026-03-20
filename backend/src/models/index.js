@@ -20,6 +20,7 @@ import Message from './Message.js';
 import Reminder from './Reminder.js';
 import ActivityLog from './ActivityLog.js';
 import CaregiverNote from './CaregiverNote.js';
+import PasswordResetToken from './PasswordResetToken.js';
 
 // ========================================
 // ASSOCIATIONS
@@ -43,6 +44,17 @@ User.hasMany(ActivityLog, {
   onDelete: 'SET NULL',
 });
 ActivityLog.belongsTo(User, {
+  foreignKey: 'userId',
+  as: 'user',
+});
+
+// User ↔ Password Reset Tokens (1:Many)
+User.hasMany(PasswordResetToken, {
+  foreignKey: 'userId',
+  as: 'passwordResetTokens',
+  onDelete: 'CASCADE',
+});
+PasswordResetToken.belongsTo(User, {
   foreignKey: 'userId',
   as: 'user',
 });

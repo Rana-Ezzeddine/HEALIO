@@ -7,9 +7,11 @@ import { Op } from 'sequelize';
 import User from '../models/User.js';
 import PatientProfile from '../models/PatientProfile.js';
 import PendingRegistration from '../models/PendingRegistration.js';
-import { sendVerificationEmail } from '../services/mail.service.js';
+import PasswordResetToken from '../models/PasswordResetToken.js';
+import { sendPasswordResetEmail, sendVerificationEmail } from '../services/mail.service.js';
 
 const EMAIL_TOKEN_TTL_MS = Number(process.env.EMAIL_VERIFICATION_TTL_MS || 86400000);
+const PASSWORD_RESET_TTL_MS = Number(process.env.PASSWORD_RESET_TTL_MS || 3600000);
 const EMAIL_VERIFICATION_DISABLED = /^true$/i.test(process.env.DISABLE_EMAIL_VERIFICATION || '');
 const SOCIAL_STATE_TTL = process.env.SOCIAL_AUTH_STATE_EXPIRES_IN || '10m';
 const SOCIAL_CALLBACK_PATH = '/social-auth-complete';
@@ -48,6 +50,7 @@ const issueAccessToken = (user) => {
 };
 
 const createVerificationToken = async () => crypto.randomBytes(32).toString('hex');
+const createPasswordResetToken = async () => crypto.randomBytes(32).toString('hex');
 
 const getFrontendBaseUrl = () => process.env.FRONTEND_URL || process.env.APP_BASE_URL || 'http://localhost:5173';
 
@@ -427,6 +430,45 @@ const handleSocialAuthError = (res, error) => {
   });
 };
 
+const getResetTokenRecord = async (rawToken) => {
+  const token = String(rawToken || '').trim();
+  if (!token) {
+    return {
+      error: {
+        status: 400,
+        code: 'RESET_TOKEN_MISSING',
+        message: 'Reset token is required.',
+      },
+    };
+  }
+
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const record = await PasswordResetToken.findOne({ where: { tokenHash } });
+
+  if (!record) {
+    return {
+      error: {
+        status: 400,
+        code: 'RESET_TOKEN_INVALID',
+        message: 'This reset link is invalid or has already been used.',
+      },
+    };
+  }
+
+  if (new Date(record.expiresAt) < new Date()) {
+    await PasswordResetToken.destroy({ where: { id: record.id } });
+    return {
+      error: {
+        status: 400,
+        code: 'RESET_TOKEN_EXPIRED',
+        message: 'This reset link has expired. Request a new password reset email.',
+      },
+    };
+  }
+
+  return { record };
+};
+
 export const register = async (req, res) => {
   try {
     const { firstName, lastName, email, password, role } = req.body;
@@ -669,6 +711,148 @@ export const resendVerification = async (req, res) => {
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error while resending verification email.' });
+  }
+};
+
+export const requestPasswordReset = async (req, res) => {
+  try {
+    const cleanEmail = String(req.body?.email || '').toLowerCase().trim();
+    if (!validator.isEmail(cleanEmail)) {
+      return res.status(400).json({ message: 'Valid email is required.' });
+    }
+
+    const user = await User.findOne({ where: { email: cleanEmail } });
+
+    if (!user) {
+      return res.status(404).json({
+        code: 'EMAIL_NOT_FOUND',
+        message: 'Email does not exist.',
+      });
+    }
+
+    if (user.authProvider !== 'local') {
+      return res.status(400).json({
+        code: 'PASSWORD_RESET_UNAVAILABLE',
+        message: `This account uses ${user.authProvider === 'google' ? 'Google' : 'social'} sign-in and does not support password reset.`,
+      });
+    }
+
+    const rawToken = await createPasswordResetToken();
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    await PasswordResetToken.destroy({
+      where: {
+        userId: user.id,
+      },
+    });
+
+    await PasswordResetToken.create({
+      userId: user.id,
+      tokenHash,
+      expiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
+    });
+
+    try {
+      await sendPasswordResetEmail({ to: cleanEmail, token: rawToken });
+    } catch (mailErr) {
+      await PasswordResetToken.destroy({
+        where: {
+          userId: user.id,
+        },
+      });
+
+      if (mailErr.message === 'SMTP_NOT_CONFIGURED') {
+        return res.status(503).json({
+          message: 'Password reset email is not configured on the server. Add SMTP settings before using this feature.',
+        });
+      }
+
+      throw mailErr;
+    }
+
+    return res.status(200).json({
+      message: 'A password reset link has been sent.',
+      ...(process.env.NODE_ENV === 'test' ? { resetToken: rawToken } : {}),
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error while requesting password reset.' });
+  }
+};
+
+export const validatePasswordResetToken = async (req, res) => {
+  try {
+    const { record, error } = await getResetTokenRecord(req.query?.token || req.body?.token);
+    if (error) {
+      return res.status(error.status).json({
+        code: error.code,
+        message: error.message,
+      });
+    }
+
+    return res.status(200).json({
+      message: 'Reset token is valid.',
+      expiresAt: record.expiresAt,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error while validating reset token.' });
+  }
+};
+
+export const resetPassword = async (req, res) => {
+  try {
+    const { password } = req.body || {};
+
+    if (!isStrongPassword(password)) {
+      return res.status(400).json({
+        message: 'Password must be 10+ chars and include uppercase, lowercase, and a number.',
+      });
+    }
+
+    const { record, error } = await getResetTokenRecord(req.body?.token || req.query?.token);
+    if (error) {
+      return res.status(error.status).json({
+        code: error.code,
+        message: error.message,
+      });
+    }
+
+    const user = await User.findByPk(record.userId);
+    if (!user) {
+      await PasswordResetToken.destroy({ where: { id: record.id } });
+      return res.status(404).json({
+        code: 'RESET_USER_NOT_FOUND',
+        message: 'User not found for this reset link.',
+      });
+    }
+
+    if (user.authProvider !== 'local') {
+      await PasswordResetToken.destroy({ where: { id: record.id } });
+      return res.status(400).json({
+        code: 'PASSWORD_RESET_UNAVAILABLE',
+        message: 'This account uses social sign-in and does not support password reset.',
+      });
+    }
+
+    user.passwordHash = await bcrypt.hash(password, 12);
+    await user.save();
+
+    await PasswordResetToken.destroy({
+      where: {
+        [Op.or]: [
+          { id: record.id },
+          { userId: user.id },
+        ],
+      },
+    });
+
+    return res.status(200).json({
+      message: 'Password reset successfully. You can now sign in with your new password.',
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error while resetting password.' });
   }
 };
 

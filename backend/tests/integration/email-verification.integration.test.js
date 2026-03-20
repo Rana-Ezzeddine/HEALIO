@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import app from '../../server.js';
 import User from '../../src/models/User.js';
 import PendingRegistration from '../../src/models/PendingRegistration.js';
+import PasswordResetToken from '../../src/models/PasswordResetToken.js';
 
 const email = `integration_${Date.now()}@example.com`;
 const password = 'StrongPass123';
@@ -124,4 +125,81 @@ test('requireVerified middleware blocks unverified token on protected route', as
 
   assert.equal(res.status, 403);
   assert.equal(res.body.code, 'EMAIL_NOT_VERIFIED');
+});
+
+test('forgot-password issues a reset token and reset-password accepts a new password', async () => {
+  const resetEmail = `reset_${Date.now()}@example.com`;
+  await User.create({
+    email: resetEmail,
+    passwordHash: '$2b$12$IX2f3qUS5xkN9aDymN5lXOUwbl6adPC6EycNIR2A7xv5q9Br8IphK',
+    role: 'patient',
+    isVerified: true,
+    authProvider: 'local',
+  });
+
+  const requestRes = await request(app)
+    .post('/api/auth/forgot-password')
+    .send({ email: resetEmail });
+
+  assert.equal(requestRes.status, 200);
+  assert.ok(requestRes.body.resetToken);
+
+  const validateRes = await request(app)
+    .get(`/api/auth/reset-password?token=${encodeURIComponent(requestRes.body.resetToken)}`);
+
+  assert.equal(validateRes.status, 200);
+
+  const newPassword = 'NewStrongPass123';
+  const resetRes = await request(app)
+    .post('/api/auth/reset-password')
+    .send({
+      token: requestRes.body.resetToken,
+      password: newPassword,
+    });
+
+  assert.equal(resetRes.status, 200);
+
+  const loginRes = await request(app)
+    .post('/api/auth/login')
+    .send({
+      email: resetEmail,
+      password: newPassword,
+    });
+
+  assert.equal(loginRes.status, 200);
+});
+
+test('expired reset token shows a clear expired state', async () => {
+  const resetUser = await User.create({
+    email: `reset_expired_${Date.now()}@example.com`,
+    passwordHash: '$2b$12$IX2f3qUS5xkN9aDymN5lXOUwbl6adPC6EycNIR2A7xv5q9Br8IphK',
+    role: 'patient',
+    isVerified: true,
+    authProvider: 'local',
+  });
+
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+  await PasswordResetToken.create({
+    userId: resetUser.id,
+    tokenHash,
+    expiresAt: new Date(Date.now() - 60_000),
+  });
+
+  const validateRes = await request(app)
+    .get(`/api/auth/reset-password?token=${encodeURIComponent(rawToken)}`);
+
+  assert.equal(validateRes.status, 400);
+  assert.equal(validateRes.body.code, 'RESET_TOKEN_EXPIRED');
+});
+
+test('forgot-password returns a clear error when the email does not exist', async () => {
+  const res = await request(app)
+    .post('/api/auth/forgot-password')
+    .send({ email: `missing_${Date.now()}@example.com` });
+
+  assert.equal(res.status, 404);
+  assert.equal(res.body.code, 'EMAIL_NOT_FOUND');
+  assert.equal(res.body.message, 'Email does not exist.');
 });
