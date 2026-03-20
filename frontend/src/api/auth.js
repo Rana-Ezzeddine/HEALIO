@@ -56,3 +56,13 @@ export async function resendVerification(email) {
   if (!res.ok) throw makeApiError(data, "Failed to resend verification email", res.status);
   return data;
 }
+
+export function startSocialAuth(provider, options = {}) {
+  const search = new URLSearchParams();
+  const normalizedProvider = provider === "apple" ? "apple" : "google";
+
+  if (options.intent) search.set("intent", options.intent);
+  if (options.role) search.set("role", options.role);
+
+  window.location.assign(`${API_BASE}/api/auth/${normalizedProvider}/start?${search.toString()}`);
+}

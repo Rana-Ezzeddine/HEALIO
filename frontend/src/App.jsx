@@ -18,6 +18,7 @@ import PatientMessages from "./pages/PatientMessages";
 import DoctorAppointments from "./pages/DoctorAppointments";
 import PatientAppointments from "./pages/PatientAppointments";
 import VerifyEmailPage from "./pages/VerifyEmailPage";
+import SocialAuthCompletePage from "./pages/SocialAuthCompletePage";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 function AuthSync() {
@@ -48,7 +49,8 @@ function AuthSync() {
         currentPath === "/" ||
         currentPath.startsWith("/signup") ||
         currentPath.startsWith("/loginpage") ||
-        currentPath.startsWith("/verify-email");
+        currentPath.startsWith("/verify-email") ||
+        currentPath.startsWith("/social-auth-complete");
 
       if (isAuthPage) {
         navigate(target, { replace: true });
@@ -135,6 +137,7 @@ export default function App() {
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/loginPage" element={<LoginPage />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
+        <Route path="/social-auth-complete" element={<SocialAuthCompletePage />} />
 
         <Route
           path="/dashboardPatient"
