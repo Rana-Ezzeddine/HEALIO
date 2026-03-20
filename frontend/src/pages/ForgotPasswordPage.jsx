@@ -27,11 +27,22 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 px-6 flex items-center justify-center">
-      <div className="w-full max-w-md rounded-3xl bg-white border border-slate-200 shadow-xl p-10">
-        <div className="text-center">
-          <img src={logo} alt="Healio logo" className="mx-auto h-16 w-auto mb-4" />
-          <h1 className="text-3xl font-extrabold text-slate-900">Forgot Password</h1>
+    <div className="auth-page-enter relative min-h-screen overflow-hidden bg-slate-50 px-6 flex items-center justify-center">
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,#f8fbfd_0%,#eef7fb_100%)]" />
+      <div className="absolute left-[-10%] top-[14%] h-72 w-72 rounded-full bg-sky-100/75 blur-3xl" />
+      <div className="absolute right-[-8%] top-[10%] h-80 w-80 rounded-full bg-cyan-100/60 blur-3xl" />
+      <div className="absolute left-[12%] top-[22%] h-24 w-24 rounded-[2rem] border border-white/70 bg-white/35" />
+      <div className="absolute right-[14%] bottom-[18%] h-28 w-28 rounded-[2rem] border border-white/70 bg-white/30" />
+      <div className="landing-orb-1 absolute left-[18%] top-[20%] h-4 w-4 rounded-full bg-sky-300/70 shadow-[0_0_18px_rgba(125,211,252,0.55)]" />
+      <div className="landing-orb-2 absolute left-[24%] top-[58%] h-3 w-3 rounded-full bg-cyan-300/65 shadow-[0_0_16px_rgba(103,232,249,0.5)]" />
+      <div className="landing-orb-3 absolute right-[22%] top-[28%] h-5 w-5 rounded-full bg-sky-200/75 shadow-[0_0_18px_rgba(186,230,253,0.55)]" />
+      <div className="landing-orb-2 absolute right-[18%] bottom-[24%] h-3.5 w-3.5 rounded-full bg-cyan-200/75 shadow-[0_0_16px_rgba(165,243,252,0.5)]" />
+      <div className="landing-orb-1 absolute left-[32%] bottom-[18%] h-2.5 w-2.5 rounded-full bg-sky-300/70 shadow-[0_0_14px_rgba(125,211,252,0.45)]" />
+
+      <div className="relative z-10 w-full max-w-md rounded-3xl border border-slate-200 bg-white shadow-xl p-10">
+          <div className="text-center">
+            <img src={logo} alt="Healio logo" className="mx-auto h-16 w-auto mb-4" />
+            <h1 className="text-3xl font-extrabold text-slate-900">Forgot Password</h1>
           <p className="mt-2 text-sm text-slate-600">
             Enter your email and we&apos;ll send you a secure reset link.
           </p>
@@ -72,7 +83,13 @@ export default function ForgotPasswordPage() {
 
           <button
             type="button"
-            onClick={() => navigate("/loginPage")}
+            onClick={() => {
+              document.body.classList.add("auth-route-transitioning");
+              window.setTimeout(() => {
+                navigate("/loginPage");
+                document.body.classList.remove("auth-route-transitioning");
+              }, 90);
+            }}
             className="w-full h-11 rounded-xl border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 transition"
           >
             Back to Login

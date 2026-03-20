@@ -72,7 +72,7 @@ async function fetchAssignedPatients() {
 
 export default function DashboardDoctor() {
   const user = getUser();
-  const greetingName = user?.firstName || localStorage.getItem("firstName") || user?.email || "Doctor";
+  const greetingName = user?.firstName || user?.email || "Doctor";
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const [scheduleError, setScheduleError] = useState("");
   const [schedule, setSchedule] = useState([]);

@@ -90,9 +90,9 @@ export default function ProfileCaregiver(){
 
     function hydrateFromSession() {
       const storedUser = getUser();
-      setFirstName(localStorage.getItem("firstName") || "");
-      setLastName(localStorage.getItem("lastName") || "");
-      setEmail(storedUser?.email || localStorage.getItem("email") || "");
+      setFirstName(storedUser?.firstName || "");
+      setLastName(storedUser?.lastName || "");
+      setEmail(storedUser?.email || "");
     }
 
     async function loadCaregiverLinks() {
@@ -218,12 +218,12 @@ export default function ProfileCaregiver(){
 
     function handleCancel() {
         setIsEditing(false);
-        setFirstName(localStorage.getItem("firstName") || "");
-        setLastName(localStorage.getItem("lastName") || "");
+        setFirstName(getUser()?.firstName || "");
+        setLastName(getUser()?.lastName || "");
         setGender(localStorage.getItem("gender") || "");
         setDateOfBirth(localStorage.getItem("dateOfBirth") || "");
 
-        setEmail(localStorage.getItem("email") || "");
+        setEmail(getUser()?.email || "");
         setPhone(localStorage.getItem("phone") || "");
 
         setRelationshipToPatient(localStorage.getItem("relationshipToPatient") || "");

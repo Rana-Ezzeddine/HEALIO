@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
 import { useNavigate } from "react-router-dom";
-import { apiUrl, authHeaders } from "../api/http";
+import { apiUrl, authHeaders, getUser } from "../api/http";
 
 function DashboardCard({title, mainText, subText, navPage}){
   const navigate = useNavigate();
@@ -33,12 +33,12 @@ function DashboardCard({title, mainText, subText, navPage}){
 
 export default function DashboardCaregiver() {
   const navigate = useNavigate();
-  const [name, setName] = useState("Caregiver");
+  const user = getUser();
+  const [name, setName] = useState(user?.firstName || user?.email || "Caregiver");
   const [linkedPatientLabel, setLinkedPatientLabel] = useState("No active patients linked yet");
 
   useEffect(() => {
-    const firstName = localStorage.getItem("firstName") || "Caregiver";
-    setName(firstName);
+    setName(user?.firstName || user?.email || "Caregiver");
 
     (async () => {
       try {
@@ -56,7 +56,7 @@ export default function DashboardCaregiver() {
         console.error(err);
       }
     })();
-  }, []);
+  }, [user?.email, user?.firstName]);
 
   return (
     <div className="min-h-screen bg-slate-50">

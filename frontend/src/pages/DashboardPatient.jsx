@@ -60,7 +60,7 @@ function DashboardCard({ title, mainText, subText, navPage }) {
 export default function DashboardPatient() {
   const navigate = useNavigate();
   const user = getUser();
-  const greetingName = user?.firstName || localStorage.getItem("firstName") || user?.email || "Patient";
+  const greetingName = user?.firstName || user?.email || "Patient";
   const [appointments, setAppointments] = useState([]);
   const [conversationCount, setConversationCount] = useState(0);
   const [medicationCount, setMedicationCount] = useState(0);

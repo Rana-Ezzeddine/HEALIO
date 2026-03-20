@@ -1,7 +1,6 @@
 import { apiUrl, authHeaders, getUser } from "../api/http";
 import Navbar from "../components/Navbar";
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useCallback } from "react";
 import { getDoctorLinkRequests, reviewDoctorLinkRequest } from "../api/links";
 import userMale from "../assets/userMale.png"
 import userFemale from "../assets/userFemale.png"
@@ -71,7 +70,6 @@ function FormInput({ label, type = "text", value, onChange, isEditing, options }
 
 export default function ProfileDoctor(){
     const [isEditing, setIsEditing] = useState(false);
-    const navigate = useNavigate();
 
     //personal info
     const[firstName, setFirstName] = useState("");
@@ -93,14 +91,14 @@ export default function ProfileDoctor(){
     const [assignedPatients, setAssignedPatients] = useState([]);
     const [requestError, setRequestError] = useState("");
     const sessionUser = getUser();
-    const accountEmail = sessionUser?.email || localStorage.getItem("email") || "";
+    const accountEmail = sessionUser?.email || "";
 
-    function hydrateFromSession() {
-      setFirstName(localStorage.getItem("firstName") || "");
-      setLastName(localStorage.getItem("lastName") || "");
+    const hydrateFromSession = useCallback(() => {
+      setFirstName(sessionUser?.firstName || "");
+      setLastName(sessionUser?.lastName || "");
       setEmail(accountEmail);
       setLicenseNb(localStorage.getItem("licenseNb") || "");
-    }
+    }, [accountEmail, sessionUser?.firstName, sessionUser?.lastName]);
 
     async function loadDoctorLinks() {
       try {
@@ -161,7 +159,7 @@ export default function ProfileDoctor(){
       hydrateFromSession();
     }
   })();
-}, []);
+}, [accountEmail, hydrateFromSession]);
 
     async function handleReviewRequest(patientId, status) {
       setRequestError("");
@@ -235,12 +233,12 @@ export default function ProfileDoctor(){
 
     function handleCancel() {
         setIsEditing(false);
-        setFirstName(localStorage.getItem("firstName") || "");
-        setLastName(localStorage.getItem("lastName") || "");
+        setFirstName(sessionUser?.firstName || "");
+        setLastName(sessionUser?.lastName || "");
         setGender(localStorage.getItem("gender") || "");
         setDateOfBirth(localStorage.getItem("dateOfBirth") || "");
 
-        setEmail(localStorage.getItem("email") || "");
+        setEmail(accountEmail);
         setPhone(localStorage.getItem("phone") || "");
 
         setSpecialization(localStorage.getItem("specialization") || "");

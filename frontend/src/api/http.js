@@ -2,6 +2,39 @@
 export const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5050";
 
 const authStorage = window.sessionStorage;
+const cachedIdentityKeys = [
+  "accessToken",
+  "user",
+  "userRole",
+  "firstName",
+  "lastName",
+  "email",
+  "requestedRole",
+  "licenseNb",
+  "pendingPatientLinkCode",
+  "healio:auth-sync",
+  "phone",
+  "gender",
+  "dateOfBirth",
+  "allergies",
+  "conditions",
+  "bloodType",
+  "emName",
+  "relationship",
+  "emPhone",
+  "relationshipToPatient",
+  "supportNotes",
+  "specialization",
+  "yearsOfExperience",
+  "clinicName",
+  "clinicAddress",
+];
+
+function clearCachedIdentityState() {
+  for (const key of cachedIdentityKeys) {
+    localStorage.removeItem(key);
+  }
+}
 
 export function authHeaders() {
   // TODO(backend): Authenticated endpoints require a valid bearer token from backend login.
@@ -9,11 +42,11 @@ export function authHeaders() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 export function setSession({ token, user }) {
+  authStorage.clear();
+  clearCachedIdentityState();
   authStorage.setItem("accessToken", token);
   authStorage.setItem("user", JSON.stringify(user));
   authStorage.setItem("userRole", user.role);
-  localStorage.removeItem("firstName");
-  localStorage.removeItem("lastName");
   if (user?.firstName) localStorage.setItem("firstName", user.firstName);
   if (user?.lastName) localStorage.setItem("lastName", user.lastName);
   if (user?.email) localStorage.setItem("email", user.email);
@@ -21,29 +54,17 @@ export function setSession({ token, user }) {
 
 export function updateSessionUser(user) {
   if (!user) return;
+  clearCachedIdentityState();
   authStorage.setItem("user", JSON.stringify(user));
   authStorage.setItem("userRole", user.role);
-  localStorage.removeItem("firstName");
-  localStorage.removeItem("lastName");
   if (user?.firstName) localStorage.setItem("firstName", user.firstName);
   if (user?.lastName) localStorage.setItem("lastName", user.lastName);
   if (user?.email) localStorage.setItem("email", user.email);
 }
 
 export function clearSession() {
-  authStorage.removeItem("accessToken");
-  authStorage.removeItem("user");
-  authStorage.removeItem("userRole");
-  localStorage.removeItem("accessToken");
-  localStorage.removeItem("user");
-  localStorage.removeItem("userRole");
-  localStorage.removeItem("firstName");
-  localStorage.removeItem("lastName");
-  localStorage.removeItem("email");
-  localStorage.removeItem("requestedRole");
-  localStorage.removeItem("licenseNb");
-  localStorage.removeItem("pendingPatientLinkCode");
-  localStorage.removeItem("healio:auth-sync");
+  authStorage.clear();
+  clearCachedIdentityState();
 }
 
 export function getToken() {
