@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { login as loginApi, resendVerification, startSocialAuth } from "../api/auth";
 import { clearSession, setSession } from "../api/http";
+import { getPostAuthRoute } from "../utils/authRouting";
 import logo from "../assets/logo.png";
 
 function GoogleIcon() {
@@ -44,10 +45,7 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
       const { token, user } = await loginApi(email, password);
 
       setSession({ token, user });
-
-      if (user.role === "doctor") navigate("/dashboardDoctor");
-      else if (user.role === "caregiver") navigate("/dashboardCaregiver");
-      else navigate("/dashboardPatient");
+      navigate(getPostAuthRoute(user), { replace: true });
 
       if (embedded) onClose?.();
     } catch (err) {
@@ -92,8 +90,21 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
         embedded ? "w-full" : "min-h-screen px-6 bg-slate-50 overflow-hidden"
       }`}
     >
-
-      <div className="relative z-10 w-full max-w-md rounded-3xl bg-white/80 backdrop-blur-md border border-white/60 shadow-xl p-12">
+      {!embedded && (
+        <>
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,#f8fbfd_0%,#eef7fb_100%)]" />
+          <div className="absolute left-[-10%] top-[14%] h-72 w-72 rounded-full bg-sky-100/75 blur-3xl" />
+          <div className="absolute right-[-8%] top-[10%] h-80 w-80 rounded-full bg-cyan-100/60 blur-3xl" />
+          <div className="absolute left-[12%] top-[22%] h-24 w-24 rounded-[2rem] border border-white/70 bg-white/35" />
+          <div className="absolute right-[14%] bottom-[18%] h-28 w-28 rounded-[2rem] border border-white/70 bg-white/30" />
+          <div className="absolute left-[18%] top-[20%] h-4 w-4 rounded-full bg-sky-300/70 shadow-[0_0_18px_rgba(125,211,252,0.55)]" />
+          <div className="absolute left-[24%] top-[58%] h-3 w-3 rounded-full bg-cyan-300/65 shadow-[0_0_16px_rgba(103,232,249,0.5)]" />
+          <div className="absolute right-[22%] top-[28%] h-5 w-5 rounded-full bg-sky-200/75 shadow-[0_0_18px_rgba(186,230,253,0.55)]" />
+          <div className="absolute right-[18%] bottom-[24%] h-3.5 w-3.5 rounded-full bg-cyan-200/75 shadow-[0_0_16px_rgba(165,243,252,0.5)]" />
+          <div className="absolute left-[32%] bottom-[18%] h-2.5 w-2.5 rounded-full bg-sky-300/70 shadow-[0_0_14px_rgba(125,211,252,0.45)]" />
+        </>
+      )}
+      <div className={`relative z-10 w-full rounded-3xl border border-white/60 bg-white/80 shadow-xl backdrop-blur-md ${embedded ? "max-w-lg p-8 md:p-10" : "max-w-md p-12"}`}>
         <button
           onClick={() => (embedded ? onClose?.() : navigate("/"))}
           className="absolute top-4 right-4 text-slate-700 text-xl hover:opacity-50 transition"
@@ -110,7 +121,7 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
         </div>
 
         
-        <form className="space-y-4 mt-8" onSubmit={handleLogin}>
+        <form className="mt-8 space-y-4" onSubmit={handleLogin}>
           <div className="space-y-2">
             <label className="text-sm font-medium text-slate-700">Email Address</label>
             <input
@@ -147,7 +158,13 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
             <div className="flex justify-end">
               <button
                 type="button"
-                onClick={() => navigate("/forgot-password")}
+                onClick={() => {
+                  document.body.classList.add("auth-route-transitioning");
+                  window.setTimeout(() => {
+                    navigate("/forgot-password");
+                    document.body.classList.remove("auth-route-transitioning");
+                  }, 90);
+                }}
                 className="text-sm font-medium text-sky-600 hover:text-sky-700 hover:underline"
               >
                 Forgot Password?

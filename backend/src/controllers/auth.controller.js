@@ -9,6 +9,11 @@ import PatientProfile from '../models/PatientProfile.js';
 import PendingRegistration from '../models/PendingRegistration.js';
 import PasswordResetToken from '../models/PasswordResetToken.js';
 import { sendPasswordResetEmail, sendVerificationEmail } from '../services/mail.service.js';
+import {
+  DOCTOR_APPROVAL_STATUS,
+  getDoctorApprovalStatusForNewUser,
+  isDoctorRole,
+} from '../lib/doctorApproval.js';
 
 const EMAIL_TOKEN_TTL_MS = Number(process.env.EMAIL_VERIFICATION_TTL_MS || 86400000);
 const PASSWORD_RESET_TTL_MS = Number(process.env.PASSWORD_RESET_TTL_MS || 3600000);
@@ -37,6 +42,19 @@ const isStrongPassword = (pw) => (
   /[a-z]/.test(pw) &&
   /[0-9]/.test(pw)
 );
+
+const normalizeDoctorLicense = (value) => {
+  const normalized = String(value || '').trim();
+  if (!normalized) {
+    return { ok: false, message: 'Doctor license number is required.' };
+  }
+
+  if (normalized.length < 4 || normalized.length > 64) {
+    return { ok: false, message: 'Doctor license number must be between 4 and 64 characters.' };
+  }
+
+  return { ok: true, value: normalized };
+};
 
 const issueAccessToken = (user) => {
   const secret = process.env.JWT_ACCESS_SECRET;
@@ -137,7 +155,7 @@ const normalizeNameParts = ({ firstName, lastName, email, fallbackName }) => {
 const buildAuthUser = async (user) => {
   const profile = await PatientProfile.findOne({
     where: { userId: user.id },
-    attributes: ['firstName', 'lastName'],
+    attributes: ['firstName', 'lastName', 'licenseNb'],
   });
 
   return {
@@ -147,16 +165,24 @@ const buildAuthUser = async (user) => {
     isVerified: user.isVerified,
     firstName: profile?.firstName || null,
     lastName: profile?.lastName || null,
+    licenseNb: profile?.licenseNb || null,
+    doctorApprovalStatus: isDoctorRole(user.role) ? user.doctorApprovalStatus : DOCTOR_APPROVAL_STATUS.NOT_APPLICABLE,
+    doctorApprovalNotes: isDoctorRole(user.role) ? user.doctorApprovalNotes || null : null,
+    requestedMoreInfo: isDoctorRole(user.role) ? Boolean(user.doctorApprovalRequestedInfoAt) : false,
   };
 };
 
-const buildPendingAuthUser = ({ firstName, lastName, email, role }) => ({
+const buildPendingAuthUser = ({ firstName, lastName, email, role, licenseNb = null }) => ({
   id: null,
   email,
   role,
   isVerified: false,
   firstName,
   lastName,
+  licenseNb,
+  doctorApprovalStatus: isDoctorRole(role) ? DOCTOR_APPROVAL_STATUS.UNVERIFIED : DOCTOR_APPROVAL_STATUS.NOT_APPLICABLE,
+  doctorApprovalNotes: null,
+  requestedMoreInfo: false,
 });
 
 const createVerifiedUserWithProfile = async ({
@@ -167,6 +193,8 @@ const createVerifiedUserWithProfile = async ({
   role,
   authProvider = 'local',
   providerSubject = null,
+  doctorApprovalStatus = getDoctorApprovalStatusForNewUser({ role, isVerified: true }),
+  licenseNb = null,
 }) => {
   const user = await User.create({
     email,
@@ -175,6 +203,7 @@ const createVerifiedUserWithProfile = async ({
     isVerified: true,
     authProvider,
     providerSubject,
+    doctorApprovalStatus,
   });
 
   await PatientProfile.upsert({
@@ -182,6 +211,7 @@ const createVerifiedUserWithProfile = async ({
     firstName,
     lastName,
     email,
+    licenseNb: isDoctorRole(role) ? licenseNb : null,
   });
 
   return user;
@@ -371,6 +401,7 @@ const completeSocialLogin = async ({ provider, providerSubject, email, firstName
       role,
       authProvider: provider,
       providerSubject,
+      doctorApprovalStatus: getDoctorApprovalStatusForNewUser({ role, isVerified: true }),
     });
   } else {
     const updates = {};
@@ -384,6 +415,10 @@ const completeSocialLogin = async ({ provider, providerSubject, email, firstName
 
     if (!user.isVerified) {
       updates.isVerified = true;
+    }
+
+    if (isDoctorRole(user.role) && user.doctorApprovalStatus === DOCTOR_APPROVAL_STATUS.UNVERIFIED) {
+      updates.doctorApprovalStatus = DOCTOR_APPROVAL_STATUS.PENDING;
     }
 
     if (Object.keys(updates).length > 0) {
@@ -471,7 +506,7 @@ const getResetTokenRecord = async (rawToken) => {
 
 export const register = async (req, res) => {
   try {
-    const { firstName, lastName, email, password, role } = req.body;
+    const { firstName, lastName, email, password, role, licenseNb } = req.body;
 
     if (!firstName || !lastName || !email || !password) {
       return res.status(400).json({
@@ -505,6 +540,13 @@ export const register = async (req, res) => {
       return res.status(400).json({ message: 'Invalid role' });
     }
     const userRole = role;
+    const licenseResult = isDoctorRole(userRole)
+      ? normalizeDoctorLicense(licenseNb)
+      : { ok: true, value: null };
+
+    if (!licenseResult.ok) {
+      return res.status(400).json({ message: licenseResult.message });
+    }
 
     const cleanEmail = String(email || '').toLowerCase().trim();
     const cleanFirstName = firstName.trim();
@@ -521,10 +563,9 @@ export const register = async (req, res) => {
       User.findOne({ where: { email: cleanEmail } }),
       PendingRegistration.findOne({ where: { email: cleanEmail } }),
     ]);
-    if (existingUser || existingPending) {
+    if (existingUser) {
       return res.status(409).json({ message: 'Email already registered.' });
     }
-
     const passwordHash = await bcrypt.hash(password, 12);
 
     if (EMAIL_VERIFICATION_DISABLED) {
@@ -535,6 +576,8 @@ export const register = async (req, res) => {
         passwordHash,
         role: userRole,
         authProvider: 'local',
+        doctorApprovalStatus: getDoctorApprovalStatusForNewUser({ role: userRole, isVerified: true }),
+        licenseNb: licenseResult.value,
       });
       const token = issueAccessToken(user);
       const authUser = await buildAuthUser(user);
@@ -554,28 +597,49 @@ export const register = async (req, res) => {
       lastName: cleanLastName,
       email: cleanEmail,
       role: userRole,
+      licenseNb: licenseResult.value,
     });
 
     try {
-      await PendingRegistration.create({
-        firstName: cleanFirstName,
-        lastName: cleanLastName,
-        email: cleanEmail,
-        passwordHash,
-        role: userRole,
-        tokenHash,
-        expiresAt: new Date(Date.now() + EMAIL_TOKEN_TTL_MS),
-      });
+      const expiresAt = new Date(Date.now() + EMAIL_TOKEN_TTL_MS);
+
+      if (existingPending) {
+        existingPending.firstName = cleanFirstName;
+        existingPending.lastName = cleanLastName;
+        existingPending.email = cleanEmail;
+        existingPending.passwordHash = passwordHash;
+        existingPending.role = userRole;
+        existingPending.licenseNb = licenseResult.value;
+        existingPending.tokenHash = tokenHash;
+        existingPending.expiresAt = expiresAt;
+        await existingPending.save();
+      } else {
+        await PendingRegistration.create({
+          firstName: cleanFirstName,
+          lastName: cleanLastName,
+          email: cleanEmail,
+          passwordHash,
+          role: userRole,
+          licenseNb: licenseResult.value,
+          tokenHash,
+          expiresAt,
+        });
+      }
+
       await sendVerificationEmail({ to: cleanEmail, token: rawToken });
 
-      return res.status(201).json({
-        message: 'Registered successfully. Please verify your email.',
+      return res.status(existingPending ? 200 : 201).json({
+        message: existingPending
+          ? 'Pending registration updated. Please verify your email using the newest link.'
+          : 'Registered successfully. Please verify your email.',
         user: pendingUser,
         verificationRequired: true,
         ...(process.env.NODE_ENV === 'test' ? { verificationToken: rawToken } : {}),
       });
     } catch (mailErr) {
-      await PendingRegistration.destroy({ where: { email: cleanEmail } });
+      if (!existingPending) {
+        await PendingRegistration.destroy({ where: { email: cleanEmail } });
+      }
 
       if (mailErr.message === 'SMTP_NOT_CONFIGURED') {
         return res.status(503).json({
@@ -641,6 +705,7 @@ export const verifyEmail = async (req, res) => {
         passwordHash: pendingRegistration.passwordHash,
         role: pendingRegistration.role,
         isVerified: true,
+        doctorApprovalStatus: getDoctorApprovalStatusForNewUser({ role: pendingRegistration.role, isVerified: true }),
       });
     } catch (createErr) {
       if (createErr.name !== 'SequelizeUniqueConstraintError') {
@@ -659,6 +724,7 @@ export const verifyEmail = async (req, res) => {
       firstName: pendingRegistration.firstName,
       lastName: pendingRegistration.lastName,
       email: pendingRegistration.email,
+      licenseNb: isDoctorRole(pendingRegistration.role) ? pendingRegistration.licenseNb || null : null,
     });
     await PendingRegistration.destroy({ where: { id: pendingRegistration.id } });
 
@@ -927,7 +993,16 @@ export const login = async (req, res) => {
 export const me = async (req, res) => {
   try {
     const user = await User.findByPk(req.user.id, {
-      attributes: ['id', 'email', 'role', 'isVerified', 'createdAt'],
+      attributes: [
+        'id',
+        'email',
+        'role',
+        'isVerified',
+        'doctorApprovalStatus',
+        'doctorApprovalNotes',
+        'doctorApprovalRequestedInfoAt',
+        'createdAt',
+      ],
     });
     if (!user) return res.status(404).json({ message: 'User not found.' });
     const authUser = await buildAuthUser(user);

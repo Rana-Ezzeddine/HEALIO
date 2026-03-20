@@ -2,6 +2,7 @@ import { Op } from "sequelize";
 import Appointment from "../models/Appointment.js";
 import User from "../models/User.js";
 import DoctorPatientAssignment from "../models/DoctorPatientAssignment.js";
+import { DOCTOR_APPROVAL_STATUS } from "../lib/doctorApproval.js";
 
 function parseISODate(value, fieldName) {
   const d = new Date(value);
@@ -104,6 +105,9 @@ async function ensureDoctorUser(doctorId) {
   const doctor = await User.findByPk(doctorId);
   if (!doctor || doctor.role !== "doctor") {
     throw new Error("Invalid doctorId");
+  }
+  if (doctor.doctorApprovalStatus !== DOCTOR_APPROVAL_STATUS.APPROVED) {
+    throw new Error("Doctor is not currently available");
   }
 }
 
@@ -289,6 +293,7 @@ export async function getRequestableDoctors(req, res) {
     }
 
     const doctors = await patient.getDoctors({
+      where: { doctorApprovalStatus: DOCTOR_APPROVAL_STATUS.APPROVED },
       attributes: ["id", "email"],
       joinTableAttributes: [],
       through: { where: { status: "active" } },

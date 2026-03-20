@@ -3,16 +3,21 @@ import sequelize from "../../database.js";
 import User from "../models/User.js";
 import DoctorPatientAssignment from "../models/DoctorPatientAssignment.js";
 import PatientProfile from "../models/PatientProfile.js";
+import {
+  DOCTOR_APPROVAL_STATUS,
+  buildDoctorApprovalBlockedPayload,
+  isApprovedDoctorUser,
+} from "../lib/doctorApproval.js";
 
 async function resolveUserByIdOrEmail({ id, email }) {
   if (id) {
-    return User.findByPk(id, { attributes: ["id", "email", "role"] });
+    return User.findByPk(id, { attributes: ["id", "email", "role", "doctorApprovalStatus", "doctorApprovalNotes", "doctorApprovalRequestedInfoAt"] });
   }
 
   if (email) {
     return User.findOne({
       where: { email: String(email).toLowerCase().trim() },
-      attributes: ["id", "email", "role"],
+      attributes: ["id", "email", "role", "doctorApprovalStatus", "doctorApprovalNotes", "doctorApprovalRequestedInfoAt"],
     });
   }
 
@@ -38,6 +43,14 @@ async function findOtherDoctorLinkForPatient(patientId, excludeDoctorId = null) 
   }
 
   return DoctorPatientAssignment.findOne({ where });
+}
+
+function blockIfDoctorNotApproved(user) {
+  if (user?.role !== "doctor" || isApprovedDoctorUser(user)) {
+    return null;
+  }
+
+  return buildDoctorApprovalBlockedPayload(user);
 }
 
 export const getAssignedPatients = async (req, res) => {
@@ -402,6 +415,12 @@ export const assignPatientToDoctor = async (req, res) => {
       if (doctor.role !== "doctor") {
         return res.status(400).json({ message: "Invalid doctor. Must reference a doctor user." });
       }
+      if (doctor.doctorApprovalStatus !== DOCTOR_APPROVAL_STATUS.APPROVED) {
+        return res.status(403).json({
+          code: "DOCTOR_NOT_AVAILABLE",
+          message: "This doctor is not available for linking until approval is complete.",
+        });
+      }
       if (!patient || patient.role !== "patient") {
         return res.status(400).json({ message: "Invalid patient. Must reference a patient user." });
       }
@@ -447,7 +466,7 @@ export const assignPatientToDoctor = async (req, res) => {
       return res.status(403).json({ message: "Only doctors or patients can create doctor-patient links." });
     }
 
-    const doctor = await User.findByPk(actorId, { attributes: ["id", "email", "role"] });
+    const doctor = await User.findByPk(actorId, { attributes: ["id", "email", "role", "doctorApprovalStatus", "doctorApprovalNotes", "doctorApprovalRequestedInfoAt"] });
     const patient = await resolveUserByIdOrEmail({ id: patientId, email: patientEmail });
 
     if (!patient) {
@@ -458,6 +477,10 @@ export const assignPatientToDoctor = async (req, res) => {
     }
     if (!doctor || doctor.role !== "doctor") {
       return res.status(400).json({ message: "Invalid doctor. Must reference a doctor user." });
+    }
+    const blocked = blockIfDoctorNotApproved(doctor);
+    if (blocked) {
+      return res.status(blocked.status).json(blocked.body);
     }
 
     const assignment = await DoctorPatientAssignment.findOne({
@@ -552,8 +575,8 @@ export const getDoctorLinkRequests = async (req, res) => {
       const doctorIds = links.map((link) => link.doctorId);
       const doctors = doctorIds.length
         ? await User.findAll({
-            where: { id: doctorIds },
-            attributes: ["id", "email", "role"],
+            where: { id: doctorIds, doctorApprovalStatus: DOCTOR_APPROVAL_STATUS.APPROVED },
+            attributes: ["id", "email", "role", "doctorApprovalStatus"],
           })
         : [];
       const profileMap = await getPatientDisplayProfiles(doctorIds);
@@ -647,7 +670,7 @@ export const getMyDoctors = async (req, res) => {
     const doctors = doctorIds.length
       ? await User.findAll({
           where: { id: doctorIds },
-          attributes: ["id", "email", "role", "isVerified"],
+          attributes: ["id", "email", "role", "isVerified", "doctorApprovalStatus"],
         })
       : [];
     const profiles = doctorIds.length
@@ -674,6 +697,7 @@ export const getMyDoctors = async (req, res) => {
                 email: doctor.email,
                 role: doctor.role,
                 isVerified: doctor.isVerified,
+                doctorApprovalStatus: doctor.doctorApprovalStatus,
                 firstName: profile?.firstName || null,
                 lastName: profile?.lastName || null,
                 displayName:

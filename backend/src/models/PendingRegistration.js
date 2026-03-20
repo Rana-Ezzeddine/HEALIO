@@ -34,6 +34,10 @@ const PendingRegistration = sequelize.define('PendingRegistration', {
     type: DataTypes.ENUM('patient', 'doctor', 'caregiver'),
     allowNull: false,
   },
+  licenseNb: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
   tokenHash: {
     type: DataTypes.STRING(64),
     allowNull: false,

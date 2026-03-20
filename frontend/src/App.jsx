@@ -21,7 +21,14 @@ import VerifyEmailPage from "./pages/VerifyEmailPage";
 import SocialAuthCompletePage from "./pages/SocialAuthCompletePage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
+import SupportPage from "./pages/SupportPage";
+import PrivacyPage from "./pages/PrivacyPage";
+import TermsPage from "./pages/TermsPage";
 import ProtectedRoute from "./components/ProtectedRoute";
+import DoctorApprovedRoute from "./components/DoctorApprovedRoute";
+import DoctorApprovalStatusPage from "./pages/DoctorApprovalStatusPage";
+import DoctorReviewPage from "./pages/DoctorReviewPage";
+import { getPostAuthRoute } from "./utils/authRouting";
 
 function AuthSync() {
   const navigate = useNavigate();
@@ -40,12 +47,7 @@ function AuthSync() {
       const user = getUser();
       if (!token || !user) return;
 
-      const dashboardPathByRole = {
-        doctor: "/dashboardDoctor",
-        patient: "/dashboardPatient",
-        caregiver: "/dashboardCaregiver",
-      };
-      const target = dashboardPathByRole[user?.role] || "/dashboardPatient";
+      const target = getPostAuthRoute(user);
       const currentPath = location.pathname.toLowerCase();
       const isAuthPage =
         currentPath === "/" ||
@@ -78,6 +80,153 @@ function AuthSync() {
   }, [location.pathname, navigate]);
 
   return null;
+}
+
+function ScrollToTop() {
+  const location = useLocation();
+
+  useEffect(() => {
+    const hasHash = Boolean(location.hash);
+    if (hasHash) return;
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [location.pathname, location.hash]);
+
+  return null;
+}
+
+function RoutedApp() {
+  const location = useLocation();
+
+  return (
+    <div key={location.pathname} className="route-enter">
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/loginPage" element={<LoginPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
+        <Route path="/social-auth-complete" element={<SocialAuthCompletePage />} />
+        <Route
+          path="/doctor-approval-status"
+          element={
+            <ProtectedRoute allowedRoles={["doctor"]}>
+              <DoctorApprovalStatusPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/doctor-review"
+          element={
+            <ProtectedRoute>
+              <DoctorReviewPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/support" element={<SupportPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/terms" element={<TermsPage />} />
+
+        <Route
+          path="/dashboardPatient"
+          element={
+            <ProtectedRoute allowedRoles={["patient"]}>
+              <DashboardPatient />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboardDoctor"
+          element={
+            <DoctorApprovedRoute>
+              <DashboardDoctor />
+            </DoctorApprovedRoute>
+          }
+        />
+        <Route
+          path="/dashboardCaregiver"
+          element={
+            <ProtectedRoute allowedRoles={["caregiver"]}>
+              <DashboardCaregiver />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profilePatient"
+          element={
+            <ProtectedRoute allowedRoles={["patient"]}>
+              <ProfilePatient />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profileDoctor"
+          element={
+            <ProtectedRoute allowedRoles={["doctor"]}>
+              <ProfileDoctor />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profileCaregiver"
+          element={
+            <ProtectedRoute allowedRoles={["caregiver"]}>
+              <ProfileCaregiver />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/medication"
+          element={
+            <ProtectedRoute allowedRoles={["patient", "caregiver"]}>
+              <Medication />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/symptoms"
+          element={
+            <ProtectedRoute allowedRoles={["patient"]}>
+              <Symptoms />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/doctorAppointments"
+          element={
+            <DoctorApprovedRoute>
+              <DoctorAppointments />
+            </DoctorApprovedRoute>
+          }
+        />
+        <Route
+          path="/patientAppointments"
+          element={
+            <ProtectedRoute allowedRoles={["patient"]}>
+              <PatientAppointments />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/doctorMessages"
+          element={
+            <DoctorApprovedRoute>
+              <DoctorMessages />
+            </DoctorApprovedRoute>
+          }
+        />
+        <Route
+          path="/patientMessages"
+          element={
+            <ProtectedRoute allowedRoles={["patient"]}>
+              <PatientMessages />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </div>
+  );
 }
 
 export default function App() {
@@ -132,117 +281,11 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthSync />
+      <ScrollToTop />
       <div className="fixed bottom-3 right-3 rounded-xl bg-black/80 px-3 py-2 text-sm text-white">
         {message}
       </div>
-
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/signup" element={<SignupPage />} />
-        <Route path="/loginPage" element={<LoginPage />} />
-        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-        <Route path="/reset-password" element={<ResetPasswordPage />} />
-        <Route path="/verify-email" element={<VerifyEmailPage />} />
-        <Route path="/social-auth-complete" element={<SocialAuthCompletePage />} />
-
-        <Route
-          path="/dashboardPatient"
-          element={
-            <ProtectedRoute allowedRoles={["patient"]}>
-              <DashboardPatient />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/dashboardDoctor"
-          element={
-            <ProtectedRoute allowedRoles={["doctor"]}>
-              <DashboardDoctor />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/dashboardCaregiver"
-          element={
-            <ProtectedRoute allowedRoles={["caregiver"]}>
-              <DashboardCaregiver />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/profilePatient"
-          element={
-            <ProtectedRoute allowedRoles={["patient"]}>
-              <ProfilePatient />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/profileDoctor"
-          element={
-            <ProtectedRoute allowedRoles={["doctor"]}>
-              <ProfileDoctor />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/profileCaregiver"
-          element={
-            <ProtectedRoute allowedRoles={["caregiver"]}>
-              <ProfileCaregiver />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/medication"
-          element={
-            <ProtectedRoute allowedRoles={["patient", "caregiver"]}>
-              <Medication />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/symptoms"
-          element={
-            <ProtectedRoute allowedRoles={["patient"]}>
-              <Symptoms />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/doctorAppointments"
-          element={
-            <ProtectedRoute allowedRoles={["doctor"]}>
-              <DoctorAppointments />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/patientAppointments"
-          element={
-            <ProtectedRoute allowedRoles={["patient"]}>
-              <PatientAppointments />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/doctorMessages"
-          element={
-            <ProtectedRoute allowedRoles={["doctor"]}>
-              <DoctorMessages />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/patientMessages"
-          element={
-            <ProtectedRoute allowedRoles={["patient"]}>
-              <PatientMessages />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <RoutedApp />
     </BrowserRouter>
   );
 }

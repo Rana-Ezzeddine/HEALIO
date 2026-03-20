@@ -9,11 +9,11 @@ function makeApiError(data, fallback, status) {
   return err;
 }
 
-export async function register({ firstName, lastName, email, password, role }) {
+export async function register({ firstName, lastName, email, password, role, licenseNb = "" }) {
   const res = await fetch(`${API_BASE}/api/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ firstName, lastName, email, password, role }),
+    body: JSON.stringify({ firstName, lastName, email, password, role, licenseNb }),
   });
 
   const data = await res.json().catch(() => ({}));

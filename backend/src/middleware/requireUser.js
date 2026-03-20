@@ -11,13 +11,21 @@ export default async function requireUser(req, res, next) {
   try {
     const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
     const user = await User.findByPk(payload.sub, {
-      attributes: ["id", "role", "isVerified"],
+      attributes: ["id", "email", "role", "isVerified", "doctorApprovalStatus", "doctorApprovalNotes", "doctorApprovalRequestedInfoAt"],
     });
     if (!user) {
       return res.status(401).json({ message: "User not found. Please log in again." });
     }
 
-    req.user = { id: user.id, role: user.role, isVerified: user.isVerified };
+    req.user = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      isVerified: user.isVerified,
+      doctorApprovalStatus: user.doctorApprovalStatus,
+      doctorApprovalNotes: user.doctorApprovalNotes,
+      doctorApprovalRequestedInfoAt: user.doctorApprovalRequestedInfoAt,
+    };
     return next();
   } catch (err) {
     if (err?.name === "TokenExpiredError") {

@@ -1,6 +1,8 @@
 import express from "express";
 import requireUser from "../middleware/requireUser.js";
 import requireRole from "../middleware/rbac.js";
+import requireVerified from "../middleware/requireVerified.js";
+import requireDoctorProductAccessIfDoctor from "../middleware/requireDoctorProductAccessIfDoctor.js";
 import {
   createAppointment,
   createAppointmentRequest,
@@ -16,6 +18,8 @@ import {
 const router = express.Router();
 
 router.use(requireUser);
+router.use(requireVerified);
+router.use(requireDoctorProductAccessIfDoctor);
 
 // Shared (doctor + patient + caregiver can view their own side)
 router.get("/mine", getMyAppointments);

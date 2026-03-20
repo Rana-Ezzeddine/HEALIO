@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { register as registerApi, startSocialAuth } from "../api/auth";
+import { register as registerApi, resendVerification, startSocialAuth } from "../api/auth";
 import { clearSession, getToken, getUser, setSession } from "../api/http";
+import { getPostAuthRoute } from "../utils/authRouting";
 import logo from "../assets/logo.png";
 
 function GoogleIcon() {
@@ -19,7 +20,7 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [userType, setUserType] = useState("patient");
+  const [userType, setUserType] = useState("");
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -29,8 +30,10 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
   const [confirmPassword, setConfirmPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState("");
 
   const roleDescriptionByType = {
     patient: "Track your health records, book appointments, and communicate with doctors.",
@@ -47,17 +50,11 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
   useEffect(() => {
     if (!success) return;
 
-    const dashboardPathByRole = {
-      doctor: "/dashboardDoctor",
-      patient: "/dashboardPatient",
-      caregiver: "/dashboardCaregiver",
-    };
-
     function redirectIfVerified() {
       const token = getToken();
       const user = getUser();
       if (!token || !user) return;
-      const target = dashboardPathByRole[user?.role] || "/dashboardPatient";
+      const target = getPostAuthRoute(user);
       navigate(target, { replace: true });
     }
 
@@ -85,15 +82,16 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
     e.preventDefault();
     setError("");
     setSuccess("");
+    setPendingVerificationEmail("");
 
     const cleanFirstName = firstName.trim();
     const cleanLastName = lastName.trim();
     const cleanEmail = email.trim();
-    const dashboardPathByRole = {
-      doctor: "/dashboardDoctor",
-      patient: "/dashboardPatient",
-      caregiver: "/dashboardCaregiver",
-    };
+
+    if (!userType) {
+      setError("Select a role first.");
+      return;
+    }
 
     if (!isNameValid(cleanFirstName)) {
       setError("First name must be at least 2 characters and contain letters only.");
@@ -123,11 +121,12 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
         email: cleanEmail,
         password,
         role: userType,
+        licenseNb: userType === "doctor" ? licenseNb.trim() : "",
       });
 
       if (registerResponse?.token && registerResponse?.user) {
         setSession({ token: registerResponse.token, user: registerResponse.user });
-        navigate(dashboardPathByRole[registerResponse.user.role] || "/dashboardPatient", { replace: true });
+        navigate(getPostAuthRoute(registerResponse.user), { replace: true });
         return;
       }
 
@@ -140,15 +139,43 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
 
       setSuccess("Verification email sent. Open the link in your inbox to activate your account.");
     } catch (err) {
+      if (err?.code === "EMAIL_VERIFICATION_PENDING" && err?.email) {
+        setPendingVerificationEmail(err.email);
+      }
       setError(err?.message || "Failed to create account.");
     } finally {
       setLoading(false);
     }
   }
 
+  async function handleResendVerification() {
+    if (!pendingVerificationEmail) return;
+
+    setError("");
+    setSuccess("");
+    setResending(true);
+    try {
+      const data = await resendVerification(pendingVerificationEmail);
+      setSuccess(data?.message || "Verification email sent.");
+    } catch (err) {
+      setError(err?.message || "Failed to resend verification email.");
+    } finally {
+      setResending(false);
+    }
+  }
+
   function handleSocialSignup(provider) {
     setError("");
     setSuccess("");
+    setPendingVerificationEmail("");
+    if (userType === "doctor") {
+      setError("Doctor signup with Google is unavailable until the doctor application details are completed here.");
+      return;
+    }
+    if (!userType) {
+      setError("Select a role first.");
+      return;
+    }
     startSocialAuth(provider, {
       intent: "signup",
       role: userType,
@@ -163,12 +190,19 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
     >
       {!embedded && (
         <>
-          <div className="absolute inset-0 bg-sky-100/10" />
-          <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-sky-200/40 blur-3xl" />
-          <div className="absolute top-1/2 -right-40 h-96 w-96 rounded-full bg-indigo-200/40 blur-3xl" />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,#f8fbfd_0%,#eef7fb_100%)]" />
+          <div className="absolute left-[-10%] top-[14%] h-72 w-72 rounded-full bg-sky-100/75 blur-3xl" />
+          <div className="absolute right-[-8%] top-[10%] h-80 w-80 rounded-full bg-cyan-100/60 blur-3xl" />
+          <div className="absolute left-[12%] top-[22%] h-24 w-24 rounded-[2rem] border border-white/70 bg-white/35" />
+          <div className="absolute right-[14%] bottom-[18%] h-28 w-28 rounded-[2rem] border border-white/70 bg-white/30" />
+          <div className="absolute left-[18%] top-[20%] h-4 w-4 rounded-full bg-sky-300/70 shadow-[0_0_18px_rgba(125,211,252,0.55)]" />
+          <div className="absolute left-[24%] top-[58%] h-3 w-3 rounded-full bg-cyan-300/65 shadow-[0_0_16px_rgba(103,232,249,0.5)]" />
+          <div className="absolute right-[22%] top-[28%] h-5 w-5 rounded-full bg-sky-200/75 shadow-[0_0_18px_rgba(186,230,253,0.55)]" />
+          <div className="absolute right-[18%] bottom-[24%] h-3.5 w-3.5 rounded-full bg-cyan-200/75 shadow-[0_0_16px_rgba(165,243,252,0.5)]" />
+          <div className="absolute left-[32%] bottom-[18%] h-2.5 w-2.5 rounded-full bg-sky-300/70 shadow-[0_0_14px_rgba(125,211,252,0.45)]" />
         </>
       )}
-      <div className="relative z-10 w-full max-w-md rounded-3xl bg-white/80 backdrop-blur-md border border-white/60 shadow-xl p-12">
+      <div className={`relative z-10 w-full rounded-3xl border border-white/60 bg-white/80 shadow-xl backdrop-blur-md ${embedded ? "max-w-lg p-8 md:p-10" : "max-w-md p-12"}`}>
         <button
           onClick={() => (embedded ? onClose?.() : navigate("/"))}
           className="absolute top-4 right-4 text-slate-700 text-xl hover:opacity-50 transition"
@@ -186,59 +220,63 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
         </div>
 
         <div className="mt-4 space-y-3">
-          <label className="text-sm font-medium text-slate-700">I am a:</label>
-          <div className="flex gap-2">
-            <button
-              type="button"
+          <label className="text-sm font-medium text-slate-700">Select a role</label>
+          <div className="grid grid-cols-3 gap-3">
+            <RoleOption
+              active={userType === "patient"}
+              title="Patient"
+              accent="from-sky-500 to-cyan-400"
               onClick={() => {
                 setUserType("patient");
                 setLicenseNb("");
               }}
-              className={`flex-1 h-10 rounded-lg font-medium transition ${
-                userType === "patient"
-                  ? "bg-sky-500 text-white"
-                  : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-100"
-              }`}
-            >
-              Patient
-            </button>
-            <button
-              type="button"
+            />
+            <RoleOption
+              active={userType === "doctor"}
+              title="Doctor"
+              accent="from-violet-500 to-fuchsia-400"
               onClick={() => {
                 setUserType("doctor");
               }}
-              className={`flex-1 h-10 rounded-lg font-medium transition ${
-                userType === "doctor"
-                  ? "bg-sky-500 text-white"
-                  : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-100"
-              }`}
-            >
-              Doctor
-            </button>
-            <button
-              type="button"
+            />
+            <RoleOption
+              active={userType === "caregiver"}
+              title="Caregiver"
+              accent="from-emerald-500 to-teal-400"
               onClick={() => {
                 setUserType("caregiver");
                 setLicenseNb("");
               }}
-              className={`flex-1 h-10 rounded-lg font-medium transition ${
-                userType === "caregiver"
-                  ? "bg-sky-500 text-white"
-                  : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-100"
-              }`}
-            >
-              Caregiver
-            </button>
+            />
           </div>
         </div>
 
-        <div className="mt-2">
-          <p className="text-xs text-slate-500 italic">
-            {roleDescriptionByType[userType]}
-          </p>
-        </div>
+        {userType ? (
+          <>
+            <div className="mt-2">
+              <p className="text-xs text-slate-500 italic">
+                {roleDescriptionByType[userType]}
+              </p>
+            </div>
 
-        <form className="space-y-4 mt-4" onSubmit={handleCreateAccount}>
+            {userType === "doctor" && (
+              <div className="mt-4 space-y-2">
+                <label className="text-sm font-medium text-slate-700">License Number</label>
+                <input
+                  type="text"
+                  value={licenseNb}
+                  onChange={(e) => setLicenseNb(e.target.value)}
+                  placeholder="Enter your medical license number"
+                  className="w-full h-11 rounded-lg border border-slate-300 bg-white px-3 text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-400 transition"
+                  required
+                />
+                <p className="text-xs text-slate-500">
+                  Required for doctor application review and approval.
+                </p>
+              </div>
+            )}
+
+            <form className="space-y-4 mt-4" onSubmit={handleCreateAccount}>
           <div className="flex gap-2">
             <div className="space-y-2 w-full">
               <label className="text-sm font-medium text-slate-700">First Name</label>
@@ -280,22 +318,6 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
               required
             />
           </div>
-
-          {userType === "doctor" && (
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">
-              License Number
-            </label>
-            <input
-              type="text"
-              placeholder="Enter your medical license number"
-              value={licenseNb}
-              onChange={(e) => setLicenseNb(e.target.value)}
-              className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-400 focus:ring-sky-400 transition"
-              required
-            />
-          </div>
-        )}
 
           <div className="space-y-2">
             <label className="text-sm font-medium text-slate-700">Password</label>
@@ -357,6 +379,17 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
             </div>
           ) : null}
 
+          {pendingVerificationEmail ? (
+            <button
+              type="button"
+              onClick={handleResendVerification}
+              disabled={resending}
+              className="w-full h-11 rounded-xl border border-sky-300 text-sky-700 font-semibold hover:bg-sky-50 transition disabled:opacity-70"
+            >
+              {resending ? "Sending..." : "Resend verification email"}
+            </button>
+          ) : null}
+
           <button
             type="submit"
             disabled={loading}
@@ -374,28 +407,59 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
           <button
             type="button"
             onClick={() => handleSocialSignup("google")}
-            className="w-full h-11 rounded-xl border border-slate-300 bg-white text-slate-900 font-semibold hover:bg-slate-50 transition flex items-center justify-center gap-3"
+            disabled={!userType || userType === "doctor"}
+            className="w-full h-11 rounded-xl border border-slate-300 bg-white text-slate-900 font-semibold hover:bg-slate-50 transition flex items-center justify-center gap-3 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <GoogleIcon />
-            <span>Sign up with Google</span>
+            <span>{userType === "doctor" ? "Google signup unavailable for doctors" : "Sign up with Google"}</span>
           </button>
 
-          <p className="text-center text-sm text-slate-600 mt-3">
-            Already have an account?{" "}
-            <button
-              type="button"
-              onClick={() =>
-                embedded && onSwitchToLogin
-                  ? onSwitchToLogin()
-                  : navigate("/loginPage")
-              }
-              className="text-sky-500 hover:underline cursor-pointer"
-            >
-              Login
-            </button>
-          </p>
-        </form>
+              <p className="text-center text-sm text-slate-600 mt-3">
+                Already have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() =>
+                    embedded && onSwitchToLogin
+                      ? onSwitchToLogin()
+                      : navigate("/loginPage")
+                  }
+                  className="text-sky-500 hover:underline cursor-pointer"
+                >
+                  Login
+                </button>
+              </p>
+            </form>
+          </>
+        ) : (
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center text-sm text-slate-600">
+            Choose whether you are joining as a patient, caregiver, or doctor to continue.
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+function RoleOption({ active, title, accent, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group relative overflow-hidden rounded-2xl border px-3 py-4 text-center transition duration-200 ${
+        active
+          ? "border-transparent bg-slate-900 text-white shadow-lg"
+          : "border-slate-200 bg-white text-slate-700 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+      }`}
+    >
+      {active ? (
+        <>
+          <div className={`absolute inset-0 bg-gradient-to-br ${accent} opacity-95`} />
+          <div className="absolute inset-[1px] rounded-[15px] bg-[linear-gradient(180deg,rgba(255,255,255,0.16),rgba(255,255,255,0.02))]" />
+        </>
+      ) : (
+        <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${accent} opacity-70`} />
+      )}
+      <span className="relative block text-base font-bold">{title}</span>
+    </button>
   );
 }

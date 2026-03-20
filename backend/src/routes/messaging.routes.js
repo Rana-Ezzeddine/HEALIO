@@ -1,5 +1,7 @@
 import express from "express";
 import requireUser from "../middleware/requireUser.js";
+import requireVerified from "../middleware/requireVerified.js";
+import requireDoctorProductAccessIfDoctor from "../middleware/requireDoctorProductAccessIfDoctor.js";
 import {
     getConversations,
     createConversation,
@@ -10,6 +12,8 @@ import {
 const router = express.Router();
 
 router.use(requireUser);
+router.use(requireVerified);
+router.use(requireDoctorProductAccessIfDoctor);
 
 router.get("/", getConversations);
 router.post("/", createConversation);

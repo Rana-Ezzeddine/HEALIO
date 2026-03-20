@@ -1,12 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { clearSession, setSession } from "../api/http";
-
-const dashboardPathByRole = {
-  doctor: "/dashboardDoctor",
-  patient: "/dashboardPatient",
-  caregiver: "/dashboardCaregiver",
-};
+import { getPostAuthRoute } from "../utils/authRouting";
 
 function parseUser(rawUser) {
   if (!rawUser) return null;
@@ -49,7 +44,10 @@ function getInitialResult(searchParams) {
     token,
     user,
     hasError: false,
-    message: `Signed in with ${providerLabel}. Redirecting to your dashboard...`,
+    message:
+      user?.role === "doctor" && user?.doctorApprovalStatus !== "approved"
+        ? `Signed in with ${providerLabel}. Redirecting to your application status...`
+        : `Signed in with ${providerLabel}. Redirecting to your dashboard...`,
     providerLabel,
   };
 }
@@ -70,8 +68,7 @@ export default function SocialAuthCompletePage() {
     setSession({ token: initialResult.token, user: initialResult.user });
     localStorage.setItem("healio:auth-sync", String(Date.now()));
 
-    const target = dashboardPathByRole[initialResult.user?.role] || "/dashboardPatient";
-    navigate(target, { replace: true });
+    navigate(getPostAuthRoute(initialResult.user), { replace: true });
   }, [initialResult, navigate]);
 
   return (

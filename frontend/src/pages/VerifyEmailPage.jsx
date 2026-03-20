@@ -2,12 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { resendVerification, verifyEmail } from "../api/auth";
 import { clearSession, setSession } from "../api/http";
-
-const dashboardPathByRole = {
-  doctor: "/dashboardDoctor",
-  patient: "/dashboardPatient",
-  caregiver: "/dashboardCaregiver",
-};
+import { getPostAuthRoute } from "../utils/authRouting";
 
 function getInitialView(searchParams) {
   const rawToken = searchParams.get("token");
@@ -62,9 +57,12 @@ export default function VerifyEmailPage() {
         setSession({ token: accessToken, user });
         localStorage.setItem("healio:auth-sync", String(Date.now()));
         setStatus("success");
-        setMessage("Email verified. Redirecting to your dashboard...");
-        const dashboardPath = dashboardPathByRole[user?.role] || "/dashboardPatient";
-        navigate(dashboardPath, { replace: true });
+        setMessage(
+          user?.role === "doctor" && user?.doctorApprovalStatus !== "approved"
+            ? "Email verified. Redirecting to your application status..."
+            : "Email verified. Redirecting to your dashboard..."
+        );
+        navigate(getPostAuthRoute(user), { replace: true });
       } catch (err) {
         if (cancelled) return;
 

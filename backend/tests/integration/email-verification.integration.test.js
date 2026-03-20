@@ -38,6 +38,52 @@ test('registration issues verification token and blocks login before verificatio
   assert.equal(loginRes.body.email, email);
 });
 
+test('repeat registration before verification refreshes the pending signup and latest role', async () => {
+  const pendingEmail = `pending_${Date.now()}@example.com`;
+
+  const firstRegisterRes = await request(app)
+    .post('/api/auth/register')
+    .send({
+      firstName: 'Rana',
+      lastName: 'Pending',
+      email: pendingEmail,
+      password,
+      role: 'patient',
+    });
+
+  assert.equal(firstRegisterRes.status, 201);
+  assert.equal(firstRegisterRes.body.user.role, 'patient');
+
+  const secondRegisterRes = await request(app)
+    .post('/api/auth/register')
+    .send({
+      firstName: 'Drana',
+      lastName: 'Pending',
+      email: pendingEmail,
+      password,
+      role: 'doctor',
+      licenseNb: 'DOC-4421',
+    });
+
+  assert.equal(secondRegisterRes.status, 200);
+  assert.equal(secondRegisterRes.body.user.role, 'doctor');
+  assert.equal(secondRegisterRes.body.user.licenseNb, 'DOC-4421');
+  assert.equal(
+    secondRegisterRes.body.message,
+    'Pending registration updated. Please verify your email using the newest link.'
+  );
+  assert.ok(secondRegisterRes.body.verificationToken);
+
+  const verifyRes = await request(app)
+    .post('/api/auth/verify-email')
+    .send({ token: secondRegisterRes.body.verificationToken });
+
+  assert.equal(verifyRes.status, 200);
+  assert.equal(verifyRes.body.user.role, 'doctor');
+  assert.equal(verifyRes.body.user.licenseNb, 'DOC-4421');
+  assert.equal(verifyRes.body.user.doctorApprovalStatus, 'pending_approval');
+});
+
 test('verify-email activates account and login succeeds', async () => {
   const registerRes = await request(app)
     .post('/api/auth/register')
@@ -202,4 +248,164 @@ test('forgot-password returns a clear error when the email does not exist', asyn
   assert.equal(res.status, 404);
   assert.equal(res.body.code, 'EMAIL_NOT_FOUND');
   assert.equal(res.body.message, 'Email does not exist.');
+});
+
+test('doctor registration requires a license number', async () => {
+  const res = await request(app)
+    .post('/api/auth/register')
+    .send({
+      firstName: 'Doctor',
+      lastName: 'NoLicense',
+      email: `doctor_nolicense_${Date.now()}@example.com`,
+      password,
+      role: 'doctor',
+    });
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.message, 'Doctor license number is required.');
+});
+
+test('doctor accounts stay pending approval until a reviewer approves them', async () => {
+  const reviewerEmail = `reviewer_${Date.now()}@example.com`;
+  process.env.DOCTOR_REVIEWER_EMAILS = reviewerEmail;
+
+  const reviewer = await User.create({
+    email: reviewerEmail,
+    passwordHash: '$2b$12$IX2f3qUS5xkN9aDymN5lXOUwbl6adPC6EycNIR2A7xv5q9Br8IphK',
+    role: 'patient',
+    isVerified: true,
+  });
+
+  const reviewerToken = jwt.sign(
+    {
+      sub: reviewer.id,
+      role: reviewer.role,
+      isVerified: true,
+    },
+    process.env.JWT_ACCESS_SECRET,
+    { expiresIn: '15m' }
+  );
+
+  const patient = await User.create({
+    email: `doctor_flow_patient_${Date.now()}@example.com`,
+    passwordHash: '$2b$12$IX2f3qUS5xkN9aDymN5lXOUwbl6adPC6EycNIR2A7xv5q9Br8IphK',
+    role: 'patient',
+    isVerified: true,
+  });
+
+  const patientToken = jwt.sign(
+    {
+      sub: patient.id,
+      role: patient.role,
+      isVerified: true,
+    },
+    process.env.JWT_ACCESS_SECRET,
+    { expiresIn: '15m' }
+  );
+
+  const doctorEmail = `doctor_pending_${Date.now()}@example.com`;
+  const registerRes = await request(app)
+    .post('/api/auth/register')
+    .send({
+      firstName: 'Dana',
+      lastName: 'Doctor',
+      email: doctorEmail,
+      password,
+      role: 'doctor',
+      licenseNb: 'LIC-2026-001',
+    });
+
+  assert.equal(registerRes.status, 201);
+  assert.equal(registerRes.body.user.doctorApprovalStatus, 'unverified');
+  assert.equal(registerRes.body.user.licenseNb, 'LIC-2026-001');
+
+  const verifyRes = await request(app)
+    .post('/api/auth/verify-email')
+    .send({ token: registerRes.body.verificationToken });
+
+  assert.equal(verifyRes.status, 200);
+  assert.equal(verifyRes.body.user.doctorApprovalStatus, 'pending_approval');
+  assert.equal(verifyRes.body.user.licenseNb, 'LIC-2026-001');
+
+  const loginRes = await request(app)
+    .post('/api/auth/login')
+    .send({
+      email: doctorEmail,
+      password,
+    });
+
+  assert.equal(loginRes.status, 200);
+  assert.equal(loginRes.body.user.doctorApprovalStatus, 'pending_approval');
+  assert.ok(loginRes.body.token);
+
+  const pendingDoctorToken = loginRes.body.token;
+  const blockedDashboardRes = await request(app)
+    .get('/api/doctors/dashboard-overview')
+    .set('Authorization', `Bearer ${pendingDoctorToken}`);
+
+  assert.equal(blockedDashboardRes.status, 403);
+  assert.equal(blockedDashboardRes.body.code, 'DOCTOR_APPROVAL_PENDING');
+
+  const blockedLinkRes = await request(app)
+    .post('/api/doctors/assignments')
+    .set('Authorization', `Bearer ${patientToken}`)
+    .send({ doctorEmail });
+
+  assert.equal(blockedLinkRes.status, 403);
+  assert.equal(blockedLinkRes.body.code, 'DOCTOR_NOT_AVAILABLE');
+
+  const listRes = await request(app)
+    .get('/api/doctors/review/applications')
+    .set('Authorization', `Bearer ${reviewerToken}`);
+
+  assert.equal(listRes.status, 200);
+  assert.ok(listRes.body.applications.some((application) => application.email === doctorEmail));
+
+  const doctorRecord = await User.findOne({ where: { email: doctorEmail } });
+  assert.ok(doctorRecord);
+
+  const requestInfoRes = await request(app)
+    .patch(`/api/doctors/review/applications/${doctorRecord.id}`)
+    .set('Authorization', `Bearer ${reviewerToken}`)
+    .send({
+      decision: 'request_more_info',
+      notes: 'Please upload a clearer license scan.',
+    });
+
+  assert.equal(requestInfoRes.status, 200);
+  assert.equal(requestInfoRes.body.application.status, 'pending_approval');
+  assert.equal(requestInfoRes.body.application.requestedMoreInfo, true);
+
+  const statusRes = await request(app)
+    .get('/api/doctors/application-status')
+    .set('Authorization', `Bearer ${pendingDoctorToken}`);
+
+  assert.equal(statusRes.status, 200);
+  assert.equal(statusRes.body.application.status, 'pending_approval');
+  assert.equal(statusRes.body.application.requestedMoreInfo, true);
+  assert.equal(statusRes.body.application.notes, 'Please upload a clearer license scan.');
+
+  const approveRes = await request(app)
+    .patch(`/api/doctors/review/applications/${doctorRecord.id}`)
+    .set('Authorization', `Bearer ${reviewerToken}`)
+    .send({
+      decision: 'approve',
+      notes: 'License checked and approved.',
+    });
+
+  assert.equal(approveRes.status, 200);
+  assert.equal(approveRes.body.application.status, 'approved');
+
+  const approvedDashboardRes = await request(app)
+    .get('/api/doctors/dashboard-overview')
+    .set('Authorization', `Bearer ${pendingDoctorToken}`);
+
+  assert.equal(approvedDashboardRes.status, 200);
+
+  const allowedLinkRes = await request(app)
+    .post('/api/doctors/assignments')
+    .set('Authorization', `Bearer ${patientToken}`)
+    .send({ doctorEmail });
+
+  assert.equal(allowedLinkRes.status, 201);
 });
