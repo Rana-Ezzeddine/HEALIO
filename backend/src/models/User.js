@@ -20,7 +20,16 @@ const User = sequelize.define('User', {
   },
   passwordHash: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: true
+  },
+  authProvider: {
+    type: DataTypes.ENUM('local', 'google', 'apple'),
+    allowNull: false,
+    defaultValue: 'local'
+  },
+  providerSubject: {
+    type: DataTypes.STRING,
+    allowNull: true
   },
   role: {
     type: DataTypes.ENUM('patient', 'doctor', 'caregiver'),
@@ -39,6 +48,9 @@ const User = sequelize.define('User', {
     {
       unique: true,
       fields: ['email']
+    },
+    {
+      fields: ['authProvider']
     }
   ],
   defaultScope: {

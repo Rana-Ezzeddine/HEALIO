@@ -2,6 +2,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import validator from 'validator';
 import crypto from 'crypto';
+import { createPublicKey } from 'crypto';
 import { Op } from 'sequelize';
 import User from '../models/User.js';
 import PatientProfile from '../models/PatientProfile.js';
@@ -10,24 +11,30 @@ import { sendVerificationEmail } from '../services/mail.service.js';
 
 const EMAIL_TOKEN_TTL_MS = Number(process.env.EMAIL_VERIFICATION_TTL_MS || 86400000);
 const EMAIL_VERIFICATION_DISABLED = /^true$/i.test(process.env.DISABLE_EMAIL_VERIFICATION || '');
+const SOCIAL_STATE_TTL = process.env.SOCIAL_AUTH_STATE_EXPIRES_IN || '10m';
+const SOCIAL_CALLBACK_PATH = '/social-auth-complete';
+const VALID_ROLES = new Set(['patient', 'doctor', 'caregiver']);
 
-const isValidName = (name) => {
-  return (
-    typeof name === 'string' &&
-    /^[A-Za-z]+$/.test(name.trim()) &&
-    name.trim().length >= 2
-  );
-};
+const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
+const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const GOOGLE_USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
+const APPLE_AUTH_URL = 'https://appleid.apple.com/auth/authorize';
+const APPLE_TOKEN_URL = 'https://appleid.apple.com/auth/token';
+const APPLE_JWKS_URL = 'https://appleid.apple.com/auth/keys';
 
-const isStrongPassword = (pw) => {
-  return (
-    typeof pw === 'string' &&
-    pw.length >= 10 &&
-    /[A-Z]/.test(pw) &&
-    /[a-z]/.test(pw) &&
-    /[0-9]/.test(pw)
-  );
-};
+const isValidName = (name) => (
+  typeof name === 'string' &&
+  /^[A-Za-z]+$/.test(name.trim()) &&
+  name.trim().length >= 2
+);
+
+const isStrongPassword = (pw) => (
+  typeof pw === 'string' &&
+  pw.length >= 10 &&
+  /[A-Z]/.test(pw) &&
+  /[a-z]/.test(pw) &&
+  /[0-9]/.test(pw)
+);
 
 const issueAccessToken = (user) => {
   const secret = process.env.JWT_ACCESS_SECRET;
@@ -40,9 +47,88 @@ const issueAccessToken = (user) => {
   );
 };
 
-const createVerificationToken = async () => {
-  const rawToken = crypto.randomBytes(32).toString('hex');
-  return rawToken;
+const createVerificationToken = async () => crypto.randomBytes(32).toString('hex');
+
+const getFrontendBaseUrl = () => process.env.FRONTEND_URL || process.env.APP_BASE_URL || 'http://localhost:5173';
+
+const getSocialCallbackUrl = () => `${getFrontendBaseUrl()}${SOCIAL_CALLBACK_PATH}`;
+
+const buildCallbackQuery = (params) => {
+  const search = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === '') continue;
+    search.set(key, value);
+  }
+
+  return search.toString();
+};
+
+const redirectToFrontend = (res, params) => {
+  const callbackUrl = `${getSocialCallbackUrl()}?${buildCallbackQuery(params)}`;
+  return res.redirect(callbackUrl);
+};
+
+const getSocialStateSecret = () => {
+  const secret = process.env.JWT_ACCESS_SECRET;
+  if (!secret) throw new Error('Server misconfigured.');
+  return secret;
+};
+
+const createSocialState = ({ provider, role, intent }) => jwt.sign(
+  {
+    provider,
+    role: VALID_ROLES.has(role) ? role : undefined,
+    intent: intent === 'signup' ? 'signup' : 'login',
+  },
+  getSocialStateSecret(),
+  { expiresIn: SOCIAL_STATE_TTL }
+);
+
+const verifySocialState = (state, provider) => {
+  const payload = jwt.verify(String(state || ''), getSocialStateSecret());
+
+  if (payload.provider !== provider) {
+    throw new Error('Invalid social auth state.');
+  }
+
+  return payload;
+};
+
+const normalizeNameParts = ({ firstName, lastName, email, fallbackName }) => {
+  const safeEmail = String(email || '').trim().toLowerCase();
+  const normalizedFirstName = String(firstName || '').trim();
+  const normalizedLastName = String(lastName || '').trim();
+
+  if (normalizedFirstName && normalizedLastName) {
+    return {
+      firstName: normalizedFirstName,
+      lastName: normalizedLastName,
+    };
+  }
+
+  const sourceName = String(fallbackName || '').trim();
+  if (sourceName) {
+    const parts = sourceName.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      return {
+        firstName: normalizedFirstName || parts[0],
+        lastName: normalizedLastName || parts.slice(1).join(' '),
+      };
+    }
+    if (parts.length === 1) {
+      return {
+        firstName: normalizedFirstName || parts[0],
+        lastName: normalizedLastName || 'User',
+      };
+    }
+  }
+
+  const emailLocalPart = safeEmail.split('@')[0] || 'healio';
+  return {
+    firstName: normalizedFirstName || emailLocalPart.slice(0, 1).toUpperCase() + emailLocalPart.slice(1),
+    lastName: normalizedLastName || 'User',
+  };
 };
 
 const buildAuthUser = async (user) => {
@@ -70,12 +156,22 @@ const buildPendingAuthUser = ({ firstName, lastName, email, role }) => ({
   lastName,
 });
 
-const createVerifiedUserWithProfile = async ({ firstName, lastName, email, passwordHash, role }) => {
+const createVerifiedUserWithProfile = async ({
+  firstName,
+  lastName,
+  email,
+  passwordHash = null,
+  role,
+  authProvider = 'local',
+  providerSubject = null,
+}) => {
   const user = await User.create({
     email,
     passwordHash,
     role,
     isVerified: true,
+    authProvider,
+    providerSubject,
   });
 
   await PatientProfile.upsert({
@@ -86,6 +182,249 @@ const createVerifiedUserWithProfile = async ({ firstName, lastName, email, passw
   });
 
   return user;
+};
+
+const ensureProviderConfig = (provider) => {
+  const providerEnv = provider === 'google'
+    ? ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI']
+    : ['APPLE_CLIENT_ID', 'APPLE_TEAM_ID', 'APPLE_KEY_ID', 'APPLE_PRIVATE_KEY', 'APPLE_REDIRECT_URI'];
+
+  const missing = providerEnv.filter((key) => !process.env[key]);
+  if (missing.length > 0) {
+    throw new Error(`Missing required social auth configuration: ${missing.join(', ')}`);
+  }
+};
+
+const exchangeGoogleCode = async (code) => {
+  ensureProviderConfig('google');
+
+  const response = await fetch(GOOGLE_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      code,
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET,
+      redirect_uri: process.env.GOOGLE_REDIRECT_URI,
+      grant_type: 'authorization_code',
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to exchange Google authorization code.');
+  }
+
+  const tokenData = await response.json();
+  const userResponse = await fetch(GOOGLE_USERINFO_URL, {
+    headers: {
+      Authorization: `Bearer ${tokenData.access_token}`,
+    },
+  });
+
+  if (!userResponse.ok) {
+    throw new Error('Failed to fetch Google profile.');
+  }
+
+  const profile = await userResponse.json();
+  if (!profile.email || !profile.sub || profile.email_verified === false) {
+    throw new Error('Google account did not provide a verified email.');
+  }
+
+  return {
+    email: String(profile.email).toLowerCase().trim(),
+    providerSubject: String(profile.sub),
+    firstName: profile.given_name || '',
+    lastName: profile.family_name || '',
+    fallbackName: profile.name || '',
+  };
+};
+
+const buildAppleClientSecret = () => {
+  ensureProviderConfig('apple');
+
+  const privateKey = String(process.env.APPLE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+  return jwt.sign(
+    {
+      iss: process.env.APPLE_TEAM_ID,
+      aud: 'https://appleid.apple.com',
+      sub: process.env.APPLE_CLIENT_ID,
+    },
+    privateKey,
+    {
+      algorithm: 'ES256',
+      expiresIn: '5m',
+      keyid: process.env.APPLE_KEY_ID,
+    }
+  );
+};
+
+const verifyAppleIdToken = async (idToken) => {
+  const decoded = jwt.decode(idToken, { complete: true });
+  const kid = decoded?.header?.kid;
+
+  if (!kid) {
+    throw new Error('Invalid Apple identity token.');
+  }
+
+  const jwksResponse = await fetch(APPLE_JWKS_URL);
+  if (!jwksResponse.ok) {
+    throw new Error('Failed to fetch Apple signing keys.');
+  }
+
+  const jwks = await jwksResponse.json();
+  const jwk = Array.isArray(jwks.keys) ? jwks.keys.find((item) => item.kid === kid) : null;
+  if (!jwk) {
+    throw new Error('Apple signing key not found.');
+  }
+
+  const publicKey = createPublicKey({ key: jwk, format: 'jwk' });
+  return jwt.verify(idToken, publicKey, {
+    algorithms: ['RS256'],
+    issuer: 'https://appleid.apple.com',
+    audience: process.env.APPLE_CLIENT_ID,
+  });
+};
+
+const exchangeAppleCode = async ({ code, userPayload }) => {
+  ensureProviderConfig('apple');
+
+  const response = await fetch(APPLE_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      code,
+      client_id: process.env.APPLE_CLIENT_ID,
+      client_secret: buildAppleClientSecret(),
+      grant_type: 'authorization_code',
+      redirect_uri: process.env.APPLE_REDIRECT_URI,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to exchange Apple authorization code.');
+  }
+
+  const tokenData = await response.json();
+  const claims = await verifyAppleIdToken(tokenData.id_token);
+  const parsedUser = typeof userPayload === 'string' && userPayload ? JSON.parse(userPayload) : null;
+  const firstName = parsedUser?.name?.firstName || '';
+  const lastName = parsedUser?.name?.lastName || '';
+  const fallbackName = [firstName, lastName].filter(Boolean).join(' ');
+
+  if (!claims.sub) {
+    throw new Error('Apple account did not provide an account identifier.');
+  }
+
+  return {
+    email: claims.email ? String(claims.email).toLowerCase().trim() : '',
+    providerSubject: String(claims.sub),
+    firstName,
+    lastName,
+    fallbackName,
+  };
+};
+
+const findUserForSocialIdentity = async ({ provider, providerSubject, email }) => {
+  const providerUser = await User.findOne({
+    where: {
+      authProvider: provider,
+      providerSubject,
+    },
+  });
+
+  if (providerUser) return providerUser;
+
+  if (!email) return null;
+
+  return User.findOne({
+    where: {
+      email,
+    },
+  });
+};
+
+const completeSocialLogin = async ({ provider, providerSubject, email, firstName, lastName, fallbackName, role }) => {
+  const normalizedEmail = String(email || '').toLowerCase().trim();
+  let user = await findUserForSocialIdentity({ provider, providerSubject, email: normalizedEmail });
+
+  if (!user) {
+    if (!normalizedEmail) {
+      const err = new Error('This provider did not return an email for account creation. Try signing in again or use another method.');
+      err.code = 'SOCIAL_EMAIL_REQUIRED';
+      throw err;
+    }
+
+    if (!VALID_ROLES.has(role)) {
+      const err = new Error('Select your role before continuing with social sign-in.');
+      err.code = 'SOCIAL_ROLE_REQUIRED';
+      throw err;
+    }
+
+    const names = normalizeNameParts({ firstName, lastName, email: normalizedEmail, fallbackName });
+    user = await createVerifiedUserWithProfile({
+      firstName: names.firstName,
+      lastName: names.lastName,
+      email: normalizedEmail,
+      role,
+      authProvider: provider,
+      providerSubject,
+    });
+  } else {
+    const updates = {};
+
+    if (user.authProvider === 'local') {
+      updates.authProvider = provider;
+      updates.providerSubject = providerSubject;
+    } else if (!user.providerSubject) {
+      updates.providerSubject = providerSubject;
+    }
+
+    if (!user.isVerified) {
+      updates.isVerified = true;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await user.update(updates);
+    }
+
+    const existingProfile = await PatientProfile.findOne({ where: { userId: user.id } });
+    if (!existingProfile) {
+      const names = normalizeNameParts({ firstName, lastName, email: user.email, fallbackName });
+      await PatientProfile.create({
+        userId: user.id,
+        firstName: names.firstName,
+        lastName: names.lastName,
+        email: user.email,
+      });
+    }
+  }
+
+  if (user.email) {
+    await PendingRegistration.destroy({
+      where: {
+        email: user.email,
+      },
+    });
+  }
+
+  const token = issueAccessToken(user);
+  const authUser = await buildAuthUser(user);
+  return { token, user: authUser };
+};
+
+const handleSocialAuthError = (res, error) => {
+  console.error(error);
+
+  const code = error.code || 'SOCIAL_AUTH_FAILED';
+  const message =
+    code === 'SOCIAL_ROLE_REQUIRED'
+      ? error.message
+      : error.message || 'Social sign-in failed. Please try again.';
+
+  return redirectToFrontend(res, {
+    error: code,
+    message,
+  });
 };
 
 export const register = async (req, res) => {
@@ -120,9 +459,7 @@ export const register = async (req, res) => {
       });
     }
 
-    const validRoles = ['patient', 'doctor', 'caregiver'];
-
-    if (!role || !validRoles.includes(role)) {
+    if (!role || !VALID_ROLES.has(role)) {
       return res.status(400).json({ message: 'Invalid role' });
     }
     const userRole = role;
@@ -155,6 +492,7 @@ export const register = async (req, res) => {
         email: cleanEmail,
         passwordHash,
         role: userRole,
+        authProvider: 'local',
       });
       const token = issueAccessToken(user);
       const authUser = await buildAuthUser(user);
@@ -368,6 +706,13 @@ export const login = async (req, res) => {
       });
     }
 
+    if (!user.passwordHash) {
+      return res.status(400).json({
+        code: 'PASSWORD_LOGIN_UNAVAILABLE',
+        message: `This account uses ${user.authProvider === 'apple' ? 'Apple' : 'Google'} sign-in. Continue with that provider instead.`,
+      });
+    }
+
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) {
       return res.status(401).json({ message: 'Invalid credentials.' });
@@ -406,5 +751,106 @@ export const me = async (req, res) => {
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+export const startGoogleAuth = async (req, res) => {
+  try {
+    ensureProviderConfig('google');
+
+    const state = createSocialState({
+      provider: 'google',
+      role: String(req.query.role || '').trim().toLowerCase(),
+      intent: String(req.query.intent || 'login').trim().toLowerCase(),
+    });
+
+    const authUrl = new URL(GOOGLE_AUTH_URL);
+    authUrl.searchParams.set('client_id', process.env.GOOGLE_CLIENT_ID);
+    authUrl.searchParams.set('redirect_uri', process.env.GOOGLE_REDIRECT_URI);
+    authUrl.searchParams.set('response_type', 'code');
+    authUrl.searchParams.set('scope', 'openid email profile');
+    authUrl.searchParams.set('state', state);
+    authUrl.searchParams.set('prompt', 'select_account');
+
+    return res.redirect(authUrl.toString());
+  } catch (error) {
+    return handleSocialAuthError(res, error);
+  }
+};
+
+export const googleCallback = async (req, res) => {
+  try {
+    const { code, state } = req.query;
+    if (!code || !state) {
+      throw new Error('Google sign-in did not return the required information.');
+    }
+
+    const parsedState = verifySocialState(state, 'google');
+    const identity = await exchangeGoogleCode(String(code));
+    const session = await completeSocialLogin({
+      provider: 'google',
+      ...identity,
+      role: parsedState.role,
+    });
+
+    return redirectToFrontend(res, {
+      token: session.token,
+      user: JSON.stringify(session.user),
+      provider: 'google',
+    });
+  } catch (error) {
+    return handleSocialAuthError(res, error);
+  }
+};
+
+export const startAppleAuth = async (req, res) => {
+  try {
+    ensureProviderConfig('apple');
+
+    const state = createSocialState({
+      provider: 'apple',
+      role: String(req.query.role || '').trim().toLowerCase(),
+      intent: String(req.query.intent || 'login').trim().toLowerCase(),
+    });
+
+    const authUrl = new URL(APPLE_AUTH_URL);
+    authUrl.searchParams.set('client_id', process.env.APPLE_CLIENT_ID);
+    authUrl.searchParams.set('redirect_uri', process.env.APPLE_REDIRECT_URI);
+    authUrl.searchParams.set('response_type', 'code');
+    authUrl.searchParams.set('response_mode', 'form_post');
+    authUrl.searchParams.set('scope', 'name email');
+    authUrl.searchParams.set('state', state);
+
+    return res.redirect(authUrl.toString());
+  } catch (error) {
+    return handleSocialAuthError(res, error);
+  }
+};
+
+export const appleCallback = async (req, res) => {
+  try {
+    const code = String(req.body?.code || req.query?.code || '').trim();
+    const state = String(req.body?.state || req.query?.state || '').trim();
+    const userPayload = req.body?.user || req.query?.user || '';
+
+    if (!code || !state) {
+      throw new Error('Apple sign-in did not return the required information.');
+    }
+
+    const parsedState = verifySocialState(state, 'apple');
+    const identity = await exchangeAppleCode({ code, userPayload });
+    const session = await completeSocialLogin({
+      provider: 'apple',
+      ...identity,
+      role: parsedState.role,
+    });
+
+    return redirectToFrontend(res, {
+      token: session.token,
+      user: JSON.stringify(session.user),
+      provider: 'apple',
+    });
+  } catch (error) {
+    return handleSocialAuthError(res, error);
   }
 };

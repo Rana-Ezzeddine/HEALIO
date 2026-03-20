@@ -7,6 +7,8 @@ import {
   me,
   verifyEmail,
   resendVerification,
+  startGoogleAuth,
+  googleCallback,
 } from '../controllers/auth.controller.js';
 
 const router = express.Router();
@@ -14,6 +16,8 @@ const router = express.Router();
 // routes
 router.post('/register', register);
 router.post('/login', login);
+router.get('/google/start', startGoogleAuth);
+router.get('/google/callback', googleCallback);
 router.post('/verify-email', verifyEmail);
 router.get('/verify-email', verifyEmail);
 router.post('/resend-verification', resendVerification);
