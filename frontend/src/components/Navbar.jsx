@@ -53,6 +53,9 @@ export default function Navbar({ onLogin, onSignup }) {
   const isProfile = path.toLowerCase().startsWith("/profile");
   const isDoctorApprovalStatus = path.toLowerCase().startsWith("/doctor-approval-status");
   const isMedication = path.toLowerCase().startsWith("/medication");
+  const isSymptoms = path.toLowerCase().startsWith("/symptoms");
+  const isCareTeam = path.toLowerCase().startsWith("/care-team");
+  const isEmergency = path.toLowerCase().startsWith("/emergency");
   const isDoctorAppointments = path.toLowerCase().startsWith("/doctorappointments");
   const isPatientAppointments = path.toLowerCase().startsWith("/patientappointments");
   const isDoctorMessages = path.toLowerCase().startsWith("/doctormessages");
@@ -160,6 +163,36 @@ export default function Navbar({ onLogin, onSignup }) {
                       }`}
                   >
                     Medications
+                  </button>
+                )}
+                {isPatient && (
+                  <button
+                    onClick={() => navigate("/symptoms")}
+                    className={`text-sm font-medium transition ${
+                      isSymptoms ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Symptoms
+                  </button>
+                )}
+                {isPatient && (
+                  <button
+                    onClick={() => navigate("/care-team")}
+                    className={`text-sm font-medium transition ${
+                      isCareTeam ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Care Team
+                  </button>
+                )}
+                {isPatient && (
+                  <button
+                    onClick={() => navigate("/emergency")}
+                    className={`text-sm font-medium transition ${
+                      isEmergency ? "text-rose-700 font-semibold" : "text-rose-600 hover:text-rose-700"
+                    }`}
+                  >
+                    Emergency
                   </button>
                 )}
 

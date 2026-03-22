@@ -69,6 +69,50 @@ const nullIfEmpty = (v) => {
   }
   return v;
 };
+const ADHERENCE_STATUSES = new Set(["taken", "missed", "skipped", "delayed"]);
+
+const normalizeReminderLeadMinutes = (value) => {
+  if (value == null || value === "") return 30;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 1440) {
+    return null;
+  }
+  return parsed;
+};
+
+const normalizeAdherenceHistory = (value) => {
+  if (value == null) return [];
+  if (!Array.isArray(value)) return null;
+
+  const normalized = [];
+  for (const item of value) {
+    const status = cleanString(item?.status)?.toLowerCase();
+    const scheduledFor = cleanString(item?.scheduledFor);
+    const recordedAt = cleanString(item?.recordedAt) || new Date().toISOString();
+    const notes = nullIfEmpty(item?.notes);
+    const delayMinutes =
+      item?.delayMinutes == null || item?.delayMinutes === ""
+        ? null
+        : Number(item.delayMinutes);
+
+    if (!status || !ADHERENCE_STATUSES.has(status) || !scheduledFor) {
+      return null;
+    }
+
+    normalized.push({
+      status,
+      scheduledFor,
+      recordedAt,
+      notes,
+      delayMinutes:
+        delayMinutes == null || (Number.isInteger(delayMinutes) && delayMinutes >= 0)
+          ? delayMinutes
+          : null,
+    });
+  }
+
+  return normalized;
+};
 
 export const getAllMedications = async (req, res) => {
   try {
@@ -127,6 +171,9 @@ export const createMedication = async (req, res) => {
       doseAmount,
       doseUnit,
       scheduleJson,
+      adherenceHistory,
+      reminderEnabled,
+      reminderLeadMinutes,
       startDate,
       endDate,
       notes,
@@ -135,10 +182,22 @@ export const createMedication = async (req, res) => {
     const cleanName = cleanString(name);
     const cleanDosage = cleanString(dosage);
     const cleanFrequency = cleanString(frequency);
+    const cleanAdherenceHistory = normalizeAdherenceHistory(adherenceHistory);
+    const cleanReminderLeadMinutes = normalizeReminderLeadMinutes(reminderLeadMinutes);
 
     if (!cleanName || !cleanDosage || !cleanFrequency) {
       return res.status(400).json({
         error: "Missing required fields: name, dosage, and frequency are required",
+      });
+    }
+    if (cleanAdherenceHistory === null) {
+      return res.status(400).json({
+        error: "adherenceHistory must be an array of valid medication status entries",
+      });
+    }
+    if (cleanReminderLeadMinutes === null) {
+      return res.status(400).json({
+        error: "reminderLeadMinutes must be an integer between 0 and 1440",
       });
     }
 
@@ -151,6 +210,9 @@ export const createMedication = async (req, res) => {
       doseAmount: doseAmount ?? null,
       doseUnit: nullIfEmpty(doseUnit),
       scheduleJson: scheduleJson ?? null,
+      adherenceHistory: cleanAdherenceHistory,
+      reminderEnabled: reminderEnabled !== false,
+      reminderLeadMinutes: cleanReminderLeadMinutes,
       startDate: nullIfEmpty(startDate),
       endDate: nullIfEmpty(endDate),
       notes: nullIfEmpty(notes),
@@ -182,6 +244,9 @@ export const updateMedication = async (req, res) => {
       doseAmount,
       doseUnit,
       scheduleJson,
+      adherenceHistory,
+      reminderEnabled,
+      reminderLeadMinutes,
       startDate,
       endDate,
       notes,
@@ -190,10 +255,22 @@ export const updateMedication = async (req, res) => {
     const cleanName = cleanString(name);
     const cleanDosage = cleanString(dosage);
     const cleanFrequency = cleanString(frequency);
+    const cleanAdherenceHistory = normalizeAdherenceHistory(adherenceHistory);
+    const cleanReminderLeadMinutes = normalizeReminderLeadMinutes(reminderLeadMinutes);
 
     if (!cleanName || !cleanDosage || !cleanFrequency) {
       return res.status(400).json({
         error: "Missing required fields: name, dosage, and frequency are required",
+      });
+    }
+    if (cleanAdherenceHistory === null) {
+      return res.status(400).json({
+        error: "adherenceHistory must be an array of valid medication status entries",
+      });
+    }
+    if (cleanReminderLeadMinutes === null) {
+      return res.status(400).json({
+        error: "reminderLeadMinutes must be an integer between 0 and 1440",
       });
     }
 
@@ -211,6 +288,9 @@ export const updateMedication = async (req, res) => {
       doseAmount: doseAmount ?? null,
       doseUnit: nullIfEmpty(doseUnit),
       scheduleJson: scheduleJson ?? null,
+      adherenceHistory: cleanAdherenceHistory,
+      reminderEnabled: reminderEnabled !== false,
+      reminderLeadMinutes: cleanReminderLeadMinutes,
       startDate: nullIfEmpty(startDate),
       endDate: nullIfEmpty(endDate),
       notes: nullIfEmpty(notes),
@@ -245,6 +325,70 @@ export const deleteMedication = async (req, res) => {
   } catch (error) {
     console.error("Error deleting medication:", error);
     return res.status(500).json({ error: "Failed to delete medication" });
+  }
+};
+
+export const logMedicationAdherence = async (req, res) => {
+  try {
+    const resolved = await resolveMedicationPatientId(req);
+    if (resolved.error) {
+      return res.status(resolved.status).json({ error: resolved.error });
+    }
+    const { patientId } = resolved;
+
+    const medication = await Medication.findOne({
+      where: { id: req.params.id, patientId },
+    });
+
+    if (!medication) return res.status(404).json({ error: "Medication not found" });
+
+    const status = cleanString(req.body?.status)?.toLowerCase();
+    const scheduledFor = cleanString(req.body?.scheduledFor);
+    const notes = nullIfEmpty(req.body?.notes);
+    const delayMinutes =
+      req.body?.delayMinutes == null || req.body?.delayMinutes === ""
+        ? null
+        : Number(req.body.delayMinutes);
+
+    if (!status || !ADHERENCE_STATUSES.has(status)) {
+      return res.status(400).json({
+        error: "status must be one of taken, missed, skipped, or delayed",
+      });
+    }
+
+    if (!scheduledFor) {
+      return res.status(400).json({ error: "scheduledFor is required" });
+    }
+
+    if (
+      delayMinutes != null &&
+      (!Number.isInteger(delayMinutes) || delayMinutes < 0 || status !== "delayed")
+    ) {
+      return res.status(400).json({
+        error: "delayMinutes must be a non-negative integer when status is delayed",
+      });
+    }
+
+    const currentHistory = Array.isArray(medication.adherenceHistory)
+      ? medication.adherenceHistory
+      : [];
+
+    const nextEntry = {
+      status,
+      scheduledFor,
+      recordedAt: new Date().toISOString(),
+      notes,
+      delayMinutes: status === "delayed" ? delayMinutes ?? 0 : null,
+    };
+
+    await medication.update({
+      adherenceHistory: [nextEntry, ...currentHistory].slice(0, 100),
+    });
+
+    return res.json(medication);
+  } catch (error) {
+    console.error("Error logging medication adherence:", error);
+    return res.status(500).json({ error: "Failed to log medication adherence" });
   }
 };
 

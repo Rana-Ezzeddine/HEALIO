@@ -1,5 +1,4 @@
 import { apiUrl, authHeaders } from "./http";
-import { getUser } from "./http";
 
 async function request(path, options = {}) {
   const response = await fetch(`${apiUrl}${path}`, {

@@ -1,25 +1,61 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Navbar from "../components/Navbar";
-import { X, Check, Sparkles, Activity, CalendarDays, Plus, HeartPulse } from 'lucide-react';
-import { apiUrl, authHeaders } from "../api/http";
+import { Activity, CalendarDays, Check, Filter, HeartPulse, Plus, Sparkles, X } from "lucide-react";
+import { createSymptom, filterSymptoms, getSymptoms } from "../api/symptoms";
+
+const PRESET_SYMPTOMS = ["Headache", "Nausea", "Fever", "Fatigue", "Cough", "Dizziness"];
+
+function formatLoggedDate(value) {
+  return new Date(value).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function getSeverityStyle(severity) {
+  if (severity >= 7) {
+    return {
+      border: "border-rose-400",
+      badge: "bg-rose-100 text-rose-700",
+      bar: "bg-rose-500",
+      label: "High",
+    };
+  }
+
+  if (severity >= 4) {
+    return {
+      border: "border-amber-400",
+      badge: "bg-amber-100 text-amber-700",
+      bar: "bg-amber-500",
+      label: "Moderate",
+    };
+  }
+
+  return {
+    border: "border-emerald-400",
+    badge: "bg-emerald-100 text-emerald-700",
+    bar: "bg-emerald-500",
+    label: "Mild",
+  };
+}
 
 export default function Symptoms() {
   const [logs, setLogs] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [error, setError] = useState("");
-
-  const [currentSymptom, setCurrentSymptom] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [currentSymptom, setCurrentSymptom] = useState("");
+  const [customSymptom, setCustomSymptom] = useState("");
   const [currentSeverity, setCurrentSeverity] = useState(null);
   const [currentNotes, setCurrentNotes] = useState("");
-
-  const symptomsList = [
-    "Headache",
-    "Nausea",
-    "Fever",
-    "Fatigue",
-    "Cough",
-    "Dizziness",
-  ];
+  const [filters, setFilters] = useState({
+    symptomName: "",
+    severity: "",
+    startDate: "",
+    endDate: "",
+    sortOrder: "DESC",
+  });
 
   const todayLabel = useMemo(
     () =>
@@ -31,6 +67,48 @@ export default function Symptoms() {
     []
   );
 
+  const loadSymptoms = useCallback(async (nextFilters) => {
+    setLoading(true);
+    try {
+      const hasAdvancedFilters = Boolean(
+        nextFilters.symptomName || nextFilters.severity || nextFilters.startDate || nextFilters.endDate
+      );
+      const data = hasAdvancedFilters
+        ? await filterSymptoms({
+            symptomName: nextFilters.symptomName,
+            severity: nextFilters.severity,
+            startDate: nextFilters.startDate,
+            endDate: nextFilters.endDate,
+            sortBy: "loggedAt",
+            sortOrder: nextFilters.sortOrder,
+            limit: 100,
+            offset: 0,
+          })
+        : await getSymptoms();
+
+      const source = Array.isArray(data) ? data : data.symptoms || [];
+      setLogs(
+        source.map((item) => ({
+          id: item.id,
+          date: item.loggedAt,
+          symptom: item.name,
+          severity: item.severity,
+          notes: item.notes,
+        }))
+      );
+      setError("");
+    } catch (loadError) {
+      setError(loadError.message || "Failed to load symptoms.");
+      setLogs([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSymptoms(filters);
+  }, [filters, loadSymptoms]);
+
   const averageSeverity =
     logs.length > 0
       ? (logs.reduce((sum, log) => sum + (log.severity ?? 0), 0) / logs.length).toFixed(1)
@@ -38,38 +116,45 @@ export default function Symptoms() {
 
   const intenseDays = logs.filter((log) => (log.severity ?? 0) >= 7).length;
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch(`${apiUrl}/api/symptoms`, {
-          headers: { "Content-Type": "application/json", ...authHeaders() },
+  const trendItems = useMemo(() => {
+    const grouped = new Map();
+    logs
+      .slice()
+      .sort((left, right) => new Date(left.date) - new Date(right.date))
+      .forEach((log) => {
+        const key = new Date(log.date).toISOString().slice(0, 10);
+        const current = grouped.get(key) || { count: 0, totalSeverity: 0 };
+        grouped.set(key, {
+          count: current.count + 1,
+          totalSeverity: current.totalSeverity + (log.severity || 0),
         });
+      });
 
-        const data = await res.json().catch(() => ([]));
-        if (!res.ok) {
-          setError(data?.message || "Failed to load symptoms.");
-          return;
-        }
+    return Array.from(grouped.entries()).slice(-7).map(([date, value]) => ({
+      date,
+      count: value.count,
+      averageSeverity: Math.round((value.totalSeverity / value.count) * 10) / 10,
+    }));
+  }, [logs]);
 
-        const normalized = Array.isArray(data)
-          ? data.map((item) => ({
-              id: item.id,
-              date: item.loggedAt,
-              symptom: item.name,
-              severity: item.severity,
-              notes: item.notes,
-            }))
-          : [];
-        setLogs(normalized);
-      } catch (err) {
-        setError("Failed to load symptoms.");
-      }
-    })();
-  }, []);
+  const topSymptoms = useMemo(() => {
+    const counts = {};
+    logs.forEach((log) => {
+      counts[log.symptom] = (counts[log.symptom] || 0) + 1;
+    });
+    return Object.entries(counts)
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 4);
+  }, [logs]);
+
+  async function applyFilters() {
+    await loadSymptoms(filters);
+  }
 
   async function handleSave() {
-    if (!currentSymptom) {
-      alert("Please select symptom.");
+    const selectedSymptom = currentSymptom === "__custom__" ? customSymptom.trim() : currentSymptom;
+    if (!selectedSymptom) {
+      alert("Please select or enter a symptom.");
       return;
     }
     if (currentSeverity === null) {
@@ -78,99 +163,54 @@ export default function Symptoms() {
     }
 
     try {
-      const payload = {
-        symptom: currentSymptom,
+      const data = await createSymptom({
+        symptom: selectedSymptom,
         severity: currentSeverity,
         notes: currentNotes,
-      };
-
-      const res = await fetch(`${apiUrl}/api/symptoms`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify(payload),
       });
 
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        alert(data?.message || "Failed to save symptom.");
-        return;
-      }
-
-      const newLog = {
-        id: data.id,
-        date: data.loggedAt,
-        symptom: data.name,
-        severity: data.severity,
-        notes: data.notes,
-      };
-      setLogs([newLog, ...logs]);
+      setLogs((current) => [
+        {
+          id: data.id,
+          date: data.loggedAt,
+          symptom: data.name,
+          severity: data.severity,
+          notes: data.notes,
+        },
+        ...current,
+      ]);
       setError("");
-    } catch (err) {
-      alert("Failed to save symptom.");
-      return;
+      setCurrentSymptom("");
+      setCustomSymptom("");
+      setCurrentSeverity(null);
+      setCurrentNotes("");
+      setIsModalOpen(false);
+    } catch (saveError) {
+      alert(saveError.message || "Failed to save symptom.");
     }
-
-    // reset modal
-    setCurrentSymptom(null);
-    setCurrentSeverity(null);
-    setCurrentNotes("");
-    setIsModalOpen(false);
-  }
-
-  function openModal() {
-    setIsModalOpen(true);
-  }
-
-  function closeModal() {
-    setIsModalOpen(false);
-  }
-
-  function getSeverityStyle(severity) {
-    if (severity >= 7) {
-      return {
-        border: "border-rose-400",
-        badge: "bg-rose-100 text-rose-700",
-        bar: "bg-rose-500",
-        label: "High",
-      };
-    }
-
-    if (severity >= 4) {
-      return {
-        border: "border-amber-400",
-        badge: "bg-amber-100 text-amber-700",
-        bar: "bg-amber-500",
-        label: "Moderate",
-      };
-    }
-
-    return {
-      border: "border-emerald-400",
-      badge: "bg-emerald-100 text-emerald-700",
-      bar: "bg-emerald-500",
-      label: "Mild",
-    };
   }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-sky-50 via-indigo-50 to-cyan-50 p-6">
-      <div className="pointer-events-none absolute -top-24 -left-16 h-72 w-72 rounded-full bg-sky-200/35 blur-3xl" />
+      <div className="pointer-events-none absolute -left-16 -top-24 h-72 w-72 rounded-full bg-sky-200/35 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-24 -right-16 h-80 w-80 rounded-full bg-indigo-200/35 blur-3xl" />
       <Navbar />
 
-      <div className="relative pt-24 max-w-4xl mx-auto">
-        <header className="mb-8 rounded-3xl border border-white/80 bg-white/75 p-6 backdrop-blur-sm shadow-sm">
+      <div className="relative mx-auto max-w-6xl pt-24">
+        <header className="mb-8 rounded-3xl border border-white/80 bg-white/75 p-6 shadow-sm backdrop-blur-sm">
           <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-sm font-medium text-sky-700">
-                <Sparkles size={16} /> Daily wellness tracker
+                <Sparkles size={16} /> Symptom tracking
               </p>
-              <h1 className="mt-3 text-4xl text-slate-900 font-black">Health Log</h1>
-              <p className="text-slate-600 mt-1">Capture symptoms, track trends, and stay ahead of your health.</p>
+              <h1 className="mt-3 text-4xl font-black text-slate-900">Health Log</h1>
+              <p className="mt-1 text-slate-600">
+                Capture custom symptoms, filter your history, and follow trend changes over time.
+              </p>
             </div>
-            <div className="rounded-2xl bg-white/90 border border-slate-100 p-4 min-w-[220px]">
+            <div className="min-w-[220px] rounded-2xl border border-slate-100 bg-white/90 p-4">
               <p className="text-xs uppercase tracking-wide text-slate-500">Today</p>
-              <p className="mt-1 flex items-center gap-2 text-slate-800 font-semibold">
+              <p className="mt-1 flex items-center gap-2 font-semibold text-slate-800">
                 <CalendarDays size={16} className="text-sky-600" />
                 {todayLabel}
               </p>
@@ -178,162 +218,292 @@ export default function Symptoms() {
           </div>
         </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-          <div className="rounded-2xl bg-white/85 border border-white/80 p-4 shadow-sm">
+        <div className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="rounded-2xl border border-white/80 bg-white/85 p-4 shadow-sm">
             <p className="text-xs uppercase tracking-wide text-slate-500">Entries</p>
             <p className="mt-1 text-2xl font-bold text-slate-900">{logs.length}</p>
           </div>
-          <div className="rounded-2xl bg-white/85 border border-white/80 p-4 shadow-sm">
+          <div className="rounded-2xl border border-white/80 bg-white/85 p-4 shadow-sm">
             <p className="text-xs uppercase tracking-wide text-slate-500">Avg severity</p>
             <p className="mt-1 text-2xl font-bold text-slate-900">{averageSeverity ?? "-"}</p>
           </div>
-          <div className="rounded-2xl bg-white/85 border border-white/80 p-4 shadow-sm">
+          <div className="rounded-2xl border border-white/80 bg-white/85 p-4 shadow-sm">
             <p className="text-xs uppercase tracking-wide text-slate-500">Intense days</p>
             <p className="mt-1 text-2xl font-bold text-slate-900">{intenseDays}</p>
           </div>
         </div>
 
-        <div className="text-center mb-7">
-          <button
-            onClick={openModal}
-            className="inline-flex items-center gap-2 bg-gradient-to-b from-sky-500 to-blue-500 hover:from-sky-600 hover:to-blue-600 text-white font-semibold px-6 py-3 rounded-2xl shadow-md transition hover:scale-[1.02]"
-          >
-            <Plus size={18} /> Log Symptom
-          </button>
-        </div>
-
-        <h2 className="text-lg font-semibold text-slate-700 mb-3">Recent Logs</h2>
-        {error ? <p className="mb-3 text-sm text-red-600">{error}</p> : null}
-        <div className="flex flex-col gap-4">
-          {logs.length === 0 && (
-            <div className="mt-8 rounded-3xl border border-dashed border-sky-200 bg-white/80 p-10 text-center">
-              <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-sky-100 text-sky-700">
-                <HeartPulse size={24} />
+        <div className="mb-6 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+          <section className="rounded-3xl bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Stronger filtering</h2>
+                <p className="mt-1 text-sm text-slate-500">Narrow the log by symptom, severity, and date range.</p>
               </div>
-              <p className="text-slate-700 font-medium">No symptoms logged yet</p>
-              <p className="text-slate-500 text-sm mt-1">Your wellness timeline will appear here after your first entry.</p>
+              <Filter className="text-slate-400" size={20} />
             </div>
-          )}
 
-          {logs.map((log) => {
-            const style = getSeverityStyle(log.severity ?? 0);
-
-            return (
-              <div
-                key={log.id}
-                className={`rounded-2xl border-l-4 ${style.border} bg-white/90 p-5 shadow-sm transition hover:shadow-md hover:-translate-y-0.5`}
+            <div className="mt-4 grid gap-3">
+              <input
+                type="text"
+                value={filters.symptomName}
+                onChange={(event) => setFilters((current) => ({ ...current, symptomName: event.target.value }))}
+                placeholder="Search symptom name"
+                className="rounded-2xl border border-slate-300 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-500"
+              />
+              <select
+                value={filters.severity}
+                onChange={(event) => setFilters((current) => ({ ...current, severity: event.target.value }))}
+                className="rounded-2xl border border-slate-300 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-500"
               >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm text-slate-400">{log.date}</p>
-                    <p className="font-semibold text-xl text-slate-900">{log.symptom}</p>
-                  </div>
-                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${style.badge}`}>
-                    {style.label}
-                  </span>
-                </div>
+                <option value="">All severity levels</option>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((level) => (
+                  <option key={level} value={level}>
+                    Severity {level}
+                  </option>
+                ))}
+              </select>
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  type="date"
+                  value={filters.startDate}
+                  onChange={(event) => setFilters((current) => ({ ...current, startDate: event.target.value }))}
+                  className="rounded-2xl border border-slate-300 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                />
+                <input
+                  type="date"
+                  value={filters.endDate}
+                  onChange={(event) => setFilters((current) => ({ ...current, endDate: event.target.value }))}
+                  className="rounded-2xl border border-slate-300 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                />
+              </div>
+              <select
+                value={filters.sortOrder}
+                onChange={(event) => setFilters((current) => ({ ...current, sortOrder: event.target.value }))}
+                className="rounded-2xl border border-slate-300 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-500"
+              >
+                <option value="DESC">Newest first</option>
+                <option value="ASC">Oldest first</option>
+              </select>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={applyFilters}
+                  className="flex-1 rounded-2xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white hover:bg-sky-600 transition"
+                >
+                  Apply filters
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const reset = { symptomName: "", severity: "", startDate: "", endDate: "", sortOrder: "DESC" };
+                    setFilters(reset);
+                    loadSymptoms(reset);
+                  }}
+                  className="flex-1 rounded-2xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+          </section>
 
-                <div className="mt-3 flex items-center justify-between text-sm text-slate-600">
-                  <span className="inline-flex items-center gap-1">
-                    <Activity size={15} /> Severity
-                  </span>
-                  <span className="font-semibold text-slate-800">{log.severity ?? "-"} / 10</span>
-                </div>
+          <section className="rounded-3xl bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Trend view</h2>
+                <p className="mt-1 text-sm text-slate-500">Average severity and logging frequency across recent days.</p>
+              </div>
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-b from-sky-500 to-blue-500 px-5 py-3 text-sm font-semibold text-white shadow-md transition hover:scale-[1.02]"
+              >
+                <Plus size={18} /> Log Symptom
+              </button>
+            </div>
 
-                <div className="mt-2 h-2 w-full rounded-full bg-slate-100 overflow-hidden">
-                  <div
-                    className={`h-full ${style.bar} transition-all`}
-                    style={{ width: `${Math.max(0, Math.min(100, (log.severity ?? 0) * 10))}%` }}
-                  />
-                </div>
-
-                {log.notes && (
-                  <p className="text-slate-600 text-sm mt-3 rounded-lg bg-slate-50 p-3">
-                    {log.notes}
+            <div className="mt-5 grid gap-4 md:grid-cols-[1fr_0.9fr]">
+              <div className="space-y-3">
+                {trendItems.length > 0 ? (
+                  trendItems.map((item) => (
+                    <div key={item.date}>
+                      <div className="mb-1 flex items-center justify-between text-sm text-slate-600">
+                        <span>{formatLoggedDate(item.date)}</span>
+                        <span>{item.averageSeverity}/10 avg</span>
+                      </div>
+                      <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+                        <div className="h-full rounded-full bg-gradient-to-r from-sky-500 to-indigo-500" style={{ width: `${Math.min(100, item.averageSeverity * 10)}%` }} />
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                    Trend bars appear once you have symptom history.
                   </p>
                 )}
               </div>
-            );
-          })}
+
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-sm font-semibold text-slate-900">Most frequent symptoms</p>
+                <div className="mt-3 space-y-2">
+                  {topSymptoms.length > 0 ? (
+                    topSymptoms.map(([symptom, count]) => (
+                      <div key={symptom} className="flex items-center justify-between rounded-xl bg-white px-3 py-2 text-sm text-slate-700">
+                        <span>{symptom}</span>
+                        <span className="font-semibold text-slate-900">{count}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-slate-500">No symptom frequency data yet.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <h2 className="mb-3 text-lg font-semibold text-slate-700">Recent Logs</h2>
+        {error ? <p className="mb-3 text-sm text-red-600">{error}</p> : null}
+        <div className="flex flex-col gap-4">
+          {loading ? (
+            <div className="rounded-3xl border border-dashed border-sky-200 bg-white/80 p-10 text-center text-sm text-slate-500">
+              Loading symptom history...
+            </div>
+          ) : logs.length === 0 ? (
+            <div className="rounded-3xl border border-dashed border-sky-200 bg-white/80 p-10 text-center">
+              <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-sky-100 text-sky-700">
+                <HeartPulse size={24} />
+              </div>
+              <p className="font-medium text-slate-700">No symptoms logged yet</p>
+              <p className="mt-1 text-sm text-slate-500">Your wellness timeline will appear here after your first entry.</p>
+            </div>
+          ) : (
+            logs.map((log) => {
+              const style = getSeverityStyle(log.severity ?? 0);
+              return (
+                <div
+                  key={log.id}
+                  className={`rounded-2xl border-l-4 ${style.border} bg-white/90 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md`}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm text-slate-400">{formatLoggedDate(log.date)}</p>
+                      <p className="text-xl font-semibold text-slate-900">{log.symptom}</p>
+                    </div>
+                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${style.badge}`}>{style.label}</span>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between text-sm text-slate-600">
+                    <span className="inline-flex items-center gap-1">
+                      <Activity size={15} /> Severity
+                    </span>
+                    <span className="font-semibold text-slate-800">{log.severity} / 10</span>
+                  </div>
+
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                    <div className={`h-full ${style.bar}`} style={{ width: `${Math.max(0, Math.min(100, (log.severity ?? 0) * 10))}%` }} />
+                  </div>
+
+                  {log.notes ? <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{log.notes}</p> : null}
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl border border-white/80 shadow-lg max-w-md w-full p-6">
-            <div className="flex justify-between items-center mb-4">
+      {isModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border border-white/80 bg-white p-6 shadow-lg">
+            <div className="mb-4 flex items-center justify-between">
               <h2 className="text-xl font-semibold text-slate-900">Log Symptom</h2>
-              <button onClick={closeModal} className="text-slate-400 hover:text-slate-600 transition-colors">
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 transition hover:text-slate-600">
                 <X size={24} />
               </button>
             </div>
 
             <div className="mb-4">
-              <h3 className="font-medium text-slate-700 mb-2">Choose symptom</h3>
+              <h3 className="mb-2 font-medium text-slate-700">Choose symptom</h3>
               <div className="flex flex-wrap gap-2">
-                {symptomsList.map((symptom) => (
+                {PRESET_SYMPTOMS.map((symptom) => (
                   <button
                     key={symptom}
                     onClick={() => setCurrentSymptom(symptom)}
-                    className={`px-4 py-2 rounded-full transition ${
-                      currentSymptom === symptom
-                        ? "bg-sky-500 text-white shadow-sm"
-                        : "bg-sky-50 text-sky-700 hover:bg-sky-100"
+                    className={`rounded-full px-4 py-2 transition ${
+                      currentSymptom === symptom ? "bg-sky-500 text-white shadow-sm" : "bg-sky-50 text-sky-700 hover:bg-sky-100"
                     }`}
                   >
                     {symptom}
                   </button>
                 ))}
+                <button
+                  onClick={() => setCurrentSymptom("__custom__")}
+                  className={`rounded-full px-4 py-2 transition ${
+                    currentSymptom === "__custom__" ? "bg-indigo-500 text-white shadow-sm" : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                  }`}
+                >
+                  Custom symptom
+                </button>
               </div>
+              {currentSymptom === "__custom__" ? (
+                <input
+                  type="text"
+                  value={customSymptom}
+                  onChange={(event) => setCustomSymptom(event.target.value)}
+                  placeholder="Type your symptom"
+                  className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                />
+              ) : null}
             </div>
 
             <div className="mb-4">
-              <h3 className="font-medium text-slate-700 mb-2">Rate severity (0-10)</h3>
+              <h3 className="mb-2 font-medium text-slate-700">Rate severity (1-10)</h3>
               <div className="flex flex-wrap gap-2">
-                {[...Array(11).keys()].map((level) => (
-                  <button
-                    key={level}
-                    onClick={() => setCurrentSeverity(level)}
-                    className={`px-3 py-1 rounded-full transition ${
-                      currentSeverity === level
-                        ? "bg-orange-500 text-white shadow-sm"
-                        : "bg-orange-50 text-orange-700 hover:bg-orange-100"
-                    }`}
-                  >
-                    {level}
-                  </button>
-                ))}
+                {[...Array(10).keys()].map((index) => {
+                  const level = index + 1;
+                  return (
+                    <button
+                      key={level}
+                      onClick={() => setCurrentSeverity(level)}
+                      className={`rounded-full px-3 py-1 transition ${
+                        currentSeverity === level ? "bg-orange-500 text-white shadow-sm" : "bg-orange-50 text-orange-700 hover:bg-orange-100"
+                      }`}
+                    >
+                      {level}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
             <div className="mb-4">
-              <h3 className="font-medium text-slate-700 mb-2">Notes (optional)</h3>
+              <h3 className="mb-2 font-medium text-slate-700">Notes (optional)</h3>
               <textarea
                 value={currentNotes}
-                onChange={(e) => setCurrentNotes(e.target.value)}
+                onChange={(event) => setCurrentNotes(event.target.value)}
                 rows={3}
-                className="w-full p-3 bg-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500"
+                className="w-full rounded-xl bg-slate-100 p-3 focus:outline-none focus:ring-2 focus:ring-sky-500"
                 placeholder="Describe how you're feeling..."
               />
             </div>
 
-            <div className="flex gap-3 mt-4">
+            <div className="mt-4 flex gap-3">
               <button
-                onClick={closeModal}
-                className="flex-1 px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 transition"
+                onClick={() => setIsModalOpen(false)}
+                className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-slate-700 transition hover:bg-slate-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
-                className="flex-1 px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 transition flex items-center justify-center gap-2"
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-sky-500 px-4 py-2 text-white transition hover:bg-sky-600"
               >
                 <Check size={18} /> Save
               </button>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

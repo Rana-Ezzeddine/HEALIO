@@ -13,7 +13,7 @@ function parseDateOnly(dateString) {
   return new Date(year, month, day, 0, 0, 0, 0);
 }
 
-function isActiveMedication(medication, now) {
+export function isActiveMedication(medication, now) {
   const start = parseDateOnly(medication?.startDate);
   const end = parseDateOnly(medication?.endDate);
 
@@ -59,7 +59,7 @@ function inferTimesFromFrequency(frequency) {
   return ["08:00"];
 }
 
-function getScheduleTimes(medication) {
+export function getScheduleTimes(medication) {
   const schedule = medication?.scheduleJson;
 
   if (Array.isArray(schedule)) {

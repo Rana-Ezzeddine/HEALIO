@@ -49,6 +49,21 @@ const Medication = sequelize.define('Medication', {
     type: DataTypes.JSONB,
     allowNull: true
   },
+  adherenceHistory: {
+    type: DataTypes.JSONB,
+    allowNull: false,
+    defaultValue: []
+  },
+  reminderEnabled: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: true
+  },
+  reminderLeadMinutes: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 30
+  },
   startDate: {
     type: DataTypes.DATEONLY,
     allowNull: true

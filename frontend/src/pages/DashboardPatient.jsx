@@ -1,29 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
-import { authHeaders, getUser } from "../api/http";
-import { apiUrl } from "../api/http";
+import { apiUrl, authHeaders, getUser } from "../api/http";
 import { getMyAppointments } from "../api/appointments";
 import { getConversations } from "../api/messaging";
-import { getNextMedicationDose, formatDoseTime } from "../utils/medicationSchedule";
-
-function startOfDayFromValue(value) {
-  if (!value) return null;
-
-  if (typeof value === "string") {
-    const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
-    if (dateOnly) {
-      const year = Number(dateOnly[1]);
-      const month = Number(dateOnly[2]) - 1;
-      const day = Number(dateOnly[3]);
-      return new Date(year, month, day);
-    }
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
-}
+import { getMyCaregivers, getMyDoctors } from "../api/links";
+import { buildPatientSetupChecklist } from "../utils/patientSetup";
+import { formatDoseTime, getNextMedicationDose } from "../utils/medicationSchedule";
 
 function formatAppointmentDate(dateLike) {
   return new Date(dateLike).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -41,19 +24,20 @@ function DashboardCard({ title, mainText, subText, navPage }) {
   const navigate = useNavigate();
 
   return (
-    <div
+    <button
+      type="button"
       onClick={() => navigate(navPage)}
-      className="group bg-white hover:bg-slate-100 shadow-lg p-4 rounded-2xl cursor-pointer hover:shadow-md hover:-translate-y-1 transition"
+      className="group rounded-3xl bg-white p-5 text-left shadow-sm transition hover:-translate-y-1 hover:bg-slate-50 hover:shadow-md"
     >
-      <div className="flex justify-between items-start">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-slate-500 text-sm">{title}</h3>
-          <p className="text-slate-800 font-bold text-2xl">{mainText}</p>
-          {subText && <p className="text-sky-600 font-medium text-sm mt-1">{subText}</p>}
+          <h3 className="text-sm text-slate-500">{title}</h3>
+          <p className="mt-1 text-2xl font-bold text-slate-900">{mainText}</p>
+          {subText ? <p className="mt-2 text-sm font-medium text-sky-700">{subText}</p> : null}
         </div>
-        <span className="text-slate-400 text-xs group-hover:text-slate-600">View -&gt;</span>
+        <span className="text-xs text-slate-400 transition group-hover:text-slate-600">Open</span>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -63,145 +47,162 @@ export default function DashboardPatient() {
   const greetingName = user?.firstName || user?.email || "Patient";
   const [appointments, setAppointments] = useState([]);
   const [conversationCount, setConversationCount] = useState(0);
-  const [medicationCount, setMedicationCount] = useState(0);
-  const [medicationSubText, setMedicationSubText] = useState("No medications added yet");
-  const [lastSymptomText, setLastSymptomText] = useState("No logs");
+  const [medications, setMedications] = useState([]);
+  const [symptoms, setSymptoms] = useState([]);
+  const [profile, setProfile] = useState({});
+  const [doctorCount, setDoctorCount] = useState(0);
+  const [caregiverCount, setCaregiverCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadAppointmentsAndMessages() {
+    async function loadDashboardData() {
       try {
-        const [appointmentsData, conversationsData] = await Promise.all([
-          getMyAppointments(),
-          getConversations(),
-        ]);
+        const [appointmentsData, conversationsData, medicationsRes, symptomsRes, profileRes, doctorsRes, caregiversRes] =
+          await Promise.all([
+            getMyAppointments(),
+            getConversations(),
+            fetch(`${apiUrl}/api/medications`, {
+              headers: { "Content-Type": "application/json", ...authHeaders() },
+            }).then((res) => (res.ok ? res.json() : [])),
+            fetch(`${apiUrl}/api/symptoms`, {
+              headers: { "Content-Type": "application/json", ...authHeaders() },
+            }).then((res) => (res.ok ? res.json() : [])),
+            fetch(`${apiUrl}/api/profile`, {
+              headers: { "Content-Type": "application/json", ...authHeaders() },
+            }).then(async (res) => (res.status === 404 ? {} : res.json().catch(() => ({})))),
+            getMyDoctors().catch(() => ({ doctors: [] })),
+            getMyCaregivers().catch(() => ({ caregivers: [] })),
+          ]);
 
-        if (!cancelled) {
-          setAppointments(appointmentsData.appointments || []);
-          setConversationCount((conversationsData.conversations || []).length);
-        }
+        if (cancelled) return;
+
+        setAppointments(appointmentsData.appointments || []);
+        setConversationCount((conversationsData.conversations || []).length);
+        setMedications(Array.isArray(medicationsRes) ? medicationsRes : []);
+        setSymptoms(Array.isArray(symptomsRes) ? symptomsRes : []);
+        setProfile(profileRes || {});
+        setDoctorCount((doctorsRes.doctors || []).length);
+        setCaregiverCount((caregiversRes.caregivers || []).length);
       } catch {
-        if (!cancelled) {
-          setAppointments([]);
-          setConversationCount(0);
-        }
+        if (cancelled) return;
+        setAppointments([]);
+        setConversationCount(0);
+        setMedications([]);
+        setSymptoms([]);
+        setProfile({});
+        setDoctorCount(0);
+        setCaregiverCount(0);
       }
     }
 
-    loadAppointmentsAndMessages();
+    loadDashboardData();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const upcomingAppointments = useMemo(() => {
-    return appointments
-      .filter((appointment) => appointment.status === "scheduled")
-      .sort((left, right) => new Date(left.startsAt) - new Date(right.startsAt));
-  }, [appointments]);
+  const upcomingAppointments = useMemo(
+    () =>
+      appointments
+        .filter((appointment) => appointment.status === "scheduled" || appointment.status === "requested")
+        .sort((left, right) => new Date(left.startsAt) - new Date(right.startsAt)),
+    [appointments]
+  );
 
   const nextAppointment = upcomingAppointments[0];
-  const nextAppointmentMainText = nextAppointment ? formatAppointmentDate(nextAppointment.startsAt) : "No upcoming";
-  const nextAppointmentSubText = nextAppointment
-    ? `${formatAppointmentTime(nextAppointment.startsAt)} - ${doctorName(nextAppointment)}`
-    : "Message your doctor to plan the next visit";
+  const nextDose = useMemo(() => getNextMedicationDose(medications), [medications]);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch(`${apiUrl}/api/medications`, {
-          headers: { "Content-Type": "application/json", ...authHeaders() },
-        });
+  const checklist = useMemo(
+    () =>
+      buildPatientSetupChecklist({
+        profile,
+        doctorCount,
+        caregiverCount,
+        medicationCount: medications.length,
+        symptomCount: symptoms.length,
+        appointmentCount: appointments.length,
+      }),
+    [appointments.length, caregiverCount, doctorCount, medications.length, profile, symptoms.length]
+  );
 
-        if (!res.ok) {
-          setMedicationCount(0);
-          setMedicationSubText("No medications added yet");
-          return;
-        }
-
-        const meds = await res.json().catch(() => []);
-        const list = Array.isArray(meds) ? meds : [];
-        setMedicationCount(list.length);
-
-        const nextDose = getNextMedicationDose(list);
-        if (!nextDose) {
-          setMedicationSubText(list.length > 0 ? "No upcoming doses" : "No medications added yet");
-          return;
-        }
-
-        setMedicationSubText(
-          `Next: ${nextDose.medication?.name || "Medication"} at ${formatDoseTime(nextDose.at)}`
-        );
-      } catch {
-        setMedicationCount(0);
-        setMedicationSubText("No medications added yet");
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch(`${apiUrl}/api/symptoms`, {
-          headers: { "Content-Type": "application/json", ...authHeaders() },
-        });
-
-        if (!res.ok) {
-          setLastSymptomText("No logs");
-          return;
-        }
-
-        const symptoms = await res.json().catch(() => []);
-        const list = Array.isArray(symptoms) ? symptoms : [];
-        if (list.length === 0) {
-          setLastSymptomText("No logs");
-          return;
-        }
-
-        const rawDate = list[0]?.loggedAt;
-        const startOfLogged = startOfDayFromValue(rawDate);
-        if (!startOfLogged) {
-          setLastSymptomText("No logs");
-          return;
-        }
-
-        const today = new Date();
-        const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-        const diffDays = Math.floor((startOfToday - startOfLogged) / (1000 * 60 * 60 * 24));
-
-        if (diffDays <= 0) setLastSymptomText("Today");
-        else if (diffDays === 1) setLastSymptomText("Yesterday");
-        else setLastSymptomText(`${diffDays} days ago`);
-      } catch {
-        setLastSymptomText("No logs");
-      }
-    })();
-  }, []);
+  const requestedAppointments = appointments.filter((item) => item.status === "requested").length;
+  const setupIncomplete = checklist.doneCount < checklist.totalCount;
 
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
 
-      <main className="pt-28 max-w-6xl mx-auto px-6 py-8">
-        <div className="mb-6">
-          <h1 className="text-3xl text-slate-800 font-bold">
-            Welcome Back, {greetingName}
-          </h1>
-          <p className="text-slate-500 mt-1">Here is a quick overview of your health</p>
-        </div>
+      <main className="mx-auto max-w-6xl px-6 pb-10 pt-28">
+        <section className="rounded-[2rem] bg-gradient-to-r from-slate-900 via-sky-800 to-cyan-600 p-8 text-white shadow-xl">
+          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-white/75">Patient Dashboard</p>
+          <h1 className="mt-3 text-4xl font-black">Welcome back, {greetingName}</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-white/85">
+            Keep your profile, care team, medications, symptoms, and appointments moving together from one place.
+          </p>
+        </section>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+        {setupIncomplete ? (
+          <section className="mt-6 rounded-3xl border border-sky-100 bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-wide text-sky-700">First-time setup</p>
+                <h2 className="mt-2 text-2xl font-semibold text-slate-900">
+                  {checklist.doneCount} of {checklist.totalCount} onboarding steps complete
+                </h2>
+                <p className="mt-2 text-sm text-slate-600">
+                  New patients should complete these essentials right after login so the rest of the journey works smoothly.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate(checklist.tasks.find((task) => !task.done)?.href || "/profilePatient")}
+                className="rounded-2xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white hover:bg-sky-600 transition"
+              >
+                Continue setup
+              </button>
+            </div>
+
+            <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {checklist.tasks.map((task) => (
+                <button
+                  key={task.key}
+                  type="button"
+                  onClick={() => navigate(task.href)}
+                  className={`rounded-2xl border p-4 text-left transition ${
+                    task.done
+                      ? "border-emerald-200 bg-emerald-50"
+                      : "border-slate-200 bg-slate-50 hover:border-sky-200 hover:bg-sky-50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-semibold text-slate-900">{task.label}</p>
+                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${task.done ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                      {task.done ? "Done" : "Next"}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm text-slate-600">{task.description}</p>
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        <section className="mt-6 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
           <DashboardCard
             title="Active Medications"
-            mainText={`${medicationCount} Medication${medicationCount === 1 ? "" : "s"}`}
-            subText={medicationSubText}
+            mainText={`${medications.length} tracked`}
+            subText={nextDose ? `Next dose: ${nextDose.medication?.name} at ${formatDoseTime(nextDose.at)}` : "Add medication reminders"}
             navPage="/medication"
           />
           <DashboardCard
             title="Next Appointment"
-            mainText={nextAppointmentMainText}
-            subText={nextAppointmentSubText}
+            mainText={nextAppointment ? formatAppointmentDate(nextAppointment.startsAt) : "Not booked"}
+            subText={
+              nextAppointment
+                ? `${formatAppointmentTime(nextAppointment.startsAt)} - ${doctorName(nextAppointment)}`
+                : "Request your first visit"
+            }
             navPage="/patientAppointments"
           />
           <DashboardCard
@@ -210,68 +211,95 @@ export default function DashboardPatient() {
             subText="Open secure chats"
             navPage="/patientMessages"
           />
-        </div>
+          <DashboardCard
+            title="Care Team"
+            mainText={`${doctorCount + caregiverCount} linked`}
+            subText={`${doctorCount} doctor${doctorCount === 1 ? "" : "s"}, ${caregiverCount} caregiver${caregiverCount === 1 ? "" : "s"}`}
+            navPage="/care-team"
+          />
+        </section>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <section className="md:col-span-2 bg-white rounded-3xl shadow p-6">
-            <h2 className="text-xl font-semibold text-slate-800 mb-4">Upcoming Appointments</h2>
+        <section className="mt-6 grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
+          <div className="rounded-3xl bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Upcoming appointments</h2>
+                <p className="mt-1 text-sm text-slate-500">Requested and scheduled visits stay visible here.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate("/patientAppointments")}
+                className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
+              >
+                Open appointments
+              </button>
+            </div>
 
-            {upcomingAppointments.length > 0 ? (
-              <div className="space-y-3">
-                {upcomingAppointments.slice(0, 3).map((appointment) => (
-                  <div
-                    key={appointment.id}
-                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="font-semibold text-slate-800">{doctorName(appointment)}</p>
-                      <p className="text-sm text-slate-500">
-                        {formatAppointmentDate(appointment.startsAt)} at {formatAppointmentTime(appointment.startsAt)}
-                      </p>
+            <div className="mt-5 space-y-3">
+              {upcomingAppointments.length > 0 ? (
+                upcomingAppointments.slice(0, 4).map((appointment) => (
+                  <div key={appointment.id} className="rounded-2xl border border-slate-200 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-slate-900">{doctorName(appointment)}</p>
+                        <p className="mt-1 text-sm text-slate-500">
+                          {formatAppointmentDate(appointment.startsAt)} at {formatAppointmentTime(appointment.startsAt)}
+                        </p>
+                      </div>
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                        appointment.status === "requested" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
+                      }`}>
+                        {appointment.status}
+                      </span>
                     </div>
-                    <p className="text-sm text-slate-500 mt-1">
+                    <p className="mt-2 text-sm text-slate-600">
                       {appointment.location || "Location pending"} | {appointment.notes || "No notes"}
                     </p>
                   </div>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+                  No appointment requests yet. Link a doctor, then request your first visit.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <section className="rounded-3xl bg-white p-6 shadow-sm">
+              <h2 className="text-xl font-semibold text-slate-900">Quick actions</h2>
+              <div className="mt-4 grid gap-3">
+                {[
+                  { label: "Complete profile", href: "/profilePatient", style: "bg-sky-100 text-sky-700" },
+                  { label: "Manage care team", href: "/care-team", style: "bg-cyan-100 text-cyan-700" },
+                  { label: "Add medication", href: "/medication", style: "bg-indigo-100 text-indigo-700" },
+                  { label: "Log symptom", href: "/symptoms", style: "bg-amber-100 text-amber-700" },
+                  { label: "Request appointment", href: "/patientAppointments", style: "bg-emerald-100 text-emerald-700" },
+                  { label: "Emergency", href: "/emergency", style: "bg-rose-100 text-rose-700" },
+                ].map((action) => (
+                  <button
+                    key={action.label}
+                    type="button"
+                    onClick={() => navigate(action.href)}
+                    className={`rounded-2xl px-4 py-3 text-left text-sm font-semibold transition hover:opacity-85 ${action.style}`}
+                  >
+                    {action.label}
+                  </button>
                 ))}
               </div>
-            ) : (
-              <div className="text-slate-500 text-sm">No upcoming appointments yet.</div>
-            )}
-          </section>
+            </section>
 
-          <aside className="bg-white rounded-3xl shadow p-6">
-            <h2 className="text-lg font-semibold text-slate-800 mb-4">Quick Actions</h2>
-
-            <div className="flex flex-col gap-3">
-              <button
-                onClick={() => navigate("/patientAppointments")}
-                className="w-full px-4 py-2 rounded-xl bg-sky-100 text-sky-700 font-medium hover:bg-sky-200 transition"
-              >
-                View Appointments
-              </button>
-
-              <button
-                onClick={() => navigate("/symptoms")}
-                className="w-full px-4 py-2 rounded-xl bg-indigo-100 text-indigo-700 font-medium hover:bg-indigo-200 transition"
-              >
-                Symptom History
-              </button>
-
-              <button
-                onClick={() => navigate("/patientMessages")}
-                className="w-full px-4 py-2 rounded-xl bg-emerald-100 text-emerald-700 font-medium hover:bg-emerald-200 transition"
-              >
-                Message Doctor
-              </button>
-            </div>
-
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-sm font-medium text-slate-800">Last Symptom Logged</p>
-              <p className="text-sm text-slate-500 mt-1">{lastSymptomText}</p>
-            </div>
-          </aside>
-        </div>
+            <section className="rounded-3xl bg-white p-6 shadow-sm">
+              <h2 className="text-xl font-semibold text-slate-900">Journey summary</h2>
+              <div className="mt-4 space-y-3 text-sm text-slate-600">
+                <p>Symptoms logged: <span className="font-semibold text-slate-900">{symptoms.length}</span></p>
+                <p>Appointment requests pending: <span className="font-semibold text-slate-900">{requestedAppointments}</span></p>
+                <p>Profile completion: <span className="font-semibold text-slate-900">{checklist.profileStatus.percent}%</span></p>
+                <p>Missing profile items: <span className="font-semibold text-slate-900">{checklist.profileStatus.missing.length}</span></p>
+              </div>
+            </section>
+          </div>
+        </section>
       </main>
     </div>
   );

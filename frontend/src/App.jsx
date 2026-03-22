@@ -17,6 +17,8 @@ import DoctorMessages from "./pages/DoctorMessages";
 import PatientMessages from "./pages/PatientMessages";
 import DoctorAppointments from "./pages/DoctorAppointments";
 import PatientAppointments from "./pages/PatientAppointments";
+import CareTeamPatient from "./pages/CareTeamPatient";
+import PatientEmergency from "./pages/PatientEmergency";
 import VerifyEmailPage from "./pages/VerifyEmailPage";
 import SocialAuthCompletePage from "./pages/SocialAuthCompletePage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
@@ -204,6 +206,22 @@ function RoutedApp() {
           element={
             <ProtectedRoute allowedRoles={["patient"]}>
               <PatientAppointments />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/care-team"
+          element={
+            <ProtectedRoute allowedRoles={["patient"]}>
+              <CareTeamPatient />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/emergency"
+          element={
+            <ProtectedRoute allowedRoles={["patient"]}>
+              <PatientEmergency />
             </ProtectedRoute>
           }
         />
