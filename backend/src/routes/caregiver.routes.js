@@ -13,6 +13,7 @@ import {
   removeCaregiverAssignment,
   reviewCaregiverRequest,
   updateCaregiverPermissions,
+  getCaregiverDashboardData,
 } from "../controllers/caregiver.controller.js";
 
 const router = express.Router();
@@ -47,6 +48,11 @@ router.get(
   "/patients/:patientId/health-data",
   requireRole("caregiver"),
   getCaregiverPatientHealthData
+);
+router.get(
+  '/patients/:patientId/dashboard',
+  requireRole('caregiver'),
+  getCaregiverDashboardData
 );
 
 export default router;

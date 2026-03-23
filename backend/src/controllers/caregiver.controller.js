@@ -4,6 +4,7 @@ import Medication from "../models/Medication.js";
 import Symptom from "../models/Symptom.js";
 import Appointment from "../models/Appointment.js";
 import CaregiverPatientPermission from "../models/CaregiverPatientPermission.js";
+import CaregiverNote from '../models/CaregiverNote.js';
 
 const PERMISSION_KEYS = [
   "canViewMedications",
@@ -577,5 +578,135 @@ export async function getCaregiverPatientHealthData(req, res) {
       message: "Server error.",
       debug: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
+  }
+}
+export async function getCaregiverDashboardData(req, res) {
+  try {
+    if (req.user?.role !== 'caregiver') {
+      return res.status(403).json({ message: 'Only caregivers can view this.' });
+    }
+
+    const caregiverId = req.user.id;
+    const { patientId } = req.params;
+
+    // Get the permission record — exact field names from CaregiverPatientPermission model
+    const link = await CaregiverPatientPermission.findOne({
+      where: { caregiverId, patientId },
+    });
+
+    if (!link) {
+      return res.status(403).json({
+        message: 'You are not linked to this patient.',
+      });
+    }
+
+    // Fetch all data in parallel, gated by permissions
+    const [medications, nextAppointment, recentSymptoms, recentCareNotes] =
+      await Promise.all([
+
+        // canViewMedications — exact field from CaregiverPatientPermission
+        link.canViewMedications
+          ? Medication.findAll({
+              where: { patientId },
+              order: [['createdAt', 'DESC']],
+              limit: 5,
+            })
+          : Promise.resolve(null),
+
+        // Appointment.status exact values: 'scheduled' | 'cancelled' | 'completed'
+        // canViewAppointments — exact field from CaregiverPatientPermission
+        link.canViewAppointments
+          ? Appointment.findOne({
+              where: {
+                patientId,
+                status: 'scheduled',
+                startsAt: { [Op.gte]: new Date() },
+              },
+              include: [
+                {
+                  // 'doctor' alias — exact from models/index.js Appointment associations
+                  model: User,
+                  as: 'doctor',
+                  attributes: ['id', 'email'],
+                },
+              ],
+              order: [['startsAt', 'ASC']],
+            })
+          : Promise.resolve(null),
+
+        // canViewSymptoms — exact field from CaregiverPatientPermission
+        link.canViewSymptoms
+          ? Symptom.findAll({
+              where: { patientId },
+              order: [['createdAt', 'DESC']],
+              limit: 3,
+            })
+          : Promise.resolve(null),
+
+        // CaregiverNote fields: id, note, patientId, caregiverId, createdAt
+        CaregiverNote.findAll({
+          where: { caregiverId, patientId },
+          order: [['createdAt', 'DESC']],
+          limit: 3,
+        }),
+      ]);
+
+    return res.json({
+      caregiverId,
+      patientId,
+      // Return all permission keys so frontend can gate UI correctly
+      // Exact field names from CaregiverPatientPermission model
+      permissions: {
+        canViewMedications: link.canViewMedications,
+        canViewSymptoms: link.canViewSymptoms,
+        canViewAppointments: link.canViewAppointments,
+        canMessageDoctor: link.canMessageDoctor,
+        canReceiveReminders: link.canReceiveReminders,
+      },
+      dashboard: {
+        
+        medications: link.canViewMedications
+          ? { enabled: true, items: medications }
+          : { enabled: false, items: [] },
+
+        nextAppointment: link.canViewAppointments
+          ? {
+              enabled: true,
+              appointment: nextAppointment
+                ? {
+                    id: nextAppointment.id,
+                    startsAt: nextAppointment.startsAt,
+                    endsAt: nextAppointment.endsAt,
+                    status: nextAppointment.status,
+                    location: nextAppointment.location,
+                    notes: nextAppointment.notes,
+                    doctor: nextAppointment.doctor
+                      ? {
+                          id: nextAppointment.doctor.id,
+                          email: nextAppointment.doctor.email,
+                        }
+                      : null,
+                  }
+                : null,
+            }
+          : { enabled: false, appointment: null },
+
+        recentSymptoms: link.canViewSymptoms
+          ? { enabled: true, items: recentSymptoms }
+          : { enabled: false, items: [] },
+
+        recentCareNotes: {
+          enabled: true,
+          items: recentCareNotes.map((n) => ({
+            id: n.id,
+            note: n.note,
+            createdAt: n.createdAt,
+          })),
+        },
+      },
+    });
+  } catch (err) {
+    console.error('getCaregiverDashboardData error:', err);
+    return res.status(500).json({ message: 'Server error.' });
   }
 }
