@@ -13,6 +13,7 @@ import {
   getRequestableDoctors,
   updateAppointment,
   updateAppointmentStatus,
+  suggestAlternativeSlot,
 } from "../controllers/appointments.controller.js";
 
 const router = express.Router();
@@ -32,6 +33,7 @@ router.get("/doctor/availability", requireRole("doctor"), getDoctorAvailability)
 router.post("/", requireRole("doctor"), createAppointment);
 router.post("/requests", requireRole("patient"), createAppointmentRequest);
 router.put("/:id", requireRole("doctor"), updateAppointment);
+router.post("/requests/:id/suggest-slot", requireRole("doctor"), suggestAlternativeSlot);
 router.patch("/:id/status", requireRole("doctor"), updateAppointmentStatus);
 
 export default router;
