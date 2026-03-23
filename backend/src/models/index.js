@@ -21,6 +21,8 @@ import Reminder from './Reminder.js';
 import ActivityLog from './ActivityLog.js';
 import CaregiverNote from './CaregiverNote.js';
 import PasswordResetToken from './PasswordResetToken.js';
+import CaregiverInvite from './CaregiverInvite.js';
+import EmailVerificationToken from './EmailVerificationToken.js';
 
 // ========================================
 // ASSOCIATIONS
@@ -240,6 +242,27 @@ Reminder.belongsTo(User, {
   foreignKey: 'userId',
   as: 'user'
 });
+// Patient ↔ CaregiverInvites (1:Many)
+User.hasMany(CaregiverInvite, {
+  foreignKey: 'patientId',
+  as: 'caregiverInvites',
+  onDelete: 'CASCADE',
+});
+CaregiverInvite.belongsTo(User, {
+  foreignKey: 'patientId',
+  as: 'patient',
+});
+
+// Caregiver ↔ CaregiverInvites accepted (1:Many)
+User.hasMany(CaregiverInvite, {
+  foreignKey: 'caregiverId',
+  as: 'acceptedInvites',
+  onDelete: 'SET NULL',
+});
+CaregiverInvite.belongsTo(User, {
+  foreignKey: 'caregiverId',
+  as: 'caregiver',
+});
 
 // ========================================
 // EXPORT ALL MODELS
@@ -261,6 +284,7 @@ export {
   Reminder,
   ActivityLog,
   CaregiverNote,
+  CaregiverInvite,
 };
 
 export default {
@@ -279,4 +303,5 @@ export default {
   Reminder,
   ActivityLog,
   CaregiverNote,
+  CaregiverInvite,
 };

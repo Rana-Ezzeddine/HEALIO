@@ -36,6 +36,8 @@ import medicationsRoutes from "./routes/medications.routes.js";
 import doctorRoutes from "./routes/doctor.routes.js";
 import appointmentsRoutes from "./routes/appointments.routes.js";
 import caregiverRoutes from "./routes/caregiver.routes.js";
+import caregiverInviteRoutes from './routes/caregiverInvite.routes.js';
+import caregiverNotesRoutes from './routes/caregiverNotes.routes.js';
 
 /////////////////////////////////////////////////
 // ✅ Initialize App
@@ -73,6 +75,8 @@ app.use("/api/medications", medicationsRoutes);
 app.use("/api/doctors", doctorRoutes);
 app.use("/api/appointments", appointmentsRoutes);
 app.use("/api/caregivers", caregiverRoutes);
+app.use('/api/caregiver-invites', caregiverInviteRoutes);  
+app.use('/api/caregiver-notes', caregiverNotesRoutes);
 
 /////////////////////////////////////////////////
 // ✅ Global error handler (minimal but important)
