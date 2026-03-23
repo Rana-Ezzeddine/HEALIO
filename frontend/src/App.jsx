@@ -18,6 +18,7 @@ import PatientMessages from "./pages/PatientMessages";
 import DoctorAppointments from "./pages/DoctorAppointments";
 import PatientAppointments from "./pages/PatientAppointments";
 import ProtectedRoute from "./components/ProtectedRoute";
+import CaregiverOnboarding from "./pages/CaregiverOnboarding";
 
 export default function App() {
   const [message, setMessage] = useState("Loading...");
@@ -133,6 +134,14 @@ export default function App() {
           element={
             <ProtectedRoute allowedRoles={["patient"]}>
               <PatientMessages />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/caregiverOnboarding"
+          element={
+            <ProtectedRoute allowedRoles={["caregiver"]}>
+              <CaregiverOnboarding />
             </ProtectedRoute>
           }
         />
