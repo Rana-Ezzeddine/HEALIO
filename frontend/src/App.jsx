@@ -27,6 +27,7 @@ import SupportPage from "./pages/SupportPage";
 import PrivacyPage from "./pages/PrivacyPage";
 import TermsPage from "./pages/TermsPage";
 import ProtectedRoute from "./components/ProtectedRoute";
+
 import DoctorApprovedRoute from "./components/DoctorApprovedRoute";
 import DoctorApprovalStatusPage from "./pages/DoctorApprovalStatusPage";
 import DoctorReviewPage from "./pages/DoctorReviewPage";
@@ -37,6 +38,9 @@ import CareTeam from "./pages/CareTeam";
 import CaregiverMyPatients from "./pages/CaregiverMyPatients";
 import CaregiverAppointments from "./pages/CaregiverAppointments";
 import CareNotes from "./pages/CareNotes";
+
+import CaregiverOnboarding from "./pages/CaregiverOnboarding";
+
 
 function AuthSync() {
   const navigate = useNavigate();
@@ -247,12 +251,23 @@ function RoutedApp() {
             </ProtectedRoute>
           }
         />
+
         <Route path="/caregiverOnboarding" element={<ProtectedRoute allowedRoles={["caregiver"]}><CaregiverOnboarding /></ProtectedRoute>} />
         <Route path="/caregiverAcceptInvite" element={<CaregiverAcceptInvite />} />
         <Route path="/careTeam" element={<ProtectedRoute allowedRoles={["patient"]}><CareTeam /></ProtectedRoute>} />
         <Route path="/caregiverMyPatients" element={<ProtectedRoute allowedRoles={["caregiver"]}><CaregiverMyPatients /></ProtectedRoute>} />
         <Route path="/caregiverAppointments" element={<ProtectedRoute allowedRoles={["caregiver"]}><CaregiverAppointments /></ProtectedRoute>} />
         <Route path="/careNotes" element={<ProtectedRoute allowedRoles={["caregiver"]}><CareNotes /></ProtectedRoute>} />
+
+        <Route
+          path="/caregiverOnboarding"
+          element={
+            <ProtectedRoute allowedRoles={["caregiver"]}>
+              <CaregiverOnboarding />
+            </ProtectedRoute>
+          }
+        />
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>

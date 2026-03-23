@@ -33,9 +33,20 @@ function DashboardCard({title, mainText, subText, navPage}){
 
 export default function DashboardCaregiver() {
   const navigate = useNavigate();
+
   const user = getUser();
   const [name, setName] = useState(user?.firstName || user?.email || "Caregiver");
   const [linkedPatientLabel, setLinkedPatientLabel] = useState("No active patients linked yet");
+
+
+  useEffect(() => {
+    const done = localStorage.getItem("caregiverOnboardingComplete");
+    if (!done) navigate("/caregiverOnboarding");
+  }, [navigate]);
+  
+  const [name, setName] = useState("Caregiver");
+  const [linkedPatientLabel, setLinkedPatientLabel] = useState("Not linked yet");
+
 
   useEffect(() => {
     setName(user?.firstName || user?.email || "Caregiver");
