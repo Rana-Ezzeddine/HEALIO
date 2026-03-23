@@ -6,6 +6,7 @@ import logo from "../assets/logo.png";
 
 const PUBLIC_PATHS = new Set(["/", "/support", "/privacy", "/terms"]);
 
+
 function PublicNavLink({ to, children }) {
   const isAnchor = to.startsWith("#");
 
@@ -62,6 +63,10 @@ export default function Navbar({ onLogin, onSignup }) {
   const isPatientMessages = path.toLowerCase().startsWith("/patientmessages");
   const isLanding = path === "/";
   const isPublicPage = PUBLIC_PATHS.has(path.toLowerCase());
+  const isCaregiver = userRole === "caregiver";
+const isCaregiverMyPatients = path.toLowerCase().startsWith("/caregivermypatients");
+const isCaregiverAppointments = path.toLowerCase().startsWith("/caregiverappointments");
+const isCareNotes = path.toLowerCase().startsWith("/carenotes");
 
   function handleLogout() {
     clearSession();
@@ -236,6 +241,28 @@ export default function Navbar({ onLogin, onSignup }) {
                     Messages
                   </button>
                 )}
+                {isCaregiver && (
+                  <>
+                    <button onClick={() => navigate("/caregiverMyPatients")}
+                      className={`text-sm font-medium transition ${isCaregiverMyPatients ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"}`}>
+                      My Patients
+                    </button>
+                    <button onClick={() => navigate("/caregiverAppointments")}
+                      className={`text-sm font-medium transition ${isCaregiverAppointments ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"}`}>
+                      Appointments
+                    </button>
+                    <button onClick={() => navigate("/careNotes")}
+                      className={`text-sm font-medium transition ${isCareNotes ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"}`}>
+                      Care Notes
+                    </button>
+                  </>
+                )}
+{isPatient && (
+  <button onClick={() => navigate("/careTeam")}
+    className={`text-sm font-medium transition ${path === "/careTeam" ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"}`}>
+    Care Team
+  </button>
+)}
 
                 <button
                   onClick={() => navigate(profilePath)}
