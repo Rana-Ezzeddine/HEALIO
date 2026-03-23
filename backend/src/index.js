@@ -75,8 +75,10 @@ app.use("/api/medications", medicationsRoutes);
 app.use("/api/doctors", doctorRoutes);
 app.use("/api/appointments", appointmentsRoutes);
 app.use("/api/caregivers", caregiverRoutes);
-app.use('/api/caregiver-invites', caregiverInviteRoutes);  
-app.use('/api/caregiver-notes', caregiverNotesRoutes);
+app.use('/api/caregiver-invites', caregiverInviteRoutes);
+app.use('/api/caregiver-notes', caregiverNotesRoutes);  
+
+
 
 /////////////////////////////////////////////////
 // ✅ Global error handler (minimal but important)
