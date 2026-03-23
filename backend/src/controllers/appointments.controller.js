@@ -1,5 +1,6 @@
 import { Op } from "sequelize";
 import Appointment from "../models/Appointment.js";
+import Availability from "../models/Availability.js";
 import User from "../models/User.js";
 import DoctorPatientAssignment from "../models/DoctorPatientAssignment.js";
 import { DOCTOR_APPROVAL_STATUS } from "../lib/doctorApproval.js";
@@ -49,48 +50,87 @@ async function buildDoctorAvailability({
   from,
   to,
   slotMinutes,
-  startHour,
-  endHour,
 }) {
-  const appointments = await Appointment.findAll({
-    where: {
-      doctorId,
-      status: { [Op.in]: ["requested", "scheduled"] },
-      startsAt: { [Op.lt]: to },
-      endsAt: { [Op.gt]: from },
-    },
-    attributes: ["startsAt", "endsAt"],
-    order: [["startsAt", "ASC"]],
-  });
+  const [availabilities, appointments] = await Promise.all([
+    Availability.findAll({
+      where: {
+        doctorId,
+        [Op.or]: [
+          { type: 'workHours' },
+          {
+            type: { [Op.in]: ['break', 'blocked'] },
+            specificDate: { [Op.between]: [from.toISOString().split('T')[0], to.toISOString().split('T')[0]] }
+          }
+        ]
+      }
+    }),
+    Appointment.findAll({
+      where: {
+        doctorId,
+        status: { [Op.in]: ["requested", "scheduled"] },
+        startsAt: { [Op.lt]: to },
+        endsAt: { [Op.gt]: from },
+      },
+      attributes: ["startsAt", "endsAt"],
+    })
+  ]);
+
+  const workHours = availabilities.filter(a => a.type === 'workHours');
+  const blocks = availabilities.filter(a => a.type !== 'workHours');
 
   const slots = [];
   const cursor = new Date(from);
 
   while (cursor < to) {
-    const dayStart = new Date(cursor);
-    dayStart.setHours(startHour, 0, 0, 0);
+    const dayOfWeek = cursor.getDay();
+    const dateStr = cursor.toISOString().split('T')[0];
+    
+    // Find work hours for this day of week
+    const todayWorkHours = workHours.filter(wh => wh.dayOfWeek === dayOfWeek);
+    
+    for (const wh of todayWorkHours) {
+      let [startH, startM] = wh.startTime.split(':').map(Number);
+      let [endH, endM] = wh.endTime.split(':').map(Number);
 
-    const dayEnd = new Date(cursor);
-    dayEnd.setHours(endHour, 0, 0, 0);
+      const dayStart = new Date(cursor);
+      dayStart.setHours(startH, startM, 0, 0);
 
-    if (dayEnd > from && dayStart < to) {
-      const first = dayStart < from ? new Date(from) : dayStart;
-      let slotStart = new Date(first);
+      const dayEnd = new Date(cursor);
+      dayEnd.setHours(endH, endM, 0, 0);
 
-      while (slotStart < dayEnd && slotStart < to) {
-        const slotEnd = new Date(slotStart.getTime() + slotMinutes * 60 * 1000);
-        if (slotEnd > dayEnd || slotEnd > to) break;
+      // Only process if the work period overlaps with requested range [from, to]
+      if (dayEnd > from && dayStart < to) {
+        const actualStart = dayStart < from ? new Date(from) : dayStart;
+        const actualEnd = dayEnd > to ? new Date(to) : dayEnd;
+        
+        let slotStart = new Date(actualStart);
 
-        const overlaps = appointments.some((a) => a.startsAt < slotEnd && a.endsAt > slotStart);
+        while (slotStart < actualEnd) {
+          const slotEnd = new Date(slotStart.getTime() + slotMinutes * 60 * 1000);
+          if (slotEnd > actualEnd) break;
 
-        if (!overlaps) {
-          slots.push({
-            startsAt: new Date(slotStart),
-            endsAt: new Date(slotEnd),
+          // Check for overlaps with appointments
+          const hasApptOverlap = appointments.some((a) => a.startsAt < slotEnd && a.endsAt > slotStart);
+          
+          // Check for overlaps with breaks/blocked
+          const hasBlockOverlap = blocks.some(b => {
+             if (b.specificDate !== dateStr) return false;
+             let [bSH, bSM] = b.startTime.split(':').map(Number);
+             let [bEH, bEM] = b.endTime.split(':').map(Number);
+             const bStart = new Date(cursor); bStart.setHours(bSH, bSM, 0, 0);
+             const bEnd = new Date(cursor); bEnd.setHours(bEH, bEM, 0, 0);
+             return bStart < slotEnd && bEnd > slotStart;
           });
-        }
 
-        slotStart = slotEnd;
+          if (!hasApptOverlap && !hasBlockOverlap) {
+            slots.push({
+              startsAt: new Date(slotStart),
+              endsAt: new Date(slotEnd),
+            });
+          }
+
+          slotStart = slotEnd;
+        }
       }
     }
 
@@ -260,6 +300,29 @@ export async function createAppointmentRequest(req, res) {
     await ensureDoctorUser(doctorId);
     await validateDoctorPatientLink(doctorId, patientId);
 
+    // Task 25.d: Only allow slots that exist in the doctor's generated slot list
+    const slotFrom = new Date(start);
+    slotFrom.setHours(0, 0, 0, 0);
+    const slotTo = new Date(slotFrom);
+    slotTo.setDate(slotTo.getDate() + 1);
+
+    const availableSlots = await buildDoctorAvailability({
+      doctorId,
+      from: slotFrom,
+      to: slotTo,
+      slotMinutes: 30, // Default slot duration
+    });
+
+    const isValidSlot = availableSlots.some(
+      (s) => s.startsAt.getTime() === start.getTime() && s.endsAt.getTime() === end.getTime()
+    );
+
+    if (!isValidSlot) {
+      return res.status(400).json({
+        message: "Requested time does not match any available slots for this doctor",
+      });
+    }
+
     const conflict = await hasDoctorConflict(doctorId, start, end);
     if (conflict) {
       return res.status(409).json({
@@ -394,6 +457,15 @@ export async function updateAppointmentStatus(req, res) {
       });
     }
 
+    if (status === "scheduled") {
+      const conflict = await hasDoctorConflict(doctorId, appt.startsAt, appt.endsAt, appt.id);
+      if (conflict) {
+        return res.status(409).json({
+          message: "Doctor is no longer available in this time window (schedule conflict)",
+        });
+      }
+    }
+
     await appt.update({
       status,
       notes: typeof notes === "string" ? notes.trim() || appt.notes : appt.notes,
@@ -430,8 +502,6 @@ export async function getDoctorAvailability(req, res) {
       from,
       to,
       slotMinutes,
-      startHour,
-      endHour,
     });
 
     return res.json({
@@ -439,13 +509,58 @@ export async function getDoctorAvailability(req, res) {
       from,
       to,
       slotMinutes,
-      workingHours: { startHour, endHour },
       count: slots.length,
       slots,
     });
   } catch (err) {
     const status = err.message?.includes("from") || err.message?.includes("Range") ? 400 : 500;
     return res.status(status).json({ message: err.message || "Failed to fetch availability." });
+  }
+}
+
+export async function suggestAlternativeSlot(req, res) {
+  try {
+    const doctorId = req.user.id;
+    const { id } = req.params;
+    const { startsAt, endsAt, notes } = req.body || {};
+
+    if (!startsAt || !endsAt) {
+      return res.status(400).json({ message: "startsAt and endsAt are required" });
+    }
+
+    const start = parseISODate(startsAt, "startsAt");
+    const end = parseISODate(endsAt, "endsAt");
+
+    if (start >= end) {
+      return res.status(400).json({ message: "startsAt must be before endsAt" });
+    }
+
+    const appt = await Appointment.findOne({
+      where: { id, doctorId, status: "requested" },
+    });
+
+    if (!appt) {
+      return res.status(404).json({ message: "Appointment request not found" });
+    }
+
+    const conflict = await hasDoctorConflict(doctorId, start, end, appt.id);
+    if (conflict) {
+      return res.status(409).json({
+        message: "Doctor has a conflict in the suggested time window",
+      });
+    }
+
+    await appt.update({
+      startsAt: start,
+      endsAt: end,
+      notes: notes ? `Suggesting alternative: ${notes}` : appt.notes,
+      // Keep status as requested, but doctor has updated the time
+    });
+
+    return res.json(appt);
+  } catch (err) {
+    const status = err.message?.includes("startsAt") ? 400 : 500;
+    return res.status(status).json({ message: err.message || "Failed to suggest alternative slot." });
   }
 }
 
@@ -479,8 +594,6 @@ export async function getPatientDoctorAvailability(req, res) {
       from,
       to,
       slotMinutes,
-      startHour,
-      endHour,
     });
 
     return res.json({
@@ -489,7 +602,6 @@ export async function getPatientDoctorAvailability(req, res) {
       from,
       to,
       slotMinutes,
-      workingHours: { startHour, endHour },
       count: slots.length,
       slots,
     });

@@ -3,6 +3,9 @@ import sequelize from "../../database.js";
 import User from "../models/User.js";
 import DoctorPatientAssignment from "../models/DoctorPatientAssignment.js";
 import PatientProfile from "../models/PatientProfile.js";
+import Medication from "../models/Medication.js";
+import Diagnosis from "../models/Diagnosis.js";
+import Appointment from "../models/Appointment.js";
 import {
   DOCTOR_APPROVAL_STATUS,
   buildDoctorApprovalBlockedPayload,
@@ -60,27 +63,54 @@ export const getAssignedPatients = async (req, res) => {
     }
 
     const doctorId = req.user.id;
+    const { search, status, sortBy, order } = req.query;
 
-    const [rows] = await sequelize.query(
-      `
+    let query = `
       SELECT
         dpa.status,
         dpa."createdAt" AS "assignedAt",
         u.id,
         u.email,
         u.role,
-        u."isVerified"
+        u."isVerified",
+        pp."firstName",
+        pp."lastName"
       FROM doctor_patient_assignments dpa
       JOIN users u ON u.id = dpa."patientId"
+      LEFT JOIN patient_profiles pp ON pp."userId" = u.id
       WHERE dpa."doctorId" = :doctorId
-        AND dpa.status = 'active'
-      ORDER BY dpa."createdAt" DESC
-      `,
-      { replacements: { doctorId } }
-    );
+    `;
+
+    const replacements = { doctorId };
+
+    if (status) {
+      query += ` AND dpa.status = :status`;
+      replacements.status = status;
+    } else {
+      query += ` AND dpa.status IN ('active', 'pending')`;
+    }
+
+    if (search) {
+      query += ` AND (u.email ILIKE :search OR pp."firstName" ILIKE :search OR pp."lastName" ILIKE :search)`;
+      replacements.search = `%${search}%`;
+    }
+
+    const validSortFields = {
+      assignedAt: 'dpa."createdAt"',
+      firstName: 'pp."firstName"',
+      lastName: 'pp."lastName"',
+      email: 'u.email'
+    };
+    const sortField = validSortFields[sortBy] || 'dpa."createdAt"';
+    const sortOrder = String(order).toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+    query += ` ORDER BY ${sortField} ${sortOrder}`;
+
+    const [rows] = await sequelize.query(query, { replacements });
 
     return res.json({
       doctorId,
+      count: rows.length,
       patients: rows.map((r) => ({
         status: r.status,
         assignedAt: r.assignedAt,
@@ -89,6 +119,9 @@ export const getAssignedPatients = async (req, res) => {
           email: r.email,
           role: r.role,
           isVerified: r.isVerified,
+          firstName: r.firstName,
+          lastName: r.lastName,
+          displayName: [r.firstName, r.lastName].filter(Boolean).join(" ").trim() || r.email,
         },
       })),
     });
@@ -240,7 +273,13 @@ export const getDoctorDashboardOverview = async (req, res) => {
           FROM diagnoses d
           JOIN assigned a ON a.id = d."patientId"
           WHERE d.status = 'active'
-        ), 0) AS "activeDiagnoses"
+        ), 0) AS "activeDiagnoses",
+        COALESCE((
+          SELECT COUNT(*)::int
+          FROM doctor_patient_assignments
+          WHERE "doctorId" = :doctorId
+            AND status = 'pending'
+        ), 0) AS "pendingPatientRequestsCount"
       FROM assigned
       `,
       { replacements: { doctorId } }
@@ -337,11 +376,39 @@ export const getDoctorDashboardOverview = async (req, res) => {
       upcomingAppointmentsNext7Days: 0,
       notesAddedLast7Days: 0,
       activeDiagnoses: 0,
+      pendingPatientRequestsCount: 0,
     };
+
+    const [urgentPatientsRows] = await sequelize.query(
+      `
+      SELECT
+        u.id,
+        u.email,
+        pp."firstName",
+        pp."lastName",
+        pp."emergencyStatusUpdatedAt"
+      FROM users u
+      JOIN doctor_patient_assignments dpa ON dpa."patientId" = u.id
+      JOIN patient_profiles pp ON pp."userId" = u.id
+      WHERE dpa."doctorId" = :doctorId
+        AND dpa.status = 'active'
+        AND pp."emergencyStatus" = true
+      ORDER BY pp."emergencyStatusUpdatedAt" DESC
+      `,
+      { replacements: { doctorId } }
+    );
 
     return res.json({
       doctorId,
       summary,
+      urgentPatients: urgentPatientsRows.map(p => ({
+        id: p.id,
+        email: p.email,
+        firstName: p.firstName,
+        lastName: p.lastName,
+        displayName: [p.firstName, p.lastName].filter(Boolean).join(" ").trim() || p.email,
+        emergencyStatusUpdatedAt: p.emergencyStatusUpdatedAt,
+      })),
       assignedPatients: patientsRows.map((p) => ({
         id: p.id,
         email: p.email,
@@ -722,5 +789,121 @@ export const getMyDoctors = async (req, res) => {
       message: "Server error.",
       debug: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
+  }
+};
+
+export const getDoctorProfile = async (req, res) => {
+  try {
+    const doctorId = req.user.id;
+    const user = await User.findByPk(doctorId, {
+      attributes: ["id", "email", "role", "isVerified", "doctorApprovalStatus"],
+      include: [{
+        model: PatientProfile,
+        as: "patientProfile",
+      }]
+    });
+
+    if (!user) return res.status(404).json({ message: "Doctor not found." });
+
+    return res.json(user);
+  } catch (err) {
+    console.error("get-doctor-profile error:", err);
+    return res.status(500).json({ message: "Server error." });
+  }
+};
+
+export const getPatientOverview = async (req, res) => {
+  try {
+    const doctorId = req.user.id;
+    const { patientId } = req.params;
+
+    const assignment = await DoctorPatientAssignment.findOne({
+      where: { doctorId, patientId, status: "active" }
+    });
+    if (!assignment) return res.status(403).json({ message: "Access denied or patient not assigned." });
+
+    const patient = await User.findByPk(patientId, {
+      attributes: ["id", "email", "role"],
+      include: [
+        { model: PatientProfile, as: "patientProfile" },
+        { 
+          model: Medication, 
+          as: "medications",
+          where: { [Op.or]: [{ endDate: null }, { endDate: { [Op.gte]: new Date() } }] },
+          required: false
+        },
+        { model: Diagnosis, as: "diagnoses", where: { status: "active" }, required: false },
+        { model: Appointment, as: "appointmentsAsPatient", where: { doctorId, startsAt: { [Op.gte]: new Date() } }, limit: 5, required: false }
+      ]
+    });
+
+    return res.json(patient);
+  } catch (err) {
+    console.error("get-patient-overview error:", err);
+    return res.status(500).json({ message: "Server error." });
+  }
+};
+
+export const getPatientTimeline = async (req, res) => {
+  try {
+    const doctorId = req.user.id;
+    const { patientId } = req.params;
+
+    const assignment = await DoctorPatientAssignment.findOne({
+      where: { doctorId, patientId, status: "active" }
+    });
+    if (!assignment) return res.status(403).json({ message: "Access denied or patient not assigned." });
+
+    const [events] = await sequelize.query(`
+      SELECT 'symptom' as type, id, name as title, severity::text as detail, "loggedAt" as "timestamp"
+      FROM symptoms WHERE "patientId" = :patientId
+      UNION ALL
+      SELECT 'note' as type, id, 'Medical Note' as title, LEFT(note, 100) as detail, "createdAt" as "timestamp"
+      FROM medical_notes WHERE "patientId" = :patientId AND "doctorId" = :doctorId
+      UNION ALL
+      SELECT 'appointment' as type, id, 'Appointment' as title, status as detail, "startsAt" as "timestamp"
+      FROM appointments WHERE "patientId" = :patientId AND "doctorId" = :doctorId
+      UNION ALL
+      SELECT 'diagnosis' as type, id, 'Diagnosis' as title, "diagnosisText" as detail, "diagnosedAt" as "timestamp"
+      FROM diagnoses WHERE "patientId" = :patientId
+      ORDER BY "timestamp" DESC
+      LIMIT 50
+    `, { replacements: { patientId, doctorId } });
+
+    return res.json({ patientId, events });
+  } catch (err) {
+    console.error("get-patient-timeline error:", err);
+    return res.status(500).json({ message: "Server error." });
+  }
+};
+
+export const getPatientActivity = async (req, res) => {
+  return getPatientTimeline(req, res);
+};
+
+export const getPatientUpdates = async (req, res) => {
+  try {
+    const doctorId = req.user.id;
+    const { patientId } = req.params;
+
+    const assignment = await DoctorPatientAssignment.findOne({
+      where: { doctorId, patientId, status: "active" }
+    });
+    if (!assignment) return res.status(403).json({ message: "Access denied or patient not assigned." });
+
+    const [updates] = await sequelize.query(`
+      SELECT 'medication' as type, id, name as title, 'Updated' as detail, "updatedAt" as "timestamp"
+      FROM medications WHERE "patientId" = :patientId AND "updatedAt" >= NOW() - INTERVAL '7 days'
+      UNION ALL
+      SELECT 'symptom' as type, id, name as title, 'New Log' as detail, "createdAt" as "timestamp"
+      FROM symptoms WHERE "patientId" = :patientId AND "createdAt" >= NOW() - INTERVAL '7 days'
+      ORDER BY "timestamp" DESC
+      LIMIT 20
+    `, { replacements: { patientId } });
+
+    return res.json({ patientId, updates });
+  } catch (err) {
+    console.error("get-patient-updates error:", err);
+    return res.status(500).json({ message: "Server error." });
   }
 };
