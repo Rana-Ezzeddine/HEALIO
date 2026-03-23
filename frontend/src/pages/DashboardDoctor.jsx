@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import { apiUrl, authHeaders, getUser } from "../api/http";
 import {
@@ -6,19 +7,25 @@ import {
   getDoctorAvailability,
   getDoctorSchedule,
 } from "../api/appointments";
-import { getConversations } from "../api/messaging";
 
-function DashboardCard({ title, mainText, subText }) {
+function DashboardCard({ title, mainText, subText, navPage }) {
+  const navigate = useNavigate();
+
   return (
-    <div className="group bg-white shadow-lg p-4 rounded-2xl">
-      <div className="flex justify-between items-start">
+    <button
+      type="button"
+      onClick={() => navigate(navPage)}
+      className="group rounded-3xl bg-white p-5 text-left shadow-sm transition hover:-translate-y-1 hover:bg-slate-50 hover:shadow-md"
+    >
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-slate-500 text-sm">{title}</h3>
-          <p className="text-slate-800 font-bold text-2xl">{mainText}</p>
-          {subText && <p className="text-sky-600 font-medium text-sm mt-1">{subText}</p>}
+          <h3 className="text-sm text-slate-500">{title}</h3>
+          <p className="mt-1 text-2xl font-bold text-slate-900">{mainText}</p>
+          {subText ? <p className="mt-2 text-sm font-medium text-sky-700">{subText}</p> : null}
         </div>
+        <span className="text-xs text-slate-400 transition group-hover:text-slate-600">Open</span>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -71,13 +78,13 @@ async function fetchAssignedPatients() {
 }
 
 export default function DashboardDoctor() {
+  const navigate = useNavigate();
   const user = getUser();
   const greetingName = user?.firstName || user?.email || "Doctor";
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const [scheduleError, setScheduleError] = useState("");
   const [schedule, setSchedule] = useState([]);
   const [assignedPatients, setAssignedPatients] = useState([]);
-  const [conversationCount, setConversationCount] = useState(0);
   const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState("");
@@ -116,23 +123,31 @@ export default function DashboardDoctor() {
       }`
     : "No more appointments today";
 
+  const upcomingAppointments = useMemo(
+    () =>
+      todayAppointments
+        .filter((appointment) => new Date(appointment.startsAt).getTime() >= Date.now())
+        .sort((left, right) => new Date(left.startsAt) - new Date(right.startsAt)),
+    [todayAppointments]
+  );
+
+  const completedTodayCount = todayAppointments.filter((appointment) => appointment.status === "completed").length;
+
   async function loadDashboard() {
     setScheduleLoading(true);
     setScheduleError("");
 
     try {
-      const [scheduleData, overviewData, conversationsData] = await Promise.all([
+      const [scheduleData, overviewData] = await Promise.all([
         getDoctorSchedule({
           from: startOfToday().toISOString(),
           to: endOfToday().toISOString(),
         }),
         fetchAssignedPatients(),
-        getConversations(),
       ]);
 
       setSchedule(scheduleData.appointments || []);
       setAssignedPatients(overviewData.assignedPatients || []);
-      setConversationCount((conversationsData.conversations || []).length);
     } catch (err) {
       setScheduleError(err.message || "Failed to load dashboard.");
     } finally {
@@ -253,120 +268,139 @@ export default function DashboardDoctor() {
     <div className="min-h-screen bg-slate-50">
       <Navbar />
 
-      <main className="pt-28 max-w-6xl mx-auto px-6 py-8">
-        <div className="mb-6">
-          <h1 className="text-3xl text-slate-800 font-bold">
-            Welcome Back, {greetingName}
-          </h1>
-          <p className="text-slate-500 mt-1">Here is the current view of your schedule and patient activity</p>
-        </div>
+      <main className="mx-auto max-w-6xl px-6 pb-10 pt-28">
+        <section className="rounded-[2rem] bg-gradient-to-r from-slate-900 via-sky-800 to-cyan-600 p-8 text-white shadow-xl">
+          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-white/75">Doctor Dashboard</p>
+          <h1 className="mt-3 text-4xl font-black">Welcome back, Dr. {greetingName}</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-white/85">
+            Review your day, manage appointments, and stay connected with your assigned patients from one view.
+          </p>
+        </section>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+        <section className="mt-6 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
           <DashboardCard
             title="Today's Appointments"
             mainText={`${todayAppointments.length} appointments`}
             subText={nextAppointmentSubText}
-          />
-          <DashboardCard
-            title="Conversations"
-            mainText={`${conversationCount}`}
-            subText="Secure patient chats"
+            navPage="/doctorAppointments"
           />
           <DashboardCard
             title="Assigned Patients"
             mainText={`${assignedPatients.length}`}
             subText="Active doctor-patient links"
+            navPage="/doctor-review"
           />
-        </div>
+          <DashboardCard
+            title="Completed Today"
+            mainText={`${completedTodayCount}`}
+            subText="Visits closed"
+            navPage="/doctorAppointments"
+          />
+        </section>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <section className="md:col-span-2 bg-white rounded-3xl shadow p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-slate-800">Today's Schedule</h2>
+        <section className="mt-6 grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
+          <div className="rounded-3xl bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Today's schedule</h2>
+                <p className="mt-1 text-sm text-slate-500">Upcoming and active appointments are listed here.</p>
+              </div>
               <button
+                type="button"
                 onClick={loadDashboard}
-                className="text-sm px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700"
+                className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
               >
                 Refresh
               </button>
             </div>
 
             {scheduleError && (
-              <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                 {scheduleError}
               </div>
             )}
 
-            <div className="overflow-x-auto">
-              <table className="min-h-full text-sm text-left w-full">
-                <thead className="text-slate-500 border-b">
-                  <tr>
-                    <th className="py-3 px-4">Time</th>
-                    <th className="py-3 px-4">Patient</th>
-                    <th className="py-3 px-4">Location</th>
-                    <th className="py-3 px-4">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {scheduleLoading ? (
-                    <tr>
-                      <td className="py-3 px-4 text-slate-500" colSpan={4}>
-                        Loading schedule...
-                      </td>
-                    </tr>
-                  ) : todayAppointments.length > 0 ? (
-                    todayAppointments.map((appointment) => (
-                      <tr key={appointment.id} className="hover:bg-slate-50">
-                        <td className="py-3 px-4">{formatTime(appointment.startsAt)}</td>
-                        <td className="py-3 px-4 font-medium">
+            <div className="mt-5 space-y-3">
+              {scheduleLoading ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+                  Loading schedule...
+                </div>
+              ) : upcomingAppointments.length > 0 ? (
+                upcomingAppointments.slice(0, 5).map((appointment) => (
+                  <div key={appointment.id} className="rounded-2xl border border-slate-200 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-slate-900">
                           {patientNameById.get(appointment.patientId) || appointment.patient?.email || "Patient"}
-                        </td>
-                        <td className="py-3 px-4">{appointment.location || "-"}</td>
-                        <td className="py-3 px-4">
-                          <span className={`px-2 py-1 text-xs rounded-full ${statusClasses(appointment.status)}`}>
-                            {statusLabel(appointment.status)}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td className="py-3 px-4 text-slate-500" colSpan={4}>
-                        No appointments for today.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                        </p>
+                        <p className="mt-1 text-sm text-slate-500">
+                          {formatTime(appointment.startsAt)} - {formatTime(appointment.endsAt)}
+                        </p>
+                      </div>
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClasses(appointment.status)}`}>
+                        {statusLabel(appointment.status)}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm text-slate-600">
+                      {appointment.location || "Location pending"} | {appointment.notes || "No notes"}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+                  No upcoming appointments for today.
+                </div>
+              )}
             </div>
-          </section>
+          </div>
 
-          <aside className="bg-white rounded-3xl shadow p-6">
-            <h2 className="text-lg font-semibold text-slate-800 mb-4">Doctor Tools</h2>
+          <div className="space-y-6">
+            <section className="rounded-3xl bg-white p-6 shadow-sm">
+              <h2 className="text-xl font-semibold text-slate-900">Quick actions</h2>
 
-            <div className="flex flex-col gap-3">
-              <button
-                onClick={() => {
-                  setCreateError("");
-                  setShowScheduleForm((current) => !current);
-                }}
-                className="w-full px-4 py-2 rounded-xl bg-emerald-100 text-emerald-700 font-medium hover:bg-emerald-200 transition"
-              >
-                Schedule Appointment
-              </button>
-              <button className="w-full px-4 py-2 rounded-xl bg-cyan-100 text-cyan-700 font-medium">
-                Assigned Patients: {assignedPatients.length}
-              </button>
-            </div>
+              <div className="mt-4 grid gap-3">
+                {[
+                  {
+                    label: showScheduleForm ? "Hide schedule form" : "Schedule appointment",
+                    onClick: () => {
+                      setCreateError("");
+                      setShowScheduleForm((current) => !current);
+                    },
+                    style: "bg-emerald-100 text-emerald-700",
+                  },
+                  { label: "Open appointments", onClick: () => navigate("/doctorAppointments"), style: "bg-sky-100 text-sky-700" },
+                  { label: "Doctor profile", onClick: () => navigate("/profileDoctor"), style: "bg-indigo-100 text-indigo-700" },
+                ].map((action) => (
+                  <button
+                    key={action.label}
+                    type="button"
+                    onClick={action.onClick}
+                    className={`rounded-2xl px-4 py-3 text-left text-sm font-semibold transition hover:opacity-85 ${action.style}`}
+                  >
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="rounded-3xl bg-white p-6 shadow-sm">
+              <h2 className="text-xl font-semibold text-slate-900">Doctor summary</h2>
+              <div className="mt-4 space-y-3 text-sm text-slate-600">
+                <p>Assigned patients: <span className="font-semibold text-slate-900">{assignedPatients.length}</span></p>
+                <p>Appointments today: <span className="font-semibold text-slate-900">{todayAppointments.length}</span></p>
+                <p>Completed today: <span className="font-semibold text-slate-900">{completedTodayCount}</span></p>
+              </div>
+            </section>
 
             {showScheduleForm && (
-              <form onSubmit={submitSchedule} className="mt-4 space-y-3 border-t pt-4">
-                <h3 className="font-semibold text-slate-800 text-sm">Create Appointment</h3>
+              <section className="rounded-3xl bg-white p-6 shadow-sm">
+                <form onSubmit={submitSchedule} className="space-y-3">
+                  <h3 className="text-lg font-semibold text-slate-900">Create appointment</h3>
 
                 <select
                   value={form.patientId}
                   onChange={(event) => setForm((current) => ({ ...current, patientId: event.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   required
                 >
                   <option value="">Select patient</option>
@@ -383,7 +417,7 @@ export default function DashboardDoctor() {
                   onChange={(event) =>
                     setForm((current) => ({ ...current, date: event.target.value, timeSlot: "" }))
                   }
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   required
                 />
 
@@ -392,7 +426,7 @@ export default function DashboardDoctor() {
                   onChange={(event) =>
                     setForm((current) => ({ ...current, duration: event.target.value, timeSlot: "" }))
                   }
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   required
                 >
                   <option value="15">15 minutes</option>
@@ -404,7 +438,7 @@ export default function DashboardDoctor() {
                 <select
                   value={form.timeSlot}
                   onChange={(event) => setForm((current) => ({ ...current, timeSlot: event.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   required
                   disabled={!form.date || slotsLoading}
                 >
@@ -428,14 +462,14 @@ export default function DashboardDoctor() {
                   type="text"
                   value={form.location}
                   onChange={(event) => setForm((current) => ({ ...current, location: event.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   placeholder="Clinic/location"
                 />
 
                 <textarea
                   value={form.notes}
                   onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   placeholder="Notes"
                   rows={3}
                 />
@@ -449,14 +483,15 @@ export default function DashboardDoctor() {
                 <button
                   type="submit"
                   disabled={createLoading || assignedPatients.length === 0}
-                  className="w-full px-4 py-2 rounded-xl bg-emerald-600 text-white font-medium hover:bg-emerald-700 transition disabled:opacity-70"
+                  className="w-full rounded-xl bg-emerald-600 px-4 py-2 text-white font-medium transition hover:bg-emerald-700 disabled:opacity-70"
                 >
                   {createLoading ? "Creating..." : "Create Appointment"}
                 </button>
-              </form>
+                </form>
+              </section>
             )}
-          </aside>
-        </div>
+          </div>
+        </section>
       </main>
     </div>
   );

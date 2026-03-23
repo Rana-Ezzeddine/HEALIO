@@ -231,51 +231,60 @@ export default function ProfileCaregiver(){
     }
 
     return(
-      <div className="min-h-screen bg-gradient-to-br pt-18 from-sky-50 via-white to-indigo-50">
+      <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-indigo-50">
           <Navbar/>
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            
-          <div className="flex justify-between items-center">
-            <div className="mt-6 rounded-2xl border border-white/60" >
-              <h1 className="text-5xl mb-3 text-3xl font-black leading-[1.2] pb-1 bg-gradient-to-r from-cyan-400 to-blue-500 text-transparent bg-clip-text inline-block">My Profile</h1>
-              <p className=" text-slate-600 mb-5">
-                Review and update your caregiver details, linked patient information, and contact information.
-              </p>
-              {!isEditing ? (
-                <button
-                  type="button"
-                  onClick={() => setIsEditing(true)}
-                  className="px-4 py-2 bg-gradient-to-b from-cyan-400 to-blue-500 hover:from-cyan-500 hover:to-blue-600 transition text-white rounded-lg hover:bg-sky-500 shadow"
-                >
-                  Edit Profile
-                </button>
-              ) : (
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleSave}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-500 shadow"
-                  >
-                    Save Changes
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCancel}
-                    className="px-4 py-2 bg-slate-400 text-white rounded-lg hover:bg-slate-300 shadow"
-                  >
-                    Cancel
-                  </button>
+          <main className="mx-auto max-w-5xl px-4 pb-10 pt-28 sm:px-6 lg:px-8">
+
+          <section className="rounded-[2rem] bg-white p-8 shadow-sm">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.25em] text-sky-700">Caregiver Profile</p>
+                <h1 className="mt-3 bg-gradient-to-r from-cyan-500 to-blue-600 bg-clip-text text-3xl font-black text-transparent">
+                  My Profile
+                </h1>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+                  Review and update your caregiver details, linked patient information, and contact information.
+                </p>
+              </div>
+
+              <div className="flex flex-col items-center gap-4">
+                <div className="h-32 w-32 overflow-hidden rounded-full border border-slate-200">
+                  <img
+                    className="h-full w-full object-cover"
+                    src={canonGender(gender) === "Female" ? userFemale : userMale}
+                    alt="Profile"
+                  />
                 </div>
-              )}
+
+                {!isEditing ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(true)}
+                    className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 transition"
+                  >
+                    Edit Profile
+                  </button>
+                ) : (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSave}
+                      className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 transition"
+                    >
+                      Save Changes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCancel}
+                      className="rounded-xl bg-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200 transition"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="flex items-center justify-center border border-slate-200 rounded-full w-40 h-40 overflow-hidden">
-                <img
-                className="w-full h-full object-cover object-center"
-                src={canonGender(gender) === "Female" ? userFemale : userMale}
-                alt="Profile"
-                />
-            </div>
-          </div>
+          </section>
 
           <div className="mt-6 grid grid-cols-1 gap-6">
             <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
@@ -345,7 +354,7 @@ export default function ProfileCaregiver(){
               </div>
             </section>
           </div>
-        </div>
+          </main>
       </div>
     );
 }

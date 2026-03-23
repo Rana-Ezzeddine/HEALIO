@@ -59,8 +59,8 @@ export default function Navbar({ onLogin, onSignup }) {
   const isEmergency = path.toLowerCase().startsWith("/emergency");
   const isDoctorAppointments = path.toLowerCase().startsWith("/doctorappointments");
   const isPatientAppointments = path.toLowerCase().startsWith("/patientappointments");
-  const isDoctorMessages = path.toLowerCase().startsWith("/doctormessages");
   const isPatientMessages = path.toLowerCase().startsWith("/patientmessages");
+  const isCaregiverMessages = path.toLowerCase().startsWith("/caregivermessages");
   const isLanding = path === "/";
   const isPublicPage = PUBLIC_PATHS.has(path.toLowerCase());
 
@@ -154,7 +154,7 @@ export default function Navbar({ onLogin, onSignup }) {
                 >
                   {isDoctor && doctorApprovalHeld ? "Application Status" : "Dashboard"}
                 </button>
-                {!isDoctor && (
+                {isPatient && (
                   <button
                     onClick={() => navigate("/medication")}
                     className={`text-sm font-medium transition ${isMedication ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
@@ -214,21 +214,21 @@ export default function Navbar({ onLogin, onSignup }) {
                     Appointments
                   </button>
                 )}
-                {isDoctor && !doctorApprovalHeld && (
-                  <button
-                    onClick={() => navigate("/doctorMessages")}
-                    className={`text-sm font-medium transition ${
-                      isDoctorMessages ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
-                    }`}
-                  >
-                    Messages
-                  </button>
-                )}
                 {isPatient && (
                   <button
                     onClick={() => navigate("/patientMessages")}
                     className={`text-sm font-medium transition ${
                       isPatientMessages ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Messages
+                  </button>
+                )}
+                {userRole === "caregiver" && (
+                  <button
+                    onClick={() => navigate("/caregiverMessages")}
+                    className={`text-sm font-medium transition ${
+                      isCaregiverMessages ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
                     }`}
                   >
                     Messages

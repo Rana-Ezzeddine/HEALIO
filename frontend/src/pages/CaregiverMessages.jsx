@@ -7,6 +7,10 @@ import {
   getConversations,
   sendConversationMessage,
 } from "../api/messaging";
+import {
+  resolveActiveCaregiverPatientId,
+  setActiveCaregiverPatientId,
+} from "../utils/caregiverPatientContext";
 
 function formatTimestamp(dateLike) {
   return new Date(dateLike).toLocaleString([], {
@@ -22,27 +26,28 @@ function getOtherParticipant(conversation, currentUserId) {
 }
 
 function participantLabel(participant) {
-  return participant?.email || "Patient";
+  return participant?.displayName || participant?.email || "Patient";
 }
 
-async function fetchAssignedPatients() {
-  const response = await fetch(`${apiUrl}/api/doctors/assigned-patients`, {
+async function fetchLinkedPatients() {
+  const response = await fetch(`${apiUrl}/api/caregivers/patients`, {
     headers: { ...authHeaders() },
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.message || "Failed to load assigned patients");
+    throw new Error(data.message || "Failed to load linked patients");
   }
   return data;
 }
 
-export default function DoctorMessages() {
+export default function CaregiverMessages() {
   const user = getUser();
   const currentUserId = user?.id;
 
   const [searchTerm, setSearchTerm] = useState("");
   const [patientOptions, setPatientOptions] = useState([]);
   const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [activePatientId, setActivePatientId] = useState("");
   const [conversations, setConversations] = useState([]);
   const [selectedConversationId, setSelectedConversationId] = useState("");
   const [messages, setMessages] = useState([]);
@@ -74,7 +79,7 @@ export default function DoctorMessages() {
 
       try {
         const [patientsData, conversationsData] = await Promise.all([
-          fetchAssignedPatients(),
+          fetchLinkedPatients(),
           getConversations(),
         ]);
 
@@ -82,10 +87,14 @@ export default function DoctorMessages() {
 
         const patients = (patientsData.patients || []).map((record) => ({
           id: record.patient?.id,
-          label: record.patient?.email || "Patient",
+          label: participantLabel(record.patient),
         }));
 
-        setPatientOptions(patients);
+        const resolvedId = resolveActiveCaregiverPatientId(patientsData.patients || []);
+
+        setPatientOptions(patients.filter((item) => item.id));
+        setActivePatientId(resolvedId);
+        setSelectedPatientId(resolvedId);
         setConversations(conversationsData.conversations || []);
         setSelectedConversationId((current) => current || conversationsData.conversations?.[0]?.id || "");
       } catch (err) {
@@ -138,12 +147,20 @@ export default function DoctorMessages() {
     };
   }, [selectedConversationId]);
 
-  const filteredConversations = useMemo(() => {
+  const allFilteredConversations = useMemo(() => {
     return conversations.filter((conversation) => {
       const other = getOtherParticipant(conversation, currentUserId);
       return participantLabel(other).toLowerCase().includes(searchTerm.toLowerCase());
     });
   }, [conversations, currentUserId, searchTerm]);
+
+  const filteredConversations = useMemo(() => {
+    if (!activePatientId) return allFilteredConversations;
+    return allFilteredConversations.filter((conversation) => {
+      const other = getOtherParticipant(conversation, currentUserId);
+      return other?.id === activePatientId;
+    });
+  }, [activePatientId, allFilteredConversations, currentUserId]);
 
   const selectedConversation =
     conversations.find((conversation) => conversation.id === selectedConversationId) || null;
@@ -196,7 +213,35 @@ export default function DoctorMessages() {
       <main className="pt-28 max-w-6xl mx-auto px-6 py-8">
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-slate-800">Patient Messages</h1>
-          <p className="mt-1 text-slate-500">Review and reply to assigned patients in one place.</p>
+          <p className="mt-1 text-slate-500">Chat securely with linked patients.</p>
+          {patientOptions.length > 1 ? (
+            <div className="mt-4 max-w-sm">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                Active patient context
+              </label>
+              <select
+                value={activePatientId}
+                onChange={(event) => {
+                  const nextId = event.target.value;
+                  setActivePatientId(nextId);
+                  setSelectedPatientId(nextId);
+                  setActiveCaregiverPatientId(nextId);
+                  const existingConversation = conversations.find((conversation) => {
+                    const other = getOtherParticipant(conversation, currentUserId);
+                    return other?.id === nextId;
+                  });
+                  setSelectedConversationId(existingConversation?.id || "");
+                }}
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
+              >
+                {patientOptions.map((patient) => (
+                  <option key={patient.id} value={patient.id}>
+                    {patient.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
         </div>
 
         {error && (
@@ -231,6 +276,7 @@ export default function DoctorMessages() {
               <button
                 type="submit"
                 className="w-full rounded-xl bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600 transition"
+                disabled={!selectedPatientId}
               >
                 Start Conversation
               </button>
@@ -327,7 +373,7 @@ export default function DoctorMessages() {
                     type="text"
                     value={draftMessage}
                     onChange={(event) => setDraftMessage(event.target.value)}
-                    placeholder="Type your reply..."
+                    placeholder="Type your message..."
                     className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
                   />
                   <button

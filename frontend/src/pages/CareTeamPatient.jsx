@@ -15,7 +15,7 @@ const PERMISSION_LABELS = {
   canViewMedications: "View medications",
   canViewSymptoms: "View symptoms",
   canViewAppointments: "View appointments",
-  canMessageDoctor: "Message doctors",
+  canMessageDoctor: "Message caregiver",
   canReceiveReminders: "Receive reminders",
 };
 
@@ -61,6 +61,10 @@ export default function CareTeamPatient() {
       setStatus({ error: "", success: "Doctor request sent successfully." });
       await loadAssignments();
     } catch (error) {
+      if (error?.code === "DOCTOR_NOT_AVAILABLE") {
+        setStatus({ error: "This doctor is not available for linking.", success: "" });
+        return;
+      }
       setStatus({ error: error.message || "Failed to link doctor.", success: "" });
     }
   }
@@ -133,7 +137,7 @@ export default function CareTeamPatient() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold text-slate-900">Doctors</h2>
-                <p className="mt-1 text-sm text-slate-500">Request a doctor link to unlock appointments and messaging.</p>
+                <p className="mt-1 text-sm text-slate-500">Request a doctor link to unlock appointments and treatment coordination.</p>
               </div>
               <div className="rounded-2xl bg-sky-50 px-4 py-2 text-right">
                 <p className="text-xs text-slate-500">Linked</p>
@@ -174,7 +178,7 @@ export default function CareTeamPatient() {
               ))}
               {!loading && linkedDoctors.length === 0 && doctorRequests.length === 0 ? (
                 <p className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
-                  No doctor linked yet.
+                  No approved doctors available yet.
                 </p>
               ) : null}
             </div>
