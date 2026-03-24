@@ -43,6 +43,24 @@ function ApplicationField({ label, value }) {
   );
 }
 
+function normalizeNotesHistory(application) {
+  const history = application?.notesHistory;
+  if (Array.isArray(history)) {
+    return history
+      .map((item) => ({
+        text: item?.note || item?.notes || item?.text || "",
+        createdAt: item?.createdAt || item?.updatedAt || "",
+      }))
+      .filter((item) => item.text);
+  }
+
+  if (application?.notes) {
+    return [{ text: application.notes, createdAt: application?.reviewedAt || "" }];
+  }
+
+  return [];
+}
+
 export default function DoctorReviewPage() {
   const [statusFilter, setStatusFilter] = useState("pending_approval");
   const [applications, setApplications] = useState([]);
@@ -52,6 +70,7 @@ export default function DoctorReviewPage() {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState("");
+  const [rejectNotesWarning, setRejectNotesWarning] = useState("");
 
   async function loadApplications(filter = statusFilter, preserveSelection = true) {
     setError("");
@@ -87,9 +106,11 @@ export default function DoctorReviewPage() {
     () => applications.find((item) => item.id === selectedId) || null,
     [applications, selectedId]
   );
+  const notesHistory = useMemo(() => normalizeNotesHistory(selectedApplication), [selectedApplication]);
 
   useEffect(() => {
     setNotes(selectedApplication?.notes || "");
+    setRejectNotesWarning("");
   }, [selectedApplication?.id]);
 
   async function handleDecision(decision) {
@@ -97,6 +118,11 @@ export default function DoctorReviewPage() {
     if (decision === "request_more_info" && !notes.trim()) {
       setError("Notes are required when requesting more information.");
       return;
+    }
+    if (decision === "reject" && !notes.trim()) {
+      setRejectNotesWarning("Adding reviewer notes is strongly encouraged when rejecting an application.");
+    } else {
+      setRejectNotesWarning("");
     }
 
     setError("");
@@ -251,6 +277,27 @@ export default function DoctorReviewPage() {
                       placeholder="Add reviewer notes, approval rationale, or the information needed from the doctor."
                       className="mt-4 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
                     />
+                    {rejectNotesWarning ? (
+                      <p className="mt-3 text-xs font-semibold text-amber-700">{rejectNotesWarning}</p>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-4 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Reviewer notes history</p>
+                    {notesHistory.length === 0 ? (
+                      <p className="mt-3 text-sm text-slate-500">No reviewer notes history yet.</p>
+                    ) : (
+                      <div className="mt-3 space-y-3">
+                        {notesHistory.map((entry, index) => (
+                          <div key={`${selectedApplication.id}-note-${index}`} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                            {entry.createdAt ? (
+                              <p className="text-xs text-slate-500">{formatDate(entry.createdAt)}</p>
+                            ) : null}
+                            <p className="mt-1 text-sm text-slate-700">{entry.text}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-6 grid gap-3 md:grid-cols-3">

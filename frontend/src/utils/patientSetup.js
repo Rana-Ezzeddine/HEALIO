@@ -52,7 +52,7 @@ export function buildPatientSetupChecklist({
     {
       key: "doctor",
       label: "Connect a doctor",
-      description: "Link a doctor so appointments and messaging become available.",
+      description: "Link a doctor so appointment requests and treatment coordination become available.",
       done: doctorCount > 0,
       href: "/care-team",
     },
