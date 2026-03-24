@@ -6,7 +6,7 @@ import { getMyAppointments } from "../api/appointments";
 import { getConversations } from "../api/messaging";
 import { getMyCaregivers, getMyDoctors } from "../api/links";
 import { buildPatientSetupChecklist } from "../utils/patientSetup";
-import { formatDoseTime, getNextMedicationDose } from "../utils/medicationSchedule";
+import { formatDoseTime, getNextMedicationDose, isActiveMedication } from "../utils/medicationSchedule";
 
 function formatAppointmentDate(dateLike) {
   return new Date(dateLike).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -111,7 +111,11 @@ export default function DashboardPatient() {
   );
 
   const nextAppointment = upcomingAppointments[0];
-  const nextDose = useMemo(() => getNextMedicationDose(medications), [medications]);
+  const activeMedications = useMemo(
+    () => medications.filter((medication) => isActiveMedication(medication)),
+    [medications]
+  );
+  const nextDose = useMemo(() => getNextMedicationDose(activeMedications), [activeMedications]);
 
   const checklist = useMemo(
     () =>
@@ -191,7 +195,7 @@ export default function DashboardPatient() {
         <section className="mt-6 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
           <DashboardCard
             title="Active Medications"
-            mainText={`${medications.length} tracked`}
+            mainText={`${activeMedications.length} tracked`}
             subText={nextDose ? `Next dose: ${nextDose.medication?.name} at ${formatDoseTime(nextDose.at)}` : "Add medication reminders"}
             navPage="/medication"
           />

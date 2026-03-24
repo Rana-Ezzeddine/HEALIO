@@ -52,6 +52,23 @@ async function canStartConversation(requester, recipientId, patientId = null) {
         return { ok: true, recipient };
     }
 
+    // patient -> caregiver
+    if (requesterRole === "patient" && recipient.role === "caregiver") {
+        const permission = await CaregiverPatientPermission.findOne({
+            where: {
+                caregiverId: recipient.id,
+                patientId: requesterId,
+                status: "active",
+            },
+        });
+
+        if (!permission) {
+            return { ok: false, status: 403, message: "You can only message a linked caregiver." };
+        }
+
+        return { ok: true, recipient };
+    }
+
     // doctor -> patient
     if (requesterRole === "doctor" && recipient.role === "patient") {
         const assignment = await DoctorPatientAssignment.findOne({
@@ -64,6 +81,23 @@ async function canStartConversation(requester, recipientId, patientId = null) {
 
         if (!assignment) {
             return { ok: false, status: 403, message: "You can only message assigned patients." };
+        }
+
+        return { ok: true, recipient };
+    }
+
+    // caregiver -> patient
+    if (requesterRole === "caregiver" && recipient.role === "patient") {
+        const permission = await CaregiverPatientPermission.findOne({
+            where: {
+                caregiverId: requesterId,
+                patientId: recipient.id,
+                status: "active",
+            },
+        });
+
+        if (!permission) {
+            return { ok: false, status: 403, message: "You can only message linked patients." };
         }
 
         return { ok: true, recipient };

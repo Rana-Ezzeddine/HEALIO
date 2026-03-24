@@ -40,9 +40,10 @@ const Appointment = sequelize.define('Appointment', {
     allowNull: true
   },
   requestedAt: {
-    type: DataTypes.DATE,
-    allowNull: true,
-    defaultValue: DataTypes.NOW
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.getDataValue('createdAt');
+    }
   },
   status: {
     type: DataTypes.ENUM('requested', 'scheduled', 'cancelled', 'completed', 'denied'),

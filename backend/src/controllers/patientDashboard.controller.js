@@ -24,9 +24,16 @@ function startOfDayFromValue(value) {
 // Get patient dashboard with aggregated medical data
 export const getPatientDashboard = async (req, res) => {
   try {
+    const patientId = req.user?.id || req.user?.sub;
+    if (!patientId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const allMedications = await Medication.findAll();
+    const allMedications = await Medication.findAll({
+      where: { patientId }
+    });
 
     const activeMedications = allMedications.filter(med =>
       !med.endDate || new Date(med.endDate) >= today
@@ -39,11 +46,12 @@ export const getPatientDashboard = async (req, res) => {
     } : null;
     const nextAppointment = await Appointment.findOne({
       where: {
-        date: {
+        patientId,
+        startsAt: {
           [Op.gte]: today
         }
       },
-      order: [['date', 'ASC']]
+      order: [['startsAt', 'ASC']]
     });
 
     let appointmentData = {
@@ -55,7 +63,7 @@ export const getPatientDashboard = async (req, res) => {
     };
 
     if (nextAppointment) {
-      const appointmentDate = new Date(nextAppointment.date);
+      const appointmentDate = new Date(nextAppointment.startsAt);
       const daysUntil = Math.ceil((appointmentDate - today) / (1000 * 60 * 60 * 24));
 
       appointmentData = {
@@ -72,17 +80,17 @@ export const getPatientDashboard = async (req, res) => {
 
     const upcomingAppointments = await Appointment.findAll({
       where: {
-        date: {
+        patientId,
+        startsAt: {
           [Op.between]: [today, thirtyDaysFromNow]
         }
       },
-      order: [['date', 'ASC']],
+      order: [['startsAt', 'ASC']],
       limit: 5
     });
 
     const lastSymptom = await Symptom.findOne({
-      // TODO: Add patientId filter
-      // where: { patientId: req.user.id },
+      where: { patientId },
       order: [['loggedAt', 'DESC'], ['createdAt', 'DESC']]
     });
 
@@ -141,12 +149,12 @@ export const getPatientDashboard = async (req, res) => {
         message: upcomingAppointments.length === 0 ? "No upcoming appointments yet." : null,
         appointments: upcomingAppointments.map(apt => ({
           id: apt.id,
-          date: new Date(apt.date).toLocaleDateString('en-US', {
+          date: new Date(apt.startsAt).toLocaleDateString('en-US', {
             weekday: 'short',
             month: 'short',
             day: 'numeric'
           }),
-          time: apt.time || "Time TBD",
+          time: new Date(apt.startsAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
           doctorName: apt.doctorName || "Doctor TBD",
           type: apt.type || "General",
           status: apt.status || "scheduled"
@@ -213,10 +221,17 @@ export const getPatientDashboard = async (req, res) => {
 
 export const getMedicationStats = async (req, res) => {
   try {
+    const patientId = req.user?.id || req.user?.sub;
+    if (!patientId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const allMedications = await Medication.findAll();
+    const allMedications = await Medication.findAll({
+      where: { patientId }
+    });
 
     const frequencyDistribution = {};
     allMedications.forEach(med => {
@@ -247,11 +262,17 @@ export const getMedicationStats = async (req, res) => {
 
 export const getActiveMedications = async (req, res) => {
   try {
+    const patientId = req.user?.id || req.user?.sub;
+    if (!patientId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const activeMedications = await Medication.findAll({
       where: {
+        patientId,
         [Op.or]: [
           { endDate: null },
           { endDate: { [Op.gte]: today } }
@@ -269,10 +290,16 @@ export const getActiveMedications = async (req, res) => {
 
 export const getMedicationsByDoctor = async (req, res) => {
   try {
+    const patientId = req.user?.id || req.user?.sub;
+    if (!patientId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
     const { doctor } = req.params;
 
     const medications = await Medication.findAll({
       where: {
+        patientId,
         prescribedBy: doctor
       },
       order: [['createdAt', 'DESC']]
@@ -291,6 +318,11 @@ export const getMedicationsByDoctor = async (req, res) => {
 
 export const getUpcomingMedications = async (req, res) => {
   try {
+    const patientId = req.user?.id || req.user?.sub;
+    if (!patientId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -299,6 +331,7 @@ export const getUpcomingMedications = async (req, res) => {
 
     const upcomingMedications = await Medication.findAll({
       where: {
+        patientId,
         startDate: {
           [Op.gt]: today,
           [Op.lte]: thirtyDaysFromNow
