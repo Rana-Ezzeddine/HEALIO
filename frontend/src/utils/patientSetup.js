@@ -2,14 +2,29 @@ function hasText(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function normalizeEmergencyContact(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
 export function getProfileCompletion(profile = {}) {
-  const emergencyContact = profile.emergencyContact || {};
+  const emergencyContact = normalizeEmergencyContact(profile.emergencyContact);
+  const phoneNumber = profile.phoneNumber || profile.phone;
   const checks = [
     { key: "firstName", label: "First name", done: hasText(profile.firstName) },
     { key: "lastName", label: "Last name", done: hasText(profile.lastName) },
     { key: "dateOfBirth", label: "Date of birth", done: hasText(profile.dateOfBirth) },
     { key: "gender", label: "Gender", done: hasText(profile.gender || profile.sex) },
-    { key: "phoneNumber", label: "Phone number", done: hasText(profile.phoneNumber) },
+    { key: "phoneNumber", label: "Phone number", done: hasText(phoneNumber) },
     { key: "bloodType", label: "Blood type", done: hasText(profile.bloodType) },
     {
       key: "emergencyContact",

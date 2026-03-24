@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiUrl, authHeaders, getUser } from "../api/http";
+import { apiUrl, authHeaders, getUser, updateSessionUser } from "../api/http";
 import Navbar from "../components/Navbar";
 import userMale from "../assets/userMale.png";
 import userFemale from "../assets/userFemale.png";
@@ -190,6 +190,18 @@ export default function ProfilePatient() {
 
       localStorage.setItem("firstName", data.firstName || profileState.firstName);
       localStorage.setItem("lastName", data.lastName || profileState.lastName);
+
+      const currentUser = getUser();
+      if (currentUser) {
+        updateSessionUser({
+          ...currentUser,
+          firstName: data.firstName || profileState.firstName || currentUser.firstName,
+          lastName: data.lastName || profileState.lastName || currentUser.lastName,
+        });
+      }
+
+      localStorage.setItem("healio:profile-updated", String(Date.now()));
+
       setIsEditing(false);
       setSaveStatus({ error: "", success: "Profile updated successfully." });
       await loadProfile();
