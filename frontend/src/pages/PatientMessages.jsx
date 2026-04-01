@@ -59,6 +59,22 @@ function markConversationAsSeen(userId, conversationId, sentAt) {
   writeLastSeenMap(userId, map);
 }
 
+function buildSymptomUpdateTemplate() {
+  const symptom = window.prompt("Symptom name", "")?.trim() || "";
+  if (!symptom) return null;
+  const severity = window.prompt("Severity from 1 to 10", "")?.trim() || "";
+  const when = window.prompt("When did this happen?", "Today")?.trim() || "Today";
+  const notes = window.prompt("Additional symptom details", "")?.trim() || "None";
+
+  return [
+    "Symptom update",
+    `Symptom: ${symptom}`,
+    `Severity: ${severity || "Not specified"}/10`,
+    `When: ${when}`,
+    `Details: ${notes}`,
+  ].join("\n");
+}
+
 export default function PatientMessages() {
   const user = getUser();
   const currentUserId = user?.id;
@@ -455,6 +471,25 @@ export default function PatientMessages() {
 
                 {sendError && <p className="mt-3 text-sm text-red-700 shrink-0">{sendError}</p>}
                 {deleteError && <p className="mt-2 text-sm text-red-700 shrink-0">{deleteError}</p>}
+
+                <form onSubmit={handleSendMessage} className="pt-3 mt-3 border-t border-slate-200 flex gap-2 shrink-0">
+                <div className="border-t border-slate-100 pt-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Structured updates
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const template = buildSymptomUpdateTemplate();
+                        if (template) setDraftMessage(template);
+                      }}
+                      className="rounded-full bg-amber-100 px-3 py-1.5 text-sm font-medium text-amber-800 transition hover:bg-amber-200"
+                    >
+                      Symptom update
+                    </button>
+                  </div>
+                </div>
 
                 <form onSubmit={handleSendMessage} className="pt-3 mt-3 border-t border-slate-200 flex gap-2 shrink-0">
                   <input
