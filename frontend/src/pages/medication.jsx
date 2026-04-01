@@ -40,6 +40,48 @@ function getLatestAdherenceStatus(medication) {
   return entry?.status || null;
 }
 
+function formatAdherenceLabel(status) {
+  if (status === "taken") return "Taken";
+  if (status === "missed") return "Missed";
+  if (status === "skipped") return "Skipped";
+  if (status === "delayed") return "Delayed";
+  return status || "Unknown";
+}
+
+function getAdherenceTone(status) {
+  if (status === "taken") return "bg-emerald-100 text-emerald-700";
+  if (status === "missed") return "bg-rose-100 text-rose-700";
+  if (status === "skipped") return "bg-amber-100 text-amber-700";
+  if (status === "delayed") return "bg-indigo-100 text-indigo-700";
+  return "bg-slate-100 text-slate-700";
+}
+
+function summarizeAdherence(medications) {
+  const counts = { taken: 0, missed: 0, skipped: 0, delayed: 0 };
+  for (const medication of medications) {
+    const history = Array.isArray(medication.adherenceHistory) ? medication.adherenceHistory : [];
+    for (const entry of history) {
+      if (counts[entry.status] != null) {
+        counts[entry.status] += 1;
+      }
+    }
+  }
+  return counts;
+}
+
+function getRecentAdherenceEntries(medications) {
+  return medications
+    .flatMap((medication) =>
+      (Array.isArray(medication.adherenceHistory) ? medication.adherenceHistory : []).map((entry, index) => ({
+        key: `${medication.id}-${entry.recordedAt || index}-${entry.status}`,
+        medicationName: medication.name,
+        ...entry,
+      }))
+    )
+    .sort((left, right) => new Date(right.recordedAt || right.scheduledFor) - new Date(left.recordedAt || left.scheduledFor))
+    .slice(0, 8);
+}
+
 function getNextDoseForMedication(medication) {
   return getNextMedicationDose([medication]);
 }
@@ -208,6 +250,15 @@ export default function MedicationManager() {
     const scheduledFor = getNextDoseForMedication(medication)?.at?.toISOString() || new Date().toISOString();
     const delayMinutes =
       status === "delayed" ? Number(window.prompt("Delay by how many minutes?", "30") || "0") : undefined;
+    const notesPrompt =
+      status === "missed"
+        ? "Why was this dose missed? (optional)"
+        : status === "skipped"
+        ? "Why was this dose skipped? (optional)"
+        : status === "delayed"
+        ? "Add a note for this delayed dose. (optional)"
+        : "Add a note for this dose. (optional)";
+    const notes = window.prompt(notesPrompt, "") || "";
 
     try {
       const response = await fetch(`${apiUrl}/api/medications/${medication.id}/adherence`, {
@@ -217,6 +268,7 @@ export default function MedicationManager() {
           status,
           scheduledFor,
           delayMinutes,
+          notes,
         }),
       });
 
@@ -252,6 +304,8 @@ export default function MedicationManager() {
         .slice(0, 5),
     [medications]
   );
+  const adherenceSummary = useMemo(() => summarizeAdherence(medications), [medications]);
+  const recentAdherenceEntries = useMemo(() => getRecentAdherenceEntries(medications), [medications]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-indigo-50 p-6">
@@ -300,6 +354,20 @@ export default function MedicationManager() {
               <p className="mt-1 text-2xl font-bold text-slate-900">{warnings.length}</p>
               <p className="mt-2 text-sm text-slate-600">Refill and end-date issues needing attention.</p>
             </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            {[
+              { key: "taken", label: "Taken", value: adherenceSummary.taken, tone: "bg-emerald-50 text-emerald-700" },
+              { key: "missed", label: "Missed", value: adherenceSummary.missed, tone: "bg-rose-50 text-rose-700" },
+              { key: "skipped", label: "Skipped", value: adherenceSummary.skipped, tone: "bg-amber-50 text-amber-700" },
+              { key: "delayed", label: "Delayed", value: adherenceSummary.delayed, tone: "bg-indigo-50 text-indigo-700" },
+            ].map((item) => (
+              <div key={item.key} className={`rounded-3xl p-5 ${item.tone}`}>
+                <p className="text-sm">{item.label} doses</p>
+                <p className="mt-1 text-2xl font-bold">{item.value}</p>
+              </div>
+            ))}
           </div>
         </section>
 
@@ -358,6 +426,48 @@ export default function MedicationManager() {
                 </p>
               )}
             </div>
+          </div>
+        </section>
+
+        <section className="mt-6 rounded-3xl bg-white p-6 shadow-sm">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900">Adherence history</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Every medication action is tracked as taken, missed, skipped, or delayed.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {recentAdherenceEntries.length > 0 ? (
+              recentAdherenceEntries.map((entry) => (
+                <div key={entry.key} className="rounded-2xl border border-slate-200 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-slate-900">{entry.medicationName}</p>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Scheduled for {new Date(entry.scheduledFor).toLocaleString()}
+                      </p>
+                    </div>
+                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getAdherenceTone(entry.status)}`}>
+                      {formatAdherenceLabel(entry.status)}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-4 text-sm text-slate-600">
+                    <span>Recorded: {new Date(entry.recordedAt || entry.scheduledFor).toLocaleString()}</span>
+                    {entry.delayMinutes != null ? <span>Delay: {entry.delayMinutes} min</span> : null}
+                  </div>
+                  {entry.notes ? (
+                    <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">{entry.notes}</p>
+                  ) : null}
+                </div>
+              ))
+            ) : (
+              <p className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                No adherence updates logged yet.
+              </p>
+            )}
           </div>
         </section>
 
@@ -448,8 +558,8 @@ export default function MedicationManager() {
                             {medication.dosage}
                           </span>
                           {latestStatus ? (
-                            <span className="rounded-full bg-sky-100 px-2 py-1 text-xs font-semibold text-sky-700">
-                              Last dose: {latestStatus}
+                            <span className={`rounded-full px-2 py-1 text-xs font-semibold ${getAdherenceTone(latestStatus)}`}>
+                              Last dose: {formatAdherenceLabel(latestStatus)}
                             </span>
                           ) : null}
                         </div>
@@ -485,9 +595,9 @@ export default function MedicationManager() {
                             key={statusValue}
                             type="button"
                             onClick={() => logAdherence(medication, statusValue)}
-                            className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                            className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${getAdherenceTone(statusValue)}`}
                           >
-                            Mark {statusValue}
+                            Mark {formatAdherenceLabel(statusValue)}
                           </button>
                         ))}
                         <button
