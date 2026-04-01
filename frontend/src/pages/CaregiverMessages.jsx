@@ -58,6 +58,22 @@ function markConversationAsSeen(userId, conversationId, sentAt) {
   writeLastSeenMap(userId, map);
 }
 
+function buildCareUpdateTemplate() {
+  const updateType = window.prompt("Update type (medication, observation, routine, follow-up)", "")?.trim() || "";
+  if (!updateType) return null;
+  const summary = window.prompt("Short care update summary", "")?.trim() || "";
+  const actionTaken = window.prompt("Action taken", "")?.trim() || "None";
+  const nextStep = window.prompt("Next step or follow-up", "")?.trim() || "None";
+
+  return [
+    "Caregiver coordination update",
+    `Type: ${updateType}`,
+    `Summary: ${summary || "Not specified"}`,
+    `Action taken: ${actionTaken}`,
+    `Next step: ${nextStep}`,
+  ].join("\n");
+}
+
 async function fetchLinkedPatients() {
   const response = await fetch(`${apiUrl}/api/caregivers/patients`, {
     headers: { ...authHeaders() },
@@ -445,8 +461,8 @@ export default function CaregiverMessages() {
                           >
                             {formatTimestamp(message.sentAt)}
                           </p>
+                          </div>
                         </div>
-                      </div>
                     );
                   })
                 ) : (
@@ -456,6 +472,24 @@ export default function CaregiverMessages() {
 
               {sendError && <p className="mt-3 text-sm text-red-700 shrink-0">{sendError}</p>}
               {deleteError && <p className="mt-2 text-sm text-red-700 shrink-0">{deleteError}</p>}
+
+              <div className="border-t border-slate-100 pt-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  Structured updates
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const template = buildCareUpdateTemplate();
+                      if (template) setDraftMessage(template);
+                    }}
+                    className="rounded-full bg-teal-100 px-3 py-1.5 text-sm font-medium text-teal-800 transition hover:bg-teal-200"
+                  >
+                    Care update
+                  </button>
+                </div>
+              </div>
 
               <form
                 onSubmit={handleSendMessage}
