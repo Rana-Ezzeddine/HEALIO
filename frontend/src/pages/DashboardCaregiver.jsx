@@ -270,13 +270,13 @@ export default function DashboardCaregiver() {
             navPage="/patientAppointments"
             disabled={!canViewAppointments}
           />
-          <DashboardCard
+          {/* <DashboardCard
             title="Patient Conversations"
             mainText={canMessagePatient ? `${conversationCount}` : "No access"}
             subText={canMessagePatient ? "Secure caregiver chat" : "Enable messaging permission"}
             navPage="/caregiverMessages"
             disabled={!canMessagePatient}
-          />
+          /> */}
           <DashboardCard
             title="Linked Patients"
             mainText={`${allPatientCount}`}

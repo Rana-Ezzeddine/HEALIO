@@ -243,9 +243,9 @@ export default function DashboardPatient() {
             navPage="/patientAppointments"
           />
           <DashboardCard
-            title="Caregiver Conversations"
+            title="Updates & Communication"
             mainText={`${conversationCount}`}
-            subText="Open secure caregiver chats"
+            subText="Check care updates and secure chats"
             navPage="/patientMessages"
           />
           <DashboardCard
