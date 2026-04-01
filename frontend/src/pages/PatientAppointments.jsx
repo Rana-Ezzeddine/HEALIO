@@ -385,6 +385,12 @@ export default function PatientAppointments() {
             </p>
           )}
 
+          {requestableDoctors.length > 0 && (
+            <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              Appointment slots are shared live. If another booking or request reaches the same slot first, that option can disappear before you confirm your request.
+            </div>
+          )}
+
           {requestError && (
             <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {requestError}
