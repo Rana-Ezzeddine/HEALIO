@@ -67,6 +67,7 @@ export default function Symptoms() {
   const [customSymptom, setCustomSymptom] = useState("");
   const [currentSeverity, setCurrentSeverity] = useState(null);
   const [currentNotes, setCurrentNotes] = useState("");
+  const [currentDate, setCurrentDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [filters, setFilters] = useState({
     symptomName: "",
     severity: "",
@@ -165,6 +166,16 @@ export default function Symptoms() {
       .sort((left, right) => right[1] - left[1])
       .slice(0, 4);
   }, [logs]);
+  const customSymptomSuggestions = useMemo(() => {
+    const presetSet = new Set(PRESET_SYMPTOMS.map((item) => item.toLowerCase()));
+    return Array.from(
+      new Set(
+        logs
+          .map((log) => log.symptom)
+          .filter((symptom) => symptom && !presetSet.has(symptom.toLowerCase()))
+      )
+    ).slice(0, 6);
+  }, [logs]);
 
   async function applyFilters() {
     await loadSymptoms(filters);
@@ -186,6 +197,7 @@ export default function Symptoms() {
         symptom: selectedSymptom,
         severity: currentSeverity,
         notes: currentNotes,
+        date: currentDate,
       });
 
       setLogs((current) => [
@@ -204,6 +216,7 @@ export default function Symptoms() {
       setCustomSymptom("");
       setCurrentSeverity(null);
       setCurrentNotes("");
+      setCurrentDate(new Date().toISOString().slice(0, 10));
       setIsModalOpen(false);
     } catch (saveError) {
       alert(saveError.message || "Failed to save symptom.");
@@ -471,14 +484,45 @@ export default function Symptoms() {
                 </button>
               </div>
               {currentSymptom === "__custom__" ? (
-                <input
-                  type="text"
-                  value={customSymptom}
-                  onChange={(event) => setCustomSymptom(event.target.value)}
-                  placeholder="Type your symptom"
-                  className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                />
+                <div className="mt-3 space-y-3">
+                  <input
+                    type="text"
+                    value={customSymptom}
+                    onChange={(event) => setCustomSymptom(event.target.value)}
+                    placeholder="Type your symptom"
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  />
+                  {customSymptomSuggestions.length > 0 ? (
+                    <div>
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                        Reuse previous custom symptoms
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {customSymptomSuggestions.map((symptom) => (
+                          <button
+                            key={symptom}
+                            type="button"
+                            onClick={() => setCustomSymptom(symptom)}
+                            className="rounded-full bg-slate-100 px-3 py-1.5 text-sm text-slate-700 transition hover:bg-slate-200"
+                          >
+                            {symptom}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               ) : null}
+            </div>
+
+            <div className="mb-4">
+              <h3 className="mb-2 font-medium text-slate-700">Log date</h3>
+              <input
+                type="date"
+                value={currentDate}
+                onChange={(event) => setCurrentDate(event.target.value)}
+                className="w-full rounded-xl border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500"
+              />
             </div>
 
             <div className="mb-4">
@@ -514,7 +558,10 @@ export default function Symptoms() {
 
             <div className="mt-4 flex gap-3">
               <button
-                onClick={() => setIsModalOpen(false)}
+                onClick={() => {
+                  setIsModalOpen(false);
+                  setCurrentDate(new Date().toISOString().slice(0, 10));
+                }}
                 className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-slate-700 transition hover:bg-slate-50"
               >
                 Cancel
