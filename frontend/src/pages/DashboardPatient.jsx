@@ -116,6 +116,7 @@ export default function DashboardPatient() {
   const [isNewPatientGreeting, setIsNewPatientGreeting] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   const greetingName =
     profile?.firstName || user?.firstName || localStorage.getItem("firstName") || user?.email || "Patient";
@@ -145,6 +146,16 @@ export default function DashboardPatient() {
     return () => {
       window.removeEventListener("focus", refreshDashboard);
       window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 60000);
+
+    return () => {
+      window.clearInterval(intervalId);
     };
   }, []);
 
@@ -254,6 +265,75 @@ export default function DashboardPatient() {
   const nextSetupStepNumber = nextSetupTask
     ? checklist.tasks.findIndex((task) => task.key === nextSetupTask.key) + 1
     : checklist.totalCount;
+  const dueSoonMedicationReminders = useMemo(() => {
+    return activeMedications
+      .filter((medication) => medication.reminderEnabled !== false)
+      .map((medication) => {
+        const dose = getNextMedicationDose([medication], new Date(currentTime));
+        if (!dose) return null;
+
+        const leadMinutes = Number.isInteger(medication.reminderLeadMinutes)
+          ? medication.reminderLeadMinutes
+          : 30;
+        const minutesUntil = Math.round((dose.at.getTime() - currentTime) / (1000 * 60));
+
+        return { medication, dose, leadMinutes, minutesUntil };
+      })
+      .filter((item) => item && item.minutesUntil >= 0 && item.minutesUntil <= item.leadMinutes)
+      .sort((left, right) => left.dose.at - right.dose.at)
+      .slice(0, 3);
+  }, [activeMedications, currentTime]);
+  const upcomingAppointmentReminders = useMemo(() => {
+    return upcomingAppointments
+      .map((appointment) => {
+        const minutesUntil = Math.round((new Date(appointment.startsAt).getTime() - currentTime) / (1000 * 60));
+        return { appointment, minutesUntil };
+      })
+      .filter((item) => item.minutesUntil >= 0 && item.minutesUntil <= 48 * 60)
+      .slice(0, 3);
+  }, [currentTime, upcomingAppointments]);
+  const dashboardNotifications = [
+    requestedAppointments > 0
+      ? {
+          key: "requests",
+          title: "Appointment requests pending",
+          body: `${requestedAppointments} request${requestedAppointments === 1 ? "" : "s"} still waiting for doctor review.`,
+          action: "Open appointments",
+          href: "/patientAppointments",
+          tone: "border-amber-200 bg-amber-50 text-amber-800",
+        }
+      : null,
+    checklist.profileStatus.missing.length > 0
+      ? {
+          key: "profile",
+          title: "Profile still missing details",
+          body: `${checklist.profileStatus.missing.length} item${checklist.profileStatus.missing.length === 1 ? "" : "s"} should be filled for stronger reminders and emergency access.`,
+          action: "Complete profile",
+          href: "/profilePatient",
+          tone: "border-sky-200 bg-sky-50 text-sky-800",
+        }
+      : null,
+    doctorCount === 0
+      ? {
+          key: "doctor",
+          title: "No doctor linked yet",
+          body: "Link a doctor to unlock appointment requests and treatment coordination.",
+          action: "Manage care team",
+          href: "/care-team",
+          tone: "border-cyan-200 bg-cyan-50 text-cyan-800",
+        }
+      : null,
+    conversationCount === 0 && caregiverCount > 0
+      ? {
+          key: "messages",
+          title: "No caregiver conversations started",
+          body: "Open a secure chat so updates and reminders can flow through one place.",
+          action: "Open messages",
+          href: "/patientMessages",
+          tone: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800",
+        }
+      : null,
+  ].filter(Boolean);
   const shouldAutoOpenOnboarding =
     setupIncomplete && isPatientOnboardingQueued(user) && !isPatientOnboardingDismissed(user);
   const showOnboardingModal = setupIncomplete && (isOnboardingOpen || shouldAutoOpenOnboarding);
@@ -619,6 +699,108 @@ export default function DashboardPatient() {
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Unread messages</p>
                   <p className="mt-1 text-lg font-bold text-slate-900">{unreadMessageCount}</p>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-3xl bg-white p-6 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-semibold text-slate-900">Reminders and notifications</h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Stay ahead of doses, visits, and dashboard actions that still need attention.
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                  {dueSoonMedicationReminders.length + upcomingAppointmentReminders.length + dashboardNotifications.length} active
+                </span>
+              </div>
+
+              <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="font-semibold text-slate-900">Due soon reminders</h3>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/medication")}
+                      className="text-xs font-semibold text-sky-700 transition hover:text-sky-800"
+                    >
+                      Manage meds
+                    </button>
+                  </div>
+                  <div className="mt-3 space-y-3">
+                    {dueSoonMedicationReminders.length > 0 || upcomingAppointmentReminders.length > 0 ? (
+                      <>
+                        {dueSoonMedicationReminders.map((item) => (
+                          <button
+                            key={`${item.medication.id}-${item.dose.at.toISOString()}`}
+                            type="button"
+                            onClick={() => navigate("/medication")}
+                            className="w-full rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left transition hover:border-amber-300"
+                          >
+                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">Medication</p>
+                            <p className="mt-1 font-semibold text-slate-900">{item.medication.name}</p>
+                            <p className="mt-1 text-sm text-slate-600">
+                              Dose at {formatDoseTime(item.dose.at)} with a {item.leadMinutes}-minute reminder window.
+                            </p>
+                          </button>
+                        ))}
+                        {upcomingAppointmentReminders.map((item) => (
+                          <button
+                            key={item.appointment.id}
+                            type="button"
+                            onClick={() => navigate("/patientAppointments")}
+                            className="w-full rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-left transition hover:border-emerald-300"
+                          >
+                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Appointment</p>
+                            <p className="mt-1 font-semibold text-slate-900">{doctorName(item.appointment)}</p>
+                            <p className="mt-1 text-sm text-slate-600">
+                              {formatAppointmentDate(item.appointment.startsAt)} at {formatAppointmentTime(item.appointment.startsAt)}.
+                            </p>
+                          </button>
+                        ))}
+                      </>
+                    ) : (
+                      <p className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                        No active reminders right now. Add medication schedules or request an appointment to populate this panel.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="font-semibold text-slate-900">Needs attention</h3>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/dashboardPatient")}
+                      className="text-xs font-semibold text-slate-500 transition hover:text-slate-700"
+                    >
+                      Refresh context
+                    </button>
+                  </div>
+                  <div className="mt-3 space-y-3">
+                    {dashboardNotifications.length > 0 ? (
+                      dashboardNotifications.map((notification) => (
+                        <button
+                          key={notification.key}
+                          type="button"
+                          onClick={() => navigate(notification.href)}
+                          className={`w-full rounded-2xl border p-4 text-left transition hover:opacity-90 ${notification.tone}`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="font-semibold">{notification.title}</p>
+                            <span className="text-xs font-semibold">{notification.action}</span>
+                          </div>
+                          <p className="mt-2 text-sm">{notification.body}</p>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                        No unresolved dashboard notifications. Your current essentials look clear.
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
             </section>
