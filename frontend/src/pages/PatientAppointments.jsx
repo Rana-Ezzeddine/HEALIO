@@ -350,6 +350,10 @@ export default function PatientAppointments() {
               ))}
             </select>
 
+            <div className="md:col-span-6 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              Available slots come from the doctor&apos;s configured schedule, then the system removes break periods, blocked times, and bookings that already occupy the same window.
+            </div>
+
             <input
               type="text"
               placeholder="Location"
