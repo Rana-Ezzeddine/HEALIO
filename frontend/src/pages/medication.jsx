@@ -35,6 +35,22 @@ function getMedicationWarnings(medication) {
   return warnings;
 }
 
+function getMedicationAttentionState(medication) {
+  const nextDose = getNextDoseForMedication(medication);
+  const warnings = getMedicationWarnings(medication);
+  const hasSchedule = getScheduleTimes(medication).length > 0;
+
+  return {
+    medication,
+    nextDose,
+    warnings,
+    needsReminderSetup:
+      medication.reminderEnabled !== false &&
+      (!hasSchedule || medication.reminderLeadMinutes == null),
+    reminderOff: medication.reminderEnabled === false,
+  };
+}
+
 function getLatestAdherenceStatus(medication) {
   const entry = Array.isArray(medication.adherenceHistory) ? medication.adherenceHistory[0] : null;
   return entry?.status || null;
@@ -306,6 +322,26 @@ export default function MedicationManager() {
   );
   const adherenceSummary = useMemo(() => summarizeAdherence(medications), [medications]);
   const recentAdherenceEntries = useMemo(() => getRecentAdherenceEntries(medications), [medications]);
+  const medicationAttention = useMemo(
+    () => medications.map((medication) => getMedicationAttentionState(medication)),
+    [medications]
+  );
+  const reminderSetupNeeded = useMemo(
+    () => medicationAttention.filter((item) => item.needsReminderSetup).slice(0, 4),
+    [medicationAttention]
+  );
+  const reminderScheduleActive = useMemo(
+    () =>
+      medicationAttention
+        .filter((item) => !item.reminderOff && item.nextDose)
+        .sort((left, right) => left.nextDose.at - right.nextDose.at)
+        .slice(0, 4),
+    [medicationAttention]
+  );
+  const refillAttention = useMemo(
+    () => medicationAttention.filter((item) => item.warnings.length > 0).slice(0, 4),
+    [medicationAttention]
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-indigo-50 p-6">
@@ -423,6 +459,96 @@ export default function MedicationManager() {
               ) : (
                 <p className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
                   No refill or end-date warnings right now.
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-6 grid gap-6 lg:grid-cols-3">
+          <div className="rounded-3xl bg-white p-6 shadow-sm">
+            <h2 className="text-xl font-semibold text-slate-900">Reminder setup workflow</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Medications that need reminder settings or clearer schedule configuration.
+            </p>
+            <div className="mt-4 space-y-3">
+              {reminderSetupNeeded.length > 0 ? (
+                reminderSetupNeeded.map(({ medication }) => (
+                  <button
+                    key={medication.id}
+                    type="button"
+                    onClick={() => openModal(medication)}
+                    className="w-full rounded-2xl border border-sky-200 bg-sky-50 p-4 text-left transition hover:border-sky-300"
+                  >
+                    <p className="font-semibold text-slate-900">{medication.name}</p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Add or review schedule times and reminder lead minutes for this treatment.
+                    </p>
+                  </button>
+                ))
+              ) : (
+                <p className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                  No medications are waiting on reminder setup.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-3xl bg-white p-6 shadow-sm">
+            <h2 className="text-xl font-semibold text-slate-900">Upcoming reminder workflow</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              The next reminder-driven doses across your active medication list.
+            </p>
+            <div className="mt-4 space-y-3">
+              {reminderScheduleActive.length > 0 ? (
+                reminderScheduleActive.map(({ medication, nextDose }) => (
+                  <button
+                    key={`${medication.id}-${nextDose.at.toISOString()}`}
+                    type="button"
+                    onClick={() => openModal(medication)}
+                    className="w-full rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left transition hover:border-amber-300"
+                  >
+                    <p className="font-semibold text-slate-900">{medication.name}</p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Next dose at {formatDoseTime(nextDose.at)} with a {medication.reminderLeadMinutes ?? 30}-minute lead.
+                    </p>
+                  </button>
+                ))
+              ) : (
+                <p className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                  No reminder-enabled schedules are active yet.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-3xl bg-white p-6 shadow-sm">
+            <h2 className="text-xl font-semibold text-slate-900">Refill and end-date workflow</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Treatments that should be reviewed, refilled, or closed out soon.
+            </p>
+            <div className="mt-4 space-y-3">
+              {refillAttention.length > 0 ? (
+                refillAttention.map(({ medication, warnings: medicationWarnings }) => (
+                  <button
+                    key={medication.id}
+                    type="button"
+                    onClick={() => openModal(medication)}
+                    className="w-full rounded-2xl border border-rose-200 bg-rose-50 p-4 text-left transition hover:border-rose-300"
+                  >
+                    <p className="font-semibold text-slate-900">{medication.name}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {medicationWarnings.map((warning) => (
+                        <span key={warning} className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-rose-700">
+                          {warning}
+                        </span>
+                      ))}
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <p className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                  No medications need refill or end-date review right now.
                 </p>
               )}
             </div>
