@@ -337,6 +337,39 @@ export default function DashboardPatient() {
         }
       : null,
   ].filter(Boolean);
+  const healthSummary = useMemo(() => {
+    const latestSymptom = symptoms[0] || null;
+    const latestMedication = medications[0] || null;
+    const recentAppointment = upcomingAppointments[0] || null;
+    const profileMissing = checklist.profileStatus.missing.map((item) => item.label);
+
+    return {
+      profileCompletion: checklist.profileStatus.percent,
+      linkedPeople: doctorCount + caregiverCount,
+      activeMedicationCount: activeMedications.length,
+      totalMedicationCount: medications.length,
+      symptomCount: symptoms.length,
+      latestSymptom,
+      appointmentCount: appointments.length,
+      requestedAppointments,
+      recentAppointment,
+      conversationCount,
+      latestMedication,
+      profileMissing,
+    };
+  }, [
+    activeMedications.length,
+    appointments.length,
+    caregiverCount,
+    checklist.profileStatus.missing,
+    checklist.profileStatus.percent,
+    conversationCount,
+    doctorCount,
+    medications,
+    requestedAppointments,
+    symptoms,
+    upcomingAppointments,
+  ]);
   const shouldAutoOpenOnboarding =
     setupIncomplete && isPatientOnboardingQueued(user) && !isPatientOnboardingDismissed(user);
   const showOnboardingModal = setupIncomplete && (isOnboardingOpen || shouldAutoOpenOnboarding);
@@ -871,6 +904,72 @@ export default function DashboardPatient() {
                     </div>
                   </button>
                 ))}
+              </div>
+            </section>
+            <section className="rounded-3xl bg-white p-6 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-semibold text-slate-900">Health summary</h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    A single snapshot across profile completion, treatment, symptoms, appointments, and communication.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Profile</p>
+                  <p className="mt-1 text-lg font-semibold text-slate-900">{healthSummary.profileCompletion}% complete</p>
+                  <p className="mt-2 text-sm text-slate-600">
+                    {healthSummary.profileMissing.length > 0
+                      ? `Still missing: ${healthSummary.profileMissing.join(", ")}.`
+                      : "Core profile details are in place."}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Care team and communication</p>
+                  <p className="mt-1 text-lg font-semibold text-slate-900">
+                    {healthSummary.linkedPeople} linked, {healthSummary.conversationCount} chats
+                  </p>
+                  <p className="mt-2 text-sm text-slate-600">
+                    {doctorCount} doctor{doctorCount === 1 ? "" : "s"} and {caregiverCount} caregiver{caregiverCount === 1 ? "" : "s"} currently tied to your care flow.
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Medications and symptoms</p>
+                  <p className="mt-1 text-lg font-semibold text-slate-900">
+                    {healthSummary.activeMedicationCount} active meds, {healthSummary.symptomCount} symptom logs
+                  </p>
+                  <p className="mt-2 text-sm text-slate-600">
+                    {healthSummary.latestMedication
+                      ? `Latest medication tracked: ${healthSummary.latestMedication.name}.`
+                      : "No medications tracked yet."}{" "}
+                    {healthSummary.latestSymptom
+                      ? `Latest symptom: ${healthSummary.latestSymptom.name || healthSummary.latestSymptom.symptom || "Logged symptom"}.`
+                      : "No symptoms logged yet."}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Appointments and updates</p>
+                  <p className="mt-1 text-lg font-semibold text-slate-900">
+                    {healthSummary.appointmentCount} total, {healthSummary.requestedAppointments} pending
+                  </p>
+                  <p className="mt-2 text-sm text-slate-600">
+                    {healthSummary.recentAppointment
+                      ? `Next appointment window: ${formatAppointmentDate(healthSummary.recentAppointment.startsAt)} at ${formatAppointmentTime(healthSummary.recentAppointment.startsAt)}.`
+                      : "No appointment requests or bookings recorded yet."}
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-3xl bg-white p-6 shadow-sm">
+              <h2 className="text-xl font-semibold text-slate-900">Journey summary</h2>
+              <div className="mt-4 space-y-3 text-sm text-slate-600">
+                <p>Symptoms logged: <span className="font-semibold text-slate-900">{symptoms.length}</span></p>
+                <p>Appointment requests pending: <span className="font-semibold text-slate-900">{requestedAppointments}</span></p>
+                <p>Profile completion: <span className="font-semibold text-slate-900">{checklist.profileStatus.percent}%</span></p>
+                <p>Missing profile items: <span className="font-semibold text-slate-900">{checklist.profileStatus.missing.length}</span></p>
               </div>
             </section>
           </div>
