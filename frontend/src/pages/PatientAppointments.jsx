@@ -270,6 +270,22 @@ export default function PatientAppointments() {
             </button>
           </div>
 
+          <div className="mb-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
+            <p className="font-semibold">Why only linked doctors appear here</p>
+            <p className="mt-1">
+              Appointment requests are limited to doctors already linked to your patient account. That restriction keeps scheduling, treatment context, and secure communication tied to an active doctor-patient relationship.
+            </p>
+            {requestableDoctors.length === 0 ? (
+              <p className="mt-2">
+                No linked doctors are available yet. Open your care team page first, connect a doctor, then return here to request a visit.
+              </p>
+            ) : (
+              <p className="mt-2">
+                You currently have {requestableDoctors.length} linked doctor{requestableDoctors.length === 1 ? "" : "s"} available for requests.
+              </p>
+            )}
+          </div>
+
           <form onSubmit={handleRequestAppointment} className="grid grid-cols-1 md:grid-cols-6 gap-3">
             <select
               value={form.doctorId}
@@ -361,7 +377,7 @@ export default function PatientAppointments() {
 
           {requestableDoctors.length === 0 && (
             <p className="mt-3 text-sm text-amber-700">
-              No assigned doctors found for this patient account. Link a doctor from Care Team first, then request an appointment here.
+              No linked doctors found for this patient account. Use care team management first.
             </p>
           )}
 
