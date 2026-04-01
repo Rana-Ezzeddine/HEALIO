@@ -6,6 +6,13 @@ import { getMyAppointments } from "../api/appointments";
 import { getConversationMessages, getConversations } from "../api/messaging";
 import { getDoctorLinkRequests, getMyCaregivers, getMyDoctors } from "../api/links";
 import { buildPatientSetupChecklist } from "../utils/patientSetup";
+import {
+  clearQueuedPatientOnboarding,
+  clearDismissedPatientOnboarding,
+  dismissPatientOnboarding,
+  isPatientOnboardingQueued,
+  isPatientOnboardingDismissed,
+} from "../utils/patientOnboarding";
 import { formatDoseTime, getNextMedicationDose, isActiveMedication } from "../utils/medicationSchedule";
 
 const NEW_PATIENT_WELCOME_FLAG = "healio:new-patient-signup";
@@ -108,6 +115,7 @@ export default function DashboardPatient() {
   const [pendingDoctorRequestCount, setPendingDoctorRequestCount] = useState(0);
   const [isNewPatientGreeting, setIsNewPatientGreeting] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
 
   const greetingName =
     profile?.firstName || user?.firstName || localStorage.getItem("firstName") || user?.email || "Patient";
@@ -242,6 +250,37 @@ export default function DashboardPatient() {
   const setupProgressPercent = Math.round((checklist.doneCount / checklist.totalCount) * 100);
   const appointmentPreview = upcomingAppointments.slice(0, 2);
   const remainingAppointmentCount = Math.max(upcomingAppointments.length - appointmentPreview.length, 0);
+  const nextSetupTask = checklist.tasks.find((task) => !task.done) || null;
+  const nextSetupStepNumber = nextSetupTask
+    ? checklist.tasks.findIndex((task) => task.key === nextSetupTask.key) + 1
+    : checklist.totalCount;
+  const shouldAutoOpenOnboarding =
+    setupIncomplete && isPatientOnboardingQueued(user) && !isPatientOnboardingDismissed(user);
+  const showOnboardingModal = setupIncomplete && (isOnboardingOpen || shouldAutoOpenOnboarding);
+
+  useEffect(() => {
+    if (!user || user.role !== "patient") return;
+
+    if (!setupIncomplete) {
+      clearDismissedPatientOnboarding(user);
+      clearQueuedPatientOnboarding(user);
+      return;
+    }
+
+    if (shouldAutoOpenOnboarding) {
+      clearQueuedPatientOnboarding(user);
+    }
+  }, [setupIncomplete, shouldAutoOpenOnboarding, user]);
+
+  function handleDismissOnboarding() {
+    dismissPatientOnboarding(user);
+    setIsOnboardingOpen(false);
+  }
+
+  function handleStartOnboardingTask() {
+    setIsOnboardingOpen(false);
+    navigate(nextSetupTask?.href || "/profilePatient");
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -268,13 +307,49 @@ export default function DashboardPatient() {
                   New patients should complete these essentials right after login so the rest of the journey works smoothly.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => navigate(checklist.tasks.find((task) => !task.done)?.href || "/profilePatient")}
-                className="rounded-2xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white hover:bg-sky-600 transition"
-              >
-                Continue setup
-              </button>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsOnboardingOpen(true)}
+                  className="rounded-2xl border border-sky-200 px-4 py-3 text-sm font-semibold text-sky-700 transition hover:bg-sky-50"
+                >
+                  Guided flow
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate(nextSetupTask?.href || "/profilePatient")}
+                  className="rounded-2xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white hover:bg-sky-600 transition"
+                >
+                  Continue setup
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-sky-100 bg-sky-50/70 p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">
+                    Recommended next step
+                  </p>
+                  <h3 className="mt-1 text-lg font-semibold text-slate-900">
+                    Step {nextSetupStepNumber}: {nextSetupTask?.label || "Review your setup"}
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {nextSetupTask?.description || "Open your onboarding checklist to continue setup."}
+                  </p>
+                </div>
+                <div className="min-w-[180px]">
+                  <div className="h-2 overflow-hidden rounded-full bg-white">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-sky-500 to-cyan-500"
+                      style={{ width: `${Math.max(8, Math.round((checklist.doneCount / checklist.totalCount) * 100))}%` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-sm font-medium text-slate-700">
+                    {checklist.doneCount} of {checklist.totalCount} completed
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div className="mt-5">
@@ -300,7 +375,10 @@ export default function DashboardPatient() {
                   }`}
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <p className="font-semibold text-slate-900">{task.label}</p>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Step {index + 1}</p>
+                      <p className="font-semibold text-slate-900">{task.label}</p>
+                    </div>
                     <span className={`rounded-full px-2 py-1 text-xs font-semibold ${task.done ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
                       {task.done ? "Done" : "Next"}
                     </span>
@@ -507,6 +585,84 @@ export default function DashboardPatient() {
           </div>
         </section>
       </main>
+
+      {showOnboardingModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-3xl rounded-[2rem] bg-white p-6 shadow-2xl">
+            <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.25em] text-sky-700">Patient onboarding</p>
+                <h2 className="mt-2 text-3xl font-black text-slate-900">Start with the right setup order</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                  This guided flow walks through the essentials a new patient needs after first login so reminders, appointments, emergency access, and communication work correctly.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleDismissOnboarding}
+                className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                Maybe later
+              </button>
+            </div>
+
+            <div className="mt-5 rounded-3xl bg-slate-50 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">
+                Step {nextSetupStepNumber} of {checklist.totalCount}
+              </p>
+              <h3 className="mt-2 text-2xl font-semibold text-slate-900">
+                {nextSetupTask?.label || "Continue your setup"}
+              </h3>
+              <p className="mt-2 text-sm text-slate-600">
+                {nextSetupTask?.description || "Open the next setup step to continue onboarding."}
+              </p>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-sky-500 to-cyan-500"
+                  style={{ width: `${Math.max(8, Math.round((checklist.doneCount / checklist.totalCount) * 100))}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {checklist.tasks.map((task, index) => (
+                <div
+                  key={task.key}
+                  className={`rounded-2xl border p-4 ${
+                    task.done ? "border-emerald-200 bg-emerald-50" : task.key === nextSetupTask?.key ? "border-sky-300 bg-sky-50" : "border-slate-200 bg-white"
+                  }`}
+                >
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Step {index + 1}</p>
+                  <div className="mt-2 flex items-start justify-between gap-3">
+                    <p className="font-semibold text-slate-900">{task.label}</p>
+                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${task.done ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                      {task.done ? "Done" : task.key === nextSetupTask?.key ? "Start here" : "Pending"}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm text-slate-600">{task.description}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-6 flex flex-col gap-3 md:flex-row md:justify-end">
+              <button
+                type="button"
+                onClick={handleDismissOnboarding}
+                className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Stay on dashboard
+              </button>
+              <button
+                type="button"
+                onClick={handleStartOnboardingTask}
+                className="rounded-2xl bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-600"
+              >
+                Open next step
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

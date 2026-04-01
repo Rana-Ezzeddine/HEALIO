@@ -6,6 +6,7 @@ import { getPostAuthRoute } from "../utils/authRouting";
 import { readSafePrefill, writeSafePrefill } from "../utils/safePrefill";
 
 const NEW_PATIENT_WELCOME_FLAG = "healio:new-patient-signup";
+import { queuePatientOnboarding } from "../utils/patientOnboarding";
 
 function getInitialView(searchParams) {
   const rawToken = searchParams.get("token");
@@ -62,6 +63,7 @@ export default function VerifyEmailPage() {
         if (user?.role === "patient") {
           localStorage.setItem(NEW_PATIENT_WELCOME_FLAG, "true");
         }
+        queuePatientOnboarding(user);
         localStorage.setItem("healio:auth-sync", String(Date.now()));
         setStatus("success");
         setMessage(

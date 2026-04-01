@@ -4,6 +4,7 @@ import { register as registerApi, resendVerification, startSocialAuth } from "..
 import { clearSession, getToken, getUser, setSession } from "../api/http";
 import { getPostAuthRoute } from "../utils/authRouting";
 import { readSafePrefill, writeSafePrefill } from "../utils/safePrefill";
+import { queuePatientOnboarding } from "../utils/patientOnboarding";
 import logo from "../assets/logo.png";
 
 const NEW_PATIENT_WELCOME_FLAG = "healio:new-patient-signup";
@@ -149,6 +150,7 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
         if (registerResponse.user?.role === "patient") {
           localStorage.setItem(NEW_PATIENT_WELCOME_FLAG, "true");
         }
+        queuePatientOnboarding(registerResponse.user);
         navigate(getPostAuthRoute(registerResponse.user), { replace: true });
         return;
       }
