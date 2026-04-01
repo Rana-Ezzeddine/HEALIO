@@ -107,6 +107,7 @@ export default function DashboardPatient() {
   const user = getUser();
   const [appointments, setAppointments] = useState([]);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const [conversationCount, setConversationCount] = useState(0);
   const [medications, setMedications] = useState([]);
   const [symptoms, setSymptoms] = useState([]);
   const [profile, setProfile] = useState({});
@@ -193,9 +194,11 @@ export default function DashboardPatient() {
       );
       if (conversationsResult.status === "fulfilled") {
         const conversationList = conversationsResult.value.conversations || [];
+        setConversationCount(conversationList.length);
         const unreadCount = await countUnreadMessages(conversationList, user?.id);
         setUnreadMessageCount(unreadCount);
       } else {
+        setConversationCount(0);
         setUnreadMessageCount(0);
       }
       setMedications(
@@ -437,11 +440,43 @@ export default function DashboardPatient() {
 
       <main className="mx-auto max-w-6xl px-6 pb-10 pt-28">
         <section className="rounded-[2rem] bg-gradient-to-r from-slate-900 via-sky-800 to-cyan-600 p-8 text-white shadow-xl">
-          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-white/75">Patient Dashboard</p>
-          <h1 className="mt-3 text-4xl font-black">{isNewPatientGreeting ? `Welcome, ${greetingName}` : `Welcome back, ${greetingName}`}</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-white/85">
-            Keep your profile, care team, medications, symptoms, and appointments moving together from one place.
-          </p>
+          <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.25em] text-white/75">Patient Dashboard</p>
+              <h1 className="mt-3 text-4xl font-black">
+                {isNewPatientGreeting ? `Welcome, ${greetingName}` : `Welcome back, ${greetingName}`}
+              </h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-white/85">
+                Keep your profile, care team, medications, symptoms, and appointments moving together from one place.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => navigate("/emergency")}
+              className={`min-w-[260px] rounded-3xl border px-5 py-4 text-left transition hover:opacity-95 ${
+                profile?.emergencyStatus
+                  ? "border-rose-200/80 bg-rose-500/20"
+                  : "border-white/20 bg-white/10"
+              }`}
+            >
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-white/75">Emergency status</p>
+              <p className="mt-2 text-2xl font-black text-white">
+                {profile?.emergencyStatus ? "Active" : "Normal"}
+              </p>
+              <p className="mt-2 text-sm text-white/80">
+                {profile?.emergencyStatus
+                  ? "Your care team should see that urgent follow-up is needed."
+                  : "No emergency flag is active on your profile right now."}
+              </p>
+              <p className="mt-3 text-xs text-white/70">
+                Last updated:{" "}
+                {profile?.emergencyStatusUpdatedAt
+                  ? new Date(profile.emergencyStatusUpdatedAt).toLocaleString()
+                  : "Never"}
+              </p>
+            </button>
+          </div>
         </section>
 
         {setupIncomplete ? (
