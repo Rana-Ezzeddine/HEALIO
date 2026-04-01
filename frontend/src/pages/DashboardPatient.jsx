@@ -136,7 +136,7 @@ export default function DashboardPatient() {
     }
 
     function onStorage(event) {
-      if (event.key === "healio:profile-updated") {
+      if (event.key === "healio:profile-updated" || event.key === "healio:emergency-updated") {
         refreshDashboard();
       }
     }

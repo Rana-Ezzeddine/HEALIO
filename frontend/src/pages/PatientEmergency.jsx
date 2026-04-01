@@ -9,6 +9,17 @@ export default function PatientEmergency() {
   const [status, setStatus] = useState({ loading: true, error: "", success: "" });
   const [submitting, setSubmitting] = useState(false);
 
+  function broadcastEmergencyUpdate(nextStatus, updatedAt = new Date().toISOString()) {
+    localStorage.setItem(
+      "healio:emergency-updated",
+      JSON.stringify({
+        emergencyStatus: nextStatus,
+        emergencyStatusUpdatedAt: updatedAt,
+        at: Date.now(),
+      })
+    );
+  }
+
   async function loadData() {
     setStatus((current) => ({ ...current, loading: true, error: "" }));
     try {
@@ -45,6 +56,7 @@ export default function PatientEmergency() {
         emergencyStatus: data.emergencyStatus,
         emergencyStatusUpdatedAt: data.emergencyStatusUpdatedAt,
       }));
+      broadcastEmergencyUpdate(data.emergencyStatus, data.emergencyStatusUpdatedAt);
       setStatus((current) => ({
         ...current,
         error: "",
@@ -68,7 +80,9 @@ export default function PatientEmergency() {
       setProfile((current) => ({
         ...(current || {}),
         emergencyStatus: true,
+        emergencyStatusUpdatedAt: new Date().toISOString(),
       }));
+      broadcastEmergencyUpdate(true, new Date().toISOString());
       setStatus((current) => ({
         ...current,
         error: "",
