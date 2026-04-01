@@ -52,7 +52,7 @@ export default function PatientAppointments() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [requestError, setRequestError] = useState("");
-  const [requestSuccess, setRequestSuccess] = useState("");
+  const [requestInfo, setRequestInfo] = useState("");
   const [requestLoading, setRequestLoading] = useState(false);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [availableSlots, setAvailableSlots] = useState([]);
@@ -109,6 +109,7 @@ export default function PatientAppointments() {
       try {
         setSlotsLoading(true);
         setRequestError("");
+        setRequestInfo("");
 
         const dayStart = new Date(`${form.date}T00:00:00`);
         const dayEnd = new Date(dayStart);
@@ -171,11 +172,13 @@ export default function PatientAppointments() {
     () => appointments.filter((appointment) => appointment.status === "denied").length,
     [appointments]
   );
+  const selectedDoctor = requestableDoctors.find((doctor) => doctor.id === form.doctorId) || null;
+  const selectedSlotParts = form.timeSlot ? formatDateTimeParts(form.timeSlot) : null;
 
   async function handleRequestAppointment(event) {
     event.preventDefault();
     setRequestError("");
-    setRequestSuccess("");
+    setRequestInfo("");
 
     if (!form.doctorId || !form.date || !form.timeSlot) {
       setRequestError("Select doctor, date, and an available time slot.");
@@ -204,6 +207,34 @@ export default function PatientAppointments() {
 
     try {
       setRequestLoading(true);
+      setRequestInfo("Re-checking slot availability before sending your request...");
+
+      const dayStart = new Date(`${form.date}T00:00:00`);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayEnd.getDate() + 1);
+      const refreshedAvailability = await getPatientDoctorAvailability({
+        doctorId: form.doctorId,
+        from: dayStart.toISOString(),
+        to: dayEnd.toISOString(),
+        slotMinutes: durationMinutes,
+      });
+
+      const refreshedSlots = refreshedAvailability.slots || [];
+      const stillAvailable = refreshedSlots.some((slot) => {
+        return (
+          new Date(slot.startsAt).getTime() === startsAt.getTime() &&
+          new Date(slot.endsAt).getTime() === endsAt.getTime()
+        );
+      });
+
+      if (!stillAvailable) {
+        setAvailableSlots(refreshedSlots.filter((slot) => new Date(slot.startsAt).getTime() > Date.now()));
+        setForm((current) => ({ ...current, timeSlot: "" }));
+        setRequestInfo("");
+        setRequestError("That slot was taken or changed during confirmation. Please choose another available time.");
+        return;
+      }
+
       await createAppointmentRequest({
         doctorId: form.doctorId,
         startsAt: startsAt.toISOString(),
@@ -214,11 +245,17 @@ export default function PatientAppointments() {
 
       setForm((current) => ({
         ...current,
+        doctorId: "",
+        date: "",
         timeSlot: "",
-      }));
+        duration: "30",
+        location: "",
+        notes: "",
+      });
+      setRequestInfo("Appointment request submitted after a final slot re-check.");
       await loadAppointmentsPage();
-      setRequestSuccess("Appointment request sent successfully. You will see doctor response in status updates.");
     } catch (err) {
+      setRequestInfo("");
       setRequestError(err.message || "Failed to submit appointment request.");
     } finally {
       setRequestLoading(false);
@@ -379,6 +416,18 @@ export default function PatientAppointments() {
             />
           </form>
 
+          {selectedDoctor && selectedSlotParts ? (
+            <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+              <p className="font-semibold">Confirmation preview</p>
+              <p className="mt-1">
+                You are requesting {selectedDoctor.displayName} on {selectedSlotParts.date} at {selectedSlotParts.time} for {form.duration} minutes.
+              </p>
+              <p className="mt-2">
+                When you submit, the system re-checks the slot one more time before creating the request.
+              </p>
+            </div>
+          ) : null}
+
           {requestableDoctors.length === 0 && (
             <p className="mt-3 text-sm text-amber-700">
               No linked doctors found for this patient account. Use care team management first.
@@ -396,10 +445,9 @@ export default function PatientAppointments() {
               {requestError}
             </div>
           )}
-
-          {requestSuccess && (
+          {requestInfo && !requestError && (
             <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-              {requestSuccess}
+              {requestInfo}
             </div>
           )}
         </section>
