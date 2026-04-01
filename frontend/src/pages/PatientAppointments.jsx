@@ -251,7 +251,7 @@ export default function PatientAppointments() {
         duration: "30",
         location: "",
         notes: "",
-      });
+      }));
       setRequestInfo("Appointment request submitted after a final slot re-check.");
       await loadAppointmentsPage();
     } catch (err) {

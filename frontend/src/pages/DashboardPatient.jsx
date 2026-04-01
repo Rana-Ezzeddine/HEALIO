@@ -115,6 +115,7 @@ export default function DashboardPatient() {
   const [caregiverCount, setCaregiverCount] = useState(0);
   const [pendingDoctorRequestCount, setPendingDoctorRequestCount] = useState(0);
   const [isNewPatientGreeting, setIsNewPatientGreeting] = useState(false);
+  const [activityLogs, setActivityLogs] = useState([]);
   const [reloadKey, setReloadKey] = useState(0);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
@@ -183,11 +184,24 @@ export default function DashboardPatient() {
         getMyDoctors(),
         getMyCaregivers(),
         getDoctorLinkRequests(),
+        fetch(`${apiUrl}/api/audit/logs?limit=5`, {
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+        }).then((res) => (res.ok ? res.json() : { rows: [] })),
       ]);
 
       if (cancelled) return;
 
-      const [appointmentsResult, conversationsResult, medicationsResult, symptomsResult, profileResult, doctorsResult, caregiversResult, doctorRequestsResult] = results;
+      const [
+        appointmentsResult,
+        conversationsResult,
+        medicationsResult,
+        symptomsResult,
+        profileResult,
+        doctorsResult,
+        caregiversResult,
+        doctorRequestsResult,
+        activityResult,
+      ] = results;
 
       setAppointments(
         appointmentsResult.status === "fulfilled" ? appointmentsResult.value.appointments || [] : []
@@ -220,6 +234,9 @@ export default function DashboardPatient() {
       );
       setPendingDoctorRequestCount(
         doctorRequestsResult.status === "fulfilled" ? (doctorRequestsResult.value.requests || []).length : 0
+      );
+      setActivityLogs(
+        activityResult.status === "fulfilled" ? activityResult.value.rows || [] : []
       );
     }
 
@@ -450,6 +467,12 @@ export default function DashboardPatient() {
     popup.document.close();
     popup.focus();
     popup.print();
+  }
+
+  function formatActivityAction(action) {
+    return String(action || "activity")
+      .replace(/\./g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
   }
 
   const quickActions = [
@@ -1031,6 +1054,34 @@ export default function DashboardPatient() {
                 <p>Appointment requests pending: <span className="font-semibold text-slate-900">{requestedAppointments}</span></p>
                 <p>Profile completion: <span className="font-semibold text-slate-900">{checklist.profileStatus.percent}%</span></p>
                 <p>Missing profile items: <span className="font-semibold text-slate-900">{checklist.profileStatus.missing.length}</span></p>
+              </div>
+            </section>
+
+            <section className="rounded-3xl bg-white p-6 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-semibold text-slate-900">Recent activity</h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    A patient-facing history of recent updates across your account and care workflows.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {activityLogs.length > 0 ? (
+                  activityLogs.map((log) => (
+                    <div key={log.id} className="rounded-2xl border border-slate-200 p-4">
+                      <p className="font-semibold text-slate-900">{formatActivityAction(log.action)}</p>
+                      <p className="mt-1 text-sm text-slate-500">
+                        {new Date(log.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                    No recent activity history is available yet.
+                  </p>
+                )}
               </div>
             </section>
           </div>
