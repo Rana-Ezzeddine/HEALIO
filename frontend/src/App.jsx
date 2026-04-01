@@ -7,6 +7,7 @@ import SignupPage from "./pages/SignupPage";
 import DashboardPatient from "./pages/DashboardPatient";
 import DashboardDoctor from "./pages/DashboardDoctor";
 import DashboardCaregiver from "./pages/DashboardCaregiver";
+import HealthSummaryPatient from "./pages/HealthSummaryPatient";
 import ProfilePatient from "./pages/ProfilePatient";
 import ProfileDoctor from "./pages/ProfileDoctor";
 import ProfileCaregiver from "./pages/ProfileCaregiver";
@@ -134,6 +135,14 @@ function RoutedApp() {
           element={
             <ProtectedRoute allowedRoles={["patient"]}>
               <DashboardPatient />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/healthSummary"
+          element={
+            <ProtectedRoute allowedRoles={["patient"]}>
+              <HealthSummaryPatient />
             </ProtectedRoute>
           }
         />

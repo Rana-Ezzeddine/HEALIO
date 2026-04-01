@@ -307,6 +307,7 @@ export default function DashboardPatient() {
               <h2 className="text-xl font-semibold text-slate-900">Quick actions</h2>
               <div className="mt-4 grid gap-3">
                 {[
+                  { label: "Health summary", href: "/healthSummary", style: "bg-sky-100 text-sky-700" },
                   { label: "Complete profile", href: "/profilePatient", style: "bg-sky-100 text-sky-700" },
                   { label: "Manage care team", href: "/care-team", style: "bg-cyan-100 text-cyan-700" },
                   { label: "Add medication", href: "/medication", style: "bg-indigo-100 text-indigo-700" },

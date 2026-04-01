@@ -61,12 +61,14 @@ export default function Navbar({ onLogin, onSignup }) {
   const isEmergency = path.toLowerCase().startsWith("/emergency");
   const isDoctorAppointments = path.toLowerCase().startsWith("/doctorappointments");
   const isPatientAppointments = path.toLowerCase().startsWith("/patientappointments");
+  const isHealthSummary = path.toLowerCase().startsWith("/healthsummary");
   const isPatientMessages = path.toLowerCase().startsWith("/patientmessages");
   const isCaregiverMessages = path.toLowerCase().startsWith("/caregivermessages");
   const isLanding = path === "/";
   const isPublicPage = PUBLIC_PATHS.has(path.toLowerCase());
   const patientMoreNavItems = isPatient
     ? [
+      { label: "Health Summary", href: "/healthSummary", active: isHealthSummary, isDanger: false },
       { label: "Medications", href: "/medication", active: isMedication, isDanger: false },
       { label: "Symptoms", href: "/symptoms", active: isSymptoms, isDanger: false },
       { label: "Care Team", href: "/care-team", active: isCareTeam, isDanger: false },
