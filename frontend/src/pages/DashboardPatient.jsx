@@ -4,7 +4,7 @@ import Navbar from "../components/Navbar";
 import { apiUrl, authHeaders, getUser } from "../api/http";
 import { getMyAppointments } from "../api/appointments";
 import { getConversations } from "../api/messaging";
-import { getMyCaregivers, getMyDoctors } from "../api/links";
+import { getDoctorLinkRequests, getMyCaregivers, getMyDoctors } from "../api/links";
 import { buildPatientSetupChecklist } from "../utils/patientSetup";
 import { formatDoseTime, getNextMedicationDose, isActiveMedication } from "../utils/medicationSchedule";
 
@@ -51,6 +51,7 @@ export default function DashboardPatient() {
   const [profile, setProfile] = useState({});
   const [doctorCount, setDoctorCount] = useState(0);
   const [caregiverCount, setCaregiverCount] = useState(0);
+  const [pendingDoctorRequestCount, setPendingDoctorRequestCount] = useState(0);
   const [reloadKey, setReloadKey] = useState(0);
 
   const greetingName =
@@ -98,11 +99,12 @@ export default function DashboardPatient() {
         }),
         getMyDoctors(),
         getMyCaregivers(),
+        getDoctorLinkRequests(),
       ]);
 
       if (cancelled) return;
 
-      const [appointmentsResult, conversationsResult, medicationsResult, symptomsResult, profileResult, doctorsResult, caregiversResult] = results;
+      const [appointmentsResult, conversationsResult, medicationsResult, symptomsResult, profileResult, doctorsResult, caregiversResult, doctorRequestsResult] = results;
 
       setAppointments(
         appointmentsResult.status === "fulfilled" ? appointmentsResult.value.appointments || [] : []
@@ -126,6 +128,9 @@ export default function DashboardPatient() {
       );
       setCaregiverCount(
         caregiversResult.status === "fulfilled" ? (caregiversResult.value.caregivers || []).length : 0
+      );
+      setPendingDoctorRequestCount(
+        doctorRequestsResult.status === "fulfilled" ? (doctorRequestsResult.value.requests || []).length : 0
       );
     }
 
@@ -265,7 +270,7 @@ export default function DashboardPatient() {
           <DashboardCard
             title="Care Team"
             mainText={`${doctorCount + caregiverCount} linked`}
-            subText={`${doctorCount} doctor${doctorCount === 1 ? "" : "s"}, ${caregiverCount} caregiver${caregiverCount === 1 ? "" : "s"}`}
+            subText={`${doctorCount} doctor${doctorCount === 1 ? "" : "s"}, ${caregiverCount} caregiver${caregiverCount === 1 ? "" : "s"}${pendingDoctorRequestCount > 0 ? `, ${pendingDoctorRequestCount} pending request${pendingDoctorRequestCount === 1 ? "" : "s"}` : ""}`}
             navPage="/care-team"
           />
         </section>
@@ -393,6 +398,7 @@ export default function DashboardPatient() {
               <div className="mt-4 space-y-3 text-sm text-slate-600">
                 <p>Symptoms logged: <span className="font-semibold text-slate-900">{symptoms.length}</span></p>
                 <p>Appointment requests pending: <span className="font-semibold text-slate-900">{requestedAppointments}</span></p>
+                <p>Doctor-link requests pending: <span className="font-semibold text-slate-900">{pendingDoctorRequestCount}</span></p>
                 <p>Profile completion: <span className="font-semibold text-slate-900">{profileCompletion.percent}%</span></p>
                 <p>Missing profile items: <span className="font-semibold text-slate-900">{profileCompletion.missing.length}</span></p>
                 <div className="h-2 overflow-hidden rounded-full bg-slate-100">

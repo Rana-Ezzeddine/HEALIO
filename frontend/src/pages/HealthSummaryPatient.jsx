@@ -4,7 +4,7 @@ import Navbar from "../components/Navbar";
 import { apiUrl, authHeaders } from "../api/http";
 import { getMyAppointments } from "../api/appointments";
 import { getConversations } from "../api/messaging";
-import { getMyCaregivers, getMyDoctors } from "../api/links";
+import { getDoctorLinkRequests, getMyCaregivers, getMyDoctors } from "../api/links";
 import { getNextMedicationDose, isActiveMedication, formatDoseTime } from "../utils/medicationSchedule";
 
 function SummaryTile({ label, value, hint, onClick }) {
@@ -28,6 +28,7 @@ export default function HealthSummaryPatient() {
   const [symptoms, setSymptoms] = useState([]);
   const [doctorCount, setDoctorCount] = useState(0);
   const [caregiverCount, setCaregiverCount] = useState(0);
+  const [pendingDoctorRequestCount, setPendingDoctorRequestCount] = useState(0);
   const [conversationCount, setConversationCount] = useState(0);
 
   useEffect(() => {
@@ -39,6 +40,7 @@ export default function HealthSummaryPatient() {
         getConversations(),
         getMyDoctors(),
         getMyCaregivers(),
+        getDoctorLinkRequests(),
         fetch(`${apiUrl}/api/medications`, {
           headers: { "Content-Type": "application/json", ...authHeaders() },
         }).then((res) => (res.ok ? res.json() : [])),
@@ -49,7 +51,7 @@ export default function HealthSummaryPatient() {
 
       if (cancelled) return;
 
-      const [appointmentsResult, conversationsResult, doctorsResult, caregiversResult, medicationsResult, symptomsResult] = results;
+      const [appointmentsResult, conversationsResult, doctorsResult, caregiversResult, doctorRequestsResult, medicationsResult, symptomsResult] = results;
 
       setAppointments(appointmentsResult.status === "fulfilled" ? appointmentsResult.value.appointments || [] : []);
       setConversationCount(
@@ -57,6 +59,9 @@ export default function HealthSummaryPatient() {
       );
       setDoctorCount(doctorsResult.status === "fulfilled" ? (doctorsResult.value.doctors || []).length : 0);
       setCaregiverCount(caregiversResult.status === "fulfilled" ? (caregiversResult.value.caregivers || []).length : 0);
+      setPendingDoctorRequestCount(
+        doctorRequestsResult.status === "fulfilled" ? (doctorRequestsResult.value.requests || []).length : 0
+      );
       setMedications(
         medicationsResult.status === "fulfilled" && Array.isArray(medicationsResult.value)
           ? medicationsResult.value
@@ -101,7 +106,7 @@ export default function HealthSummaryPatient() {
           <SummaryTile
             label="Care Team"
             value={`${doctorCount + caregiverCount}`}
-            hint={`${doctorCount} doctor${doctorCount === 1 ? "" : "s"}, ${caregiverCount} caregiver${caregiverCount === 1 ? "" : "s"}`}
+            hint={`${doctorCount} doctor${doctorCount === 1 ? "" : "s"}, ${caregiverCount} caregiver${caregiverCount === 1 ? "" : "s"}${pendingDoctorRequestCount > 0 ? `, ${pendingDoctorRequestCount} doctor request${pendingDoctorRequestCount === 1 ? "" : "s"} pending` : ""}`}
             onClick={() => navigate("/care-team")}
           />
           <SummaryTile
@@ -123,6 +128,15 @@ export default function HealthSummaryPatient() {
             onClick={() => navigate("/patientMessages")}
           />
         </section>
+
+        {pendingDoctorRequestCount > 0 ? (
+          <section className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
+            <p className="text-sm font-semibold text-amber-800">Doctor-link request status</p>
+            <p className="mt-1 text-sm text-amber-700">
+              {pendingDoctorRequestCount} request{pendingDoctorRequestCount === 1 ? "" : "s"} pending doctor approval.
+            </p>
+          </section>
+        ) : null}
 
         <section className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">

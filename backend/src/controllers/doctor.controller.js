@@ -492,19 +492,27 @@ export const assignPatientToDoctor = async (req, res) => {
         return res.status(400).json({ message: "Invalid patient. Must reference a patient user." });
       }
 
-      const conflictingLink = await findOtherDoctorLinkForPatient(patient.id, doctor.id);
-      if (conflictingLink) {
-        return res.status(409).json({
-          message: "Patient already has a doctor link or pending doctor request.",
-        });
-      }
+      // Cancel other pending requests so there are no competing pending entries.
+      // Active links are intentionally left intact: the current doctor stays linked
+      // until the new doctor explicitly approves, at which point the old link is
+      // inactivated inside reviewDoctorLinkRequest.
+      const replacedPendingCount = await DoctorPatientAssignment.update(
+        { status: "inactive" },
+        {
+          where: {
+            patientId: patient.id,
+            doctorId: { [Op.ne]: doctor.id },
+            status: "pending",
+          },
+        }
+      ).then(([affectedCount]) => affectedCount || 0);
 
       const [assignment, created] = await DoctorPatientAssignment.findOrCreate({
         where: { doctorId: doctor.id, patientId: patient.id },
         defaults: { doctorId: doctor.id, patientId: patient.id, status: "pending" },
       });
 
-      if (!created && assignment.status === "rejected") {
+      if (!created && ["rejected", "inactive"].includes(assignment.status)) {
         await assignment.update({ status: "pending" });
       }
 
@@ -512,12 +520,15 @@ export const assignPatientToDoctor = async (req, res) => {
         message:
           assignment.status === "active"
             ? "Doctor already linked."
-            : "Doctor link request sent.",
+            : replacedPendingCount > 0
+              ? "Doctor link request sent. Previous pending request was cancelled."
+              : "Doctor link request sent.",
         assignment: {
           doctorId: doctor.id,
           patientId: patient.id,
           status: assignment.status,
         },
+        replacedPendingCount,
         doctor: {
           id: doctor.id,
           email: doctor.email,
@@ -702,12 +713,18 @@ export const reviewDoctorLinkRequest = async (req, res) => {
     }
 
     if (decision === "active") {
-      const conflictingLink = await findOtherDoctorLinkForPatient(patientId, req.user.id);
-      if (conflictingLink) {
-        return res.status(409).json({
-          message: "Patient already has another doctor link or pending doctor request.",
-        });
-      }
+      // Inactivate any existing active doctor link for this patient so the newly
+      // approved doctor becomes the sole active link.
+      await DoctorPatientAssignment.update(
+        { status: "inactive" },
+        {
+          where: {
+            patientId,
+            doctorId: { [Op.ne]: req.user.id },
+            status: "active",
+          },
+        }
+      );
     }
 
     await assignment.update({ status: decision });
