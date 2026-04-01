@@ -176,6 +176,28 @@ export default function Symptoms() {
       )
     ).slice(0, 6);
   }, [logs]);
+  const severityDistribution = useMemo(() => {
+    const buckets = { mild: 0, moderate: 0, high: 0 };
+    logs.forEach((log) => {
+      if ((log.severity ?? 0) >= 7) buckets.high += 1;
+      else if ((log.severity ?? 0) >= 4) buckets.moderate += 1;
+      else buckets.mild += 1;
+    });
+    return buckets;
+  }, [logs]);
+  const trendInsight = useMemo(() => {
+    if (trendItems.length < 2) return "Add more symptom history to unlock stronger trend insight.";
+
+    const latest = trendItems[trendItems.length - 1];
+    const previous = trendItems[trendItems.length - 2];
+    if (latest.averageSeverity > previous.averageSeverity) {
+      return "Average severity is rising compared with the previous tracked day.";
+    }
+    if (latest.averageSeverity < previous.averageSeverity) {
+      return "Average severity is easing compared with the previous tracked day.";
+    }
+    return "Average severity is steady across the latest tracked days.";
+  }, [trendItems]);
 
   async function applyFilters() {
     await loadSymptoms(filters);
@@ -296,6 +318,29 @@ export default function Symptoms() {
                   </option>
                 ))}
               </select>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { label: "High only", value: "7" },
+                  { label: "Moderate+", value: "4" },
+                  { label: "Newest", sortOrder: "DESC" },
+                  { label: "Oldest", sortOrder: "ASC" },
+                ].map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() =>
+                      setFilters((current) => ({
+                        ...current,
+                        ...(preset.value ? { severity: preset.value } : {}),
+                        ...(preset.sortOrder ? { sortOrder: preset.sortOrder } : {}),
+                      }))
+                    }
+                    className="rounded-full bg-slate-100 px-3 py-1.5 text-sm text-slate-700 transition hover:bg-slate-200"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <input
                   type="date"
@@ -389,6 +434,51 @@ export default function Symptoms() {
                   ) : (
                     <p className="text-sm text-slate-500">No symptom frequency data yet.</p>
                   )}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-[0.9fr_1.1fr]">
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-sm font-semibold text-slate-900">Severity mix</p>
+                <div className="mt-3 space-y-3">
+                  {[
+                    { key: "mild", label: "Mild", value: severityDistribution.mild, tone: "bg-emerald-500" },
+                    { key: "moderate", label: "Moderate", value: severityDistribution.moderate, tone: "bg-amber-500" },
+                    { key: "high", label: "High", value: severityDistribution.high, tone: "bg-rose-500" },
+                  ].map((item) => (
+                    <div key={item.key}>
+                      <div className="mb-1 flex items-center justify-between text-sm text-slate-600">
+                        <span>{item.label}</span>
+                        <span>{item.value}</span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-white">
+                        <div
+                          className={`h-full ${item.tone}`}
+                          style={{ width: `${logs.length > 0 ? Math.round((item.value / logs.length) * 100) : 0}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-sky-50 p-4">
+                <p className="text-sm font-semibold text-slate-900">Trend insight</p>
+                <p className="mt-2 text-sm text-slate-600">{trendInsight}</p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl bg-white p-3">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Tracked days</p>
+                    <p className="mt-1 text-xl font-bold text-slate-900">{trendItems.length}</p>
+                  </div>
+                  <div className="rounded-xl bg-white p-3">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Top symptom</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{topSymptoms[0]?.[0] || "-"}</p>
+                  </div>
+                  <div className="rounded-xl bg-white p-3">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Latest avg</p>
+                    <p className="mt-1 text-xl font-bold text-slate-900">{trendItems[trendItems.length - 1]?.averageSeverity ?? "-"}</p>
+                  </div>
                 </div>
               </div>
             </div>
