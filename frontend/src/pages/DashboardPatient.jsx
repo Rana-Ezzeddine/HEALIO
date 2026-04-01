@@ -282,6 +282,75 @@ export default function DashboardPatient() {
     navigate(nextSetupTask?.href || "/profilePatient");
   }
 
+  const quickActions = [
+    {
+      key: "setup",
+      label: setupIncomplete ? "Resume setup" : "Review setup",
+      description: setupIncomplete
+        ? `Continue with step ${nextSetupStepNumber}: ${nextSetupTask?.label || "profile setup"}.`
+        : "All onboarding essentials are completed.",
+      badge: `${checklist.doneCount}/${checklist.totalCount} done`,
+      style: "bg-sky-100 text-sky-700",
+      onClick: () => (setupIncomplete ? setIsOnboardingOpen(true) : navigate("/profilePatient")),
+    },
+    {
+      key: "profile",
+      label: "Update profile",
+      description: `${checklist.profileStatus.percent}% complete across identity, health, and emergency details.`,
+      badge: `${checklist.profileStatus.percent}%`,
+      style: "bg-cyan-100 text-cyan-700",
+      onClick: () => navigate("/profilePatient"),
+    },
+    {
+      key: "care-team",
+      label: "Manage care team",
+      description: "Keep your linked doctors and caregivers aligned with your treatment journey.",
+      badge: `${doctorCount + caregiverCount} linked`,
+      style: "bg-teal-100 text-teal-700",
+      onClick: () => navigate("/care-team"),
+    },
+    {
+      key: "medications",
+      label: "Manage medications",
+      description: activeMedications.length > 0 ? "Review active treatment and upcoming doses." : "Add your first medication and reminder schedule.",
+      badge: `${activeMedications.length} active`,
+      style: "bg-indigo-100 text-indigo-700",
+      onClick: () => navigate("/medication"),
+    },
+    {
+      key: "symptoms",
+      label: "Track symptoms",
+      description: symptoms.length > 0 ? "Log updates and review how your symptoms are trending." : "Start your symptom history with the first entry.",
+      badge: `${symptoms.length} logged`,
+      style: "bg-amber-100 text-amber-700",
+      onClick: () => navigate("/symptoms"),
+    },
+    {
+      key: "appointments",
+      label: "Handle appointments",
+      description: requestedAppointments > 0 ? "Follow pending requests and upcoming visits in one place." : "Request or review visits with your linked doctors.",
+      badge: `${upcomingAppointments.length} open`,
+      style: "bg-emerald-100 text-emerald-700",
+      onClick: () => navigate("/patientAppointments"),
+    },
+    {
+      key: "messages",
+      label: "Open messages",
+      description: unreadMessageCount > 0 ? "Review new caregiver communication and care coordination updates." : "Open secure caregiver communication.",
+      badge: `${unreadMessageCount} unread`,
+      style: "bg-fuchsia-100 text-fuchsia-700",
+      onClick: () => navigate("/patientMessages"),
+    },
+    {
+      key: "emergency",
+      label: "Emergency status",
+      description: "Trigger urgent visibility for your care team when something cannot wait.",
+      badge: "Urgent access",
+      style: "bg-rose-100 text-rose-700",
+      onClick: () => navigate("/emergency"),
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
@@ -555,29 +624,34 @@ export default function DashboardPatient() {
             </section>
 
             <section className="rounded-3xl bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-semibold text-slate-900">Quick actions</h2>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {[
-                  {
-                    label: profileCompletion.complete
-                      ? "Profile complete"
-                      : `Complete profile (${profileCompletion.missing.length} left)`,
-                    href: "/profilePatient",
-                    style: "bg-sky-100 text-sky-700",
-                  },
-                  { label: "Manage care team", href: "/care-team", style: "bg-cyan-100 text-cyan-700" },
-                  { label: "Add medication", href: "/medication", style: "bg-indigo-100 text-indigo-700" },
-                  { label: "Log symptom", href: "/symptoms", style: "bg-amber-100 text-amber-700" },
-                  { label: "Request appointment", href: "/patientAppointments", style: "bg-emerald-100 text-emerald-700" },
-                  { label: "Emergency", href: "/emergency", style: "bg-rose-100 text-rose-700" },
-                ].map((action) => (
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-semibold text-slate-900">Quick actions</h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Move through setup, daily management, communication, and urgent support from one panel.
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                  {quickActions.length} actions
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3">
+                {quickActions.map((action) => (
                   <button
-                    key={action.label}
+                    key={action.key}
                     type="button"
-                    onClick={() => navigate(action.href)}
-                    className={`rounded-2xl px-4 py-3 text-left text-sm font-semibold transition hover:opacity-85 ${action.style}`}
+                    onClick={action.onClick}
+                    className="rounded-2xl border border-slate-200 px-4 py-4 text-left transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-sm"
                   >
-                    {action.label}
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{action.label}</p>
+                        <p className="mt-1 text-sm text-slate-600">{action.description}</p>
+                      </div>
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap ${action.style}`}>
+                        {action.badge}
+                      </span>
+                    </div>
                   </button>
                 ))}
               </div>
