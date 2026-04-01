@@ -75,6 +75,24 @@ function buildSymptomUpdateTemplate() {
   ].join("\n");
 }
 
+function buildAppointmentRequestTemplate() {
+  const doctor = window.prompt("Doctor name", "")?.trim() || "";
+  if (!doctor) return null;
+  const preferredDate = window.prompt("Preferred date", "")?.trim() || "";
+  const preferredTime = window.prompt("Preferred time", "")?.trim() || "";
+  const purpose = window.prompt("Reason for appointment", "")?.trim() || "";
+  const notes = window.prompt("Additional scheduling notes", "")?.trim() || "None";
+
+  return [
+    "Appointment request update",
+    `Doctor: ${doctor}`,
+    `Preferred date: ${preferredDate || "Not specified"}`,
+    `Preferred time: ${preferredTime || "Not specified"}`,
+    `Reason: ${purpose || "Not specified"}`,
+    `Notes: ${notes}`,
+  ].join("\n");
+}
+
 export default function PatientMessages() {
   const user = getUser();
   const currentUserId = user?.id;
@@ -487,6 +505,16 @@ export default function PatientMessages() {
                       className="rounded-full bg-amber-100 px-3 py-1.5 text-sm font-medium text-amber-800 transition hover:bg-amber-200"
                     >
                       Symptom update
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const template = buildAppointmentRequestTemplate();
+                        if (template) setDraftMessage(template);
+                      }}
+                      className="rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-medium text-emerald-800 transition hover:bg-emerald-200"
+                    >
+                      Appointment request
                     </button>
                   </div>
                 </div>
