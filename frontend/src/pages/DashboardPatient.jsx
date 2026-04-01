@@ -398,6 +398,60 @@ export default function DashboardPatient() {
     navigate(nextSetupTask?.href || "/profilePatient");
   }
 
+  function handleExportHealthSummary() {
+    const popup = window.open("", "_blank", "width=900,height=700");
+    if (!popup) return;
+
+    const html = `
+      <html>
+        <head>
+          <title>HEALIO Health Summary</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 32px; color: #0f172a; }
+            h1 { margin-bottom: 8px; }
+            h2 { margin-top: 28px; margin-bottom: 10px; font-size: 18px; }
+            p, li { line-height: 1.5; font-size: 14px; }
+            ul { padding-left: 18px; }
+            .card { border: 1px solid #cbd5e1; border-radius: 16px; padding: 16px; margin-bottom: 14px; }
+            .muted { color: #475569; }
+          </style>
+        </head>
+        <body>
+          <h1>HEALIO Health Summary</h1>
+          <p class="muted">Generated on ${new Date().toLocaleString()}</p>
+          <div class="card">
+            <h2>Profile</h2>
+            <p>Completion: ${healthSummary.profileCompletion}%</p>
+            <p>Missing items: ${healthSummary.profileMissing.length > 0 ? healthSummary.profileMissing.join(", ") : "None"}</p>
+          </div>
+          <div class="card">
+            <h2>Care Team</h2>
+            <p>${doctorCount} doctor(s), ${caregiverCount} caregiver(s), ${healthSummary.conversationCount} conversation(s)</p>
+          </div>
+          <div class="card">
+            <h2>Medications and Symptoms</h2>
+            <p>Active medications: ${healthSummary.activeMedicationCount} of ${healthSummary.totalMedicationCount}</p>
+            <p>Symptom logs: ${healthSummary.symptomCount}</p>
+            <p>Latest medication: ${healthSummary.latestMedication?.name || "None"}</p>
+            <p>Latest symptom: ${healthSummary.latestSymptom?.name || healthSummary.latestSymptom?.symptom || "None"}</p>
+          </div>
+          <div class="card">
+            <h2>Appointments</h2>
+            <p>Total appointments: ${healthSummary.appointmentCount}</p>
+            <p>Pending requests: ${healthSummary.requestedAppointments}</p>
+            <p>Next appointment: ${healthSummary.recentAppointment ? `${formatAppointmentDate(healthSummary.recentAppointment.startsAt)} at ${formatAppointmentTime(healthSummary.recentAppointment.startsAt)}` : "None"}</p>
+          </div>
+        </body>
+      </html>
+    `;
+
+    popup.document.open();
+    popup.document.write(html);
+    popup.document.close();
+    popup.focus();
+    popup.print();
+  }
+
   const quickActions = [
     {
       key: "setup",
@@ -914,6 +968,13 @@ export default function DashboardPatient() {
                     A single snapshot across profile completion, treatment, symptoms, appointments, and communication.
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={handleExportHealthSummary}
+                  className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Export PDF
+                </button>
               </div>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
