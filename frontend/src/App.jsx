@@ -33,13 +33,11 @@ import DoctorApprovalStatusPage from "./pages/DoctorApprovalStatusPage";
 import DoctorReviewPage from "./pages/DoctorReviewPage";
 import { getPostAuthRoute } from "./utils/authRouting";
 import CaregiverOnboarding from "./pages/CaregiverOnboarding";
-import CaregiverAcceptInvite from "./pages/CaregiverAcceptInvite";
 import CareTeam from "./pages/CareTeam";
 import CaregiverMyPatients from "./pages/CaregiverMyPatients";
 import CaregiverAppointments from "./pages/CaregiverAppointments";
 import CareNotes from "./pages/CareNotes";
 
-import CaregiverOnboarding from "./pages/CaregiverOnboarding";
 
 
 function AuthSync() {
@@ -253,7 +251,7 @@ function RoutedApp() {
         />
 
         <Route path="/caregiverOnboarding" element={<ProtectedRoute allowedRoles={["caregiver"]}><CaregiverOnboarding /></ProtectedRoute>} />
-        <Route path="/caregiverAcceptInvite" element={<CaregiverAcceptInvite />} />
+        
         <Route path="/careTeam" element={<ProtectedRoute allowedRoles={["patient"]}><CareTeam /></ProtectedRoute>} />
         <Route path="/caregiverMyPatients" element={<ProtectedRoute allowedRoles={["caregiver"]}><CaregiverMyPatients /></ProtectedRoute>} />
         <Route path="/caregiverAppointments" element={<ProtectedRoute allowedRoles={["caregiver"]}><CaregiverAppointments /></ProtectedRoute>} />

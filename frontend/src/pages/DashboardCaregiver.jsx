@@ -44,8 +44,6 @@ export default function DashboardCaregiver() {
     if (!done) navigate("/caregiverOnboarding");
   }, [navigate]);
   
-  const [name, setName] = useState("Caregiver");
-  const [linkedPatientLabel, setLinkedPatientLabel] = useState("Not linked yet");
 
 
   useEffect(() => {
