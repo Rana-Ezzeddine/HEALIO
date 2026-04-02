@@ -132,6 +132,40 @@ export default function DashboardDoctor() {
   );
 
   const completedTodayCount = todayAppointments.filter((appointment) => appointment.status === "completed").length;
+  const doctorChecklist = useMemo(() => {
+    const tasks = [
+      {
+        key: "profile",
+        label: "Complete doctor profile",
+        description: "Add your professional details so patients can identify your practice.",
+        href: "/profileDoctor",
+        done: Boolean(user?.firstName && user?.lastName),
+      },
+      {
+        key: "patients",
+        label: "Review patient invitations",
+        description: "Approve your first patient so appointment workflows can begin.",
+        href: "/doctor-patients",
+        done: assignedPatients.length > 0,
+      },
+      {
+        key: "appointments",
+        label: "Create first appointment",
+        description: "Schedule a first visit to activate your daily schedule workflow.",
+        href: "/doctorAppointments",
+        done: schedule.length > 0,
+      },
+    ];
+
+    const doneCount = tasks.filter((task) => task.done).length;
+    return {
+      tasks,
+      doneCount,
+      totalCount: tasks.length,
+      incomplete: doneCount < tasks.length,
+      nextTask: tasks.find((task) => !task.done) || null,
+    };
+  }, [assignedPatients.length, schedule.length, user?.firstName, user?.lastName]);
 
   async function loadDashboard() {
     setScheduleLoading(true);
@@ -277,6 +311,52 @@ export default function DashboardDoctor() {
           </p>
         </section>
 
+        {doctorChecklist.incomplete ? (
+          <section className="mt-6 rounded-3xl border border-sky-100 bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-wide text-sky-700">Doctor setup checklist</p>
+                <h2 className="mt-2 text-2xl font-semibold text-slate-900">
+                  {doctorChecklist.doneCount} of {doctorChecklist.totalCount} setup steps complete
+                </h2>
+                <p className="mt-2 text-sm text-slate-600">
+                  Finish these essentials to unlock smoother patient intake and scheduling.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate(doctorChecklist.nextTask?.href || "/doctorAppointments")}
+                className="rounded-2xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white hover:bg-sky-600 transition"
+              >
+                Continue setup
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {doctorChecklist.tasks.map((task) => (
+                <button
+                  key={task.key}
+                  type="button"
+                  onClick={() => navigate(task.href)}
+                  className={`rounded-2xl border p-4 text-left transition ${
+                    task.done
+                      ? "border-emerald-200 bg-emerald-50"
+                      : "border-slate-200 bg-slate-50 hover:border-sky-200 hover:bg-sky-50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-semibold text-slate-900">{task.label}</p>
+                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${task.done ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                      {task.done ? "Done" : "Next"}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm text-slate-600">{task.description}</p>
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
         <section className="mt-6 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
           <DashboardCard
             title="Today's Appointments"
@@ -349,6 +429,25 @@ export default function DashboardDoctor() {
               ) : (
                 <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
                   No upcoming appointments for today.
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreateError("");
+                        setShowScheduleForm(true);
+                      }}
+                      className="rounded-xl bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-200 transition"
+                    >
+                      Create appointment
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/doctor-patients")}
+                      className="rounded-xl bg-sky-100 px-3 py-2 text-xs font-semibold text-sky-700 hover:bg-sky-200 transition"
+                    >
+                      Review patients
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

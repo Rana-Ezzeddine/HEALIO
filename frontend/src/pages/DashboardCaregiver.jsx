@@ -204,6 +204,40 @@ export default function DashboardCaregiver() {
   const canViewSymptoms = canUsePermission(activePermissions, "canViewSymptoms");
   const canViewAppointments = canUsePermission(activePermissions, "canViewAppointments");
   const canMessagePatient = canUsePermission(activePermissions, "canMessageDoctor");
+  const caregiverSetupChecklist = useMemo(() => {
+    const tasks = [
+      {
+        key: "profile",
+        label: "Complete caregiver profile",
+        description: "Add relationship and contact details for trust and context.",
+        href: "/profileCaregiver",
+        done: Boolean(user?.firstName && user?.lastName),
+      },
+      {
+        key: "link",
+        label: "Accept first patient invitation",
+        description: "Join at least one patient care context.",
+        href: "/profileCaregiver",
+        done: linkedPatients.length > 0,
+      },
+      {
+        key: "context",
+        label: "Select active patient",
+        description: "Choose the patient context to scope medications and symptoms.",
+        href: "/profileCaregiver",
+        done: Boolean(activePatientId),
+      },
+    ];
+
+    const doneCount = tasks.filter((task) => task.done).length;
+    return {
+      tasks,
+      doneCount,
+      totalCount: tasks.length,
+      incomplete: doneCount < tasks.length,
+      nextTask: tasks.find((task) => !task.done) || null,
+    };
+  }, [activePatientId, linkedPatients.length, user?.firstName, user?.lastName]);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -242,6 +276,52 @@ export default function DashboardCaregiver() {
             </select>
           </div>
         </section>
+
+        {caregiverSetupChecklist.incomplete ? (
+          <section className="mt-6 rounded-3xl border border-cyan-100 bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-wide text-cyan-700">Caregiver setup checklist</p>
+                <h2 className="mt-2 text-2xl font-semibold text-slate-900">
+                  {caregiverSetupChecklist.doneCount} of {caregiverSetupChecklist.totalCount} setup steps complete
+                </h2>
+                <p className="mt-2 text-sm text-slate-600">
+                  Complete these steps so your dashboard can show real patient-scoped activity.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate(caregiverSetupChecklist.nextTask?.href || "/profileCaregiver")}
+                className="rounded-2xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-600 transition"
+              >
+                Continue setup
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {caregiverSetupChecklist.tasks.map((task) => (
+                <button
+                  key={task.key}
+                  type="button"
+                  onClick={() => navigate(task.href)}
+                  className={`rounded-2xl border p-4 text-left transition ${
+                    task.done
+                      ? "border-emerald-200 bg-emerald-50"
+                      : "border-slate-200 bg-slate-50 hover:border-cyan-200 hover:bg-cyan-50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-semibold text-slate-900">{task.label}</p>
+                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${task.done ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                      {task.done ? "Done" : "Next"}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm text-slate-600">{task.description}</p>
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className="mt-6 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
           <DashboardCard
@@ -318,6 +398,20 @@ export default function DashboardCaregiver() {
                   {canViewAppointments ? `${scopedAppointments.length} total` : "Not visible in current permissions"}
                 </p>
               </div>
+              {linkedPatients.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                  No linked patients yet. Accept an invitation to unlock patient-scoped tasks.
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      onClick={() => navigate("/profileCaregiver")}
+                      className="rounded-xl bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-200 transition"
+                    >
+                      Open invitations
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
 
