@@ -2,14 +2,24 @@ import { useEffect, useMemo, useState } from "react";
 import Navbar from "../components/Navbar";
 import {
   createAppointment,
+  createDoctorAvailability,
+  deleteDoctorAvailability,
   getDoctorAvailability,
   getMyAppointments,
+  getMyDoctorAvailability,
   reviewAppointmentRequest,
   updateAppointmentStatus,
+  updateDoctorAvailability,
 } from "../api/appointments";
 import { apiUrl, authHeaders } from "../api/http";
 
 const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const durationOptions = [15, 30, 45, 60];
+
+function getPreferredDuration() {
+  if (typeof window === "undefined") return "30";
+  return localStorage.getItem("doctorPreferredSlotDuration") || "30";
+}
 
 function toDateKey(dateLike) {
   const date = new Date(dateLike);
@@ -56,6 +66,20 @@ function patientLabel(patientRecord) {
   return patientRecord.profile?.displayName || patientRecord.patient?.email || patientRecord.email || "Patient";
 }
 
+function availabilityTypeLabel(type) {
+  if (type === "workHours") return "Work hours";
+  if (type === "break") return "Break";
+  if (type === "blocked") return "Blocked";
+  return type || "Availability";
+}
+
+function availabilityTimingLabel(entry) {
+  if (entry.type === "workHours") {
+    return `${weekDays[entry.dayOfWeek] || "Day"} • ${entry.startTime.slice(0, 5)} - ${entry.endTime.slice(0, 5)}`;
+  }
+  return `${entry.specificDate || "Date"} • ${entry.startTime.slice(0, 5)} - ${entry.endTime.slice(0, 5)}`;
+}
+
 async function fetchAssignedPatients() {
   const response = await fetch(`${apiUrl}/api/doctors/assigned-patients`, {
     headers: { ...authHeaders() },
@@ -83,11 +107,25 @@ export default function DoctorAppointments() {
   const [availableSlots, setAvailableSlots] = useState([]);
   const [statusLoadingId, setStatusLoadingId] = useState("");
   const [decisionNotes, setDecisionNotes] = useState({});
+  const [availabilityEntries, setAvailabilityEntries] = useState([]);
+  const [preferredDuration, setPreferredDuration] = useState(getPreferredDuration());
+  const [availabilityLoading, setAvailabilityLoading] = useState(true);
+  const [availabilityError, setAvailabilityError] = useState("");
+  const [availabilitySaving, setAvailabilitySaving] = useState(false);
+  const [editingAvailabilityId, setEditingAvailabilityId] = useState("");
+  const [availabilityForm, setAvailabilityForm] = useState({
+    type: "workHours",
+    dayOfWeek: "1",
+    specificDate: "",
+    startTime: "09:00",
+    endTime: "17:00",
+    reason: "",
+  });
   const [form, setForm] = useState({
     patientId: "",
     date: "",
     timeSlot: "",
-    duration: "30",
+    duration: getPreferredDuration(),
     location: "",
     notes: "",
   });
@@ -103,21 +141,39 @@ export default function DoctorAppointments() {
 
   async function loadPageData() {
     setLoading(true);
+    setAvailabilityLoading(true);
     setError("");
+    setAvailabilityError("");
 
-    try {
-      const [appointmentsData, patientsData] = await Promise.all([
-        getMyAppointments(),
-        fetchAssignedPatients(),
-      ]);
+    const [appointmentsResult, patientsResult, availabilityResult] = await Promise.allSettled([
+      getMyAppointments(),
+      fetchAssignedPatients(),
+      getMyDoctorAvailability(),
+    ]);
 
-      setAppointments(appointmentsData.appointments || []);
-      setAssignedPatients(patientsData.patients || []);
-    } catch (err) {
-      setError(err.message || "Failed to load appointments.");
-    } finally {
-      setLoading(false);
+    if (appointmentsResult.status === "fulfilled") {
+      setAppointments(appointmentsResult.value.appointments || []);
+    } else {
+      setAppointments([]);
+      setError(appointmentsResult.reason?.message || "Failed to load appointments.");
     }
+
+    if (patientsResult.status === "fulfilled") {
+      setAssignedPatients(patientsResult.value.patients || []);
+    } else {
+      setAssignedPatients([]);
+      setError((current) => current || patientsResult.reason?.message || "Failed to load assigned patients.");
+    }
+
+    if (availabilityResult.status === "fulfilled") {
+      setAvailabilityEntries(availabilityResult.value.availabilities || []);
+    } else {
+      setAvailabilityEntries([]);
+      setAvailabilityError(availabilityResult.reason?.message || "Failed to load availability.");
+    }
+
+    setLoading(false);
+    setAvailabilityLoading(false);
   }
 
   useEffect(() => {
@@ -210,6 +266,12 @@ export default function DoctorAppointments() {
       return accumulator;
     }, {});
   }, [appointments]);
+
+  const availabilityByType = useMemo(() => ({
+    workHours: availabilityEntries.filter((entry) => entry.type === "workHours"),
+    breaks: availabilityEntries.filter((entry) => entry.type === "break"),
+    blocked: availabilityEntries.filter((entry) => entry.type === "blocked"),
+  }), [availabilityEntries]);
 
   const monthDays = useMemo(() => {
     const year = visibleMonth.getFullYear();
@@ -312,6 +374,97 @@ export default function DoctorAppointments() {
     setVisibleMonth(
       (previousMonth) => new Date(previousMonth.getFullYear(), previousMonth.getMonth() + direction, 1)
     );
+  }
+
+  function resetAvailabilityForm() {
+    setAvailabilityForm({
+      type: "workHours",
+      dayOfWeek: "1",
+      specificDate: "",
+      startTime: "09:00",
+      endTime: "17:00",
+      reason: "",
+    });
+    setEditingAvailabilityId("");
+  }
+
+  function handlePreferredDurationChange(value) {
+    setPreferredDuration(value);
+    localStorage.setItem("doctorPreferredSlotDuration", value);
+    setForm((current) => ({ ...current, duration: value, timeSlot: "" }));
+  }
+
+  function startEditAvailability(entry) {
+    setEditingAvailabilityId(entry.id);
+    setAvailabilityForm({
+      type: entry.type,
+      dayOfWeek: entry.dayOfWeek !== null && entry.dayOfWeek !== undefined ? String(entry.dayOfWeek) : "1",
+      specificDate: entry.specificDate || "",
+      startTime: entry.startTime?.slice(0, 5) || "09:00",
+      endTime: entry.endTime?.slice(0, 5) || "17:00",
+      reason: entry.reason || "",
+    });
+    setAvailabilityError("");
+  }
+
+  async function handleSubmitAvailability(event) {
+    event.preventDefault();
+    setAvailabilityError("");
+
+    if (availabilityForm.endTime <= availabilityForm.startTime) {
+      setAvailabilityError("End time must be after start time.");
+      return;
+    }
+
+    if (availabilityForm.type === "workHours" && availabilityForm.dayOfWeek === "") {
+      setAvailabilityError("Select a day of the week for work hours.");
+      return;
+    }
+
+    if ((availabilityForm.type === "break" || availabilityForm.type === "blocked") && !availabilityForm.specificDate) {
+      setAvailabilityError("Select a date for breaks or blocked time.");
+      return;
+    }
+
+    const payload = {
+      type: availabilityForm.type,
+      dayOfWeek: availabilityForm.type === "workHours" ? Number(availabilityForm.dayOfWeek) : null,
+      specificDate: availabilityForm.type === "workHours" ? null : availabilityForm.specificDate,
+      startTime: availabilityForm.startTime,
+      endTime: availabilityForm.endTime,
+      reason: availabilityForm.reason,
+    };
+
+    try {
+      setAvailabilitySaving(true);
+      if (editingAvailabilityId) {
+        await updateDoctorAvailability(editingAvailabilityId, payload);
+      } else {
+        await createDoctorAvailability(payload);
+      }
+      resetAvailabilityForm();
+      await loadPageData();
+    } catch (err) {
+      setAvailabilityError(err.message || "Failed to save availability.");
+    } finally {
+      setAvailabilitySaving(false);
+    }
+  }
+
+  async function handleDeleteAvailability(id) {
+    try {
+      setAvailabilitySaving(true);
+      setAvailabilityError("");
+      await deleteDoctorAvailability(id);
+      if (editingAvailabilityId === id) {
+        resetAvailabilityForm();
+      }
+      await loadPageData();
+    } catch (err) {
+      setAvailabilityError(err.message || "Failed to delete availability.");
+    } finally {
+      setAvailabilitySaving(false);
+    }
   }
 
   return (
@@ -442,6 +595,167 @@ export default function DoctorAppointments() {
         </section>
 
         <section className="bg-white rounded-3xl shadow p-6 mb-6">
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-800 mb-1">Availability Management</h2>
+              <p className="text-sm text-slate-500">
+                Manage the working-time blocks that power patient appointment requests and doctor-side scheduling.
+              </p>
+            </div>
+            {editingAvailabilityId ? (
+              <button
+                type="button"
+                onClick={resetAvailabilityForm}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
+              >
+                Cancel edit
+              </button>
+            ) : null}
+          </div>
+
+          <form onSubmit={handleSubmitAvailability} className="grid grid-cols-1 md:grid-cols-6 gap-3">
+            <select
+              value={availabilityForm.type}
+              onChange={(event) =>
+                setAvailabilityForm((current) => ({
+                  ...current,
+                  type: event.target.value,
+                  specificDate: event.target.value === "workHours" ? "" : current.specificDate,
+                }))
+              }
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+            >
+              <option value="workHours">Work hours</option>
+              <option value="break">Break</option>
+              <option value="blocked">Blocked date</option>
+            </select>
+
+            {availabilityForm.type === "workHours" ? (
+              <select
+                value={availabilityForm.dayOfWeek}
+                onChange={(event) => setAvailabilityForm((current) => ({ ...current, dayOfWeek: event.target.value }))}
+                className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              >
+                {weekDays.map((day, index) => (
+                  <option key={day} value={String(index)}>{day}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="date"
+                value={availabilityForm.specificDate}
+                onChange={(event) => setAvailabilityForm((current) => ({ ...current, specificDate: event.target.value }))}
+                className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                required
+              />
+            )}
+
+            <input
+              type="time"
+              value={availabilityForm.startTime}
+              onChange={(event) => setAvailabilityForm((current) => ({ ...current, startTime: event.target.value }))}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              required
+            />
+
+            <input
+              type="time"
+              value={availabilityForm.endTime}
+              onChange={(event) => setAvailabilityForm((current) => ({ ...current, endTime: event.target.value }))}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              required
+            />
+
+            <input
+              type="text"
+              placeholder="Reason (optional)"
+              value={availabilityForm.reason}
+              onChange={(event) => setAvailabilityForm((current) => ({ ...current, reason: event.target.value }))}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 md:col-span-2"
+            />
+
+            <button
+              type="submit"
+              disabled={availabilitySaving}
+              className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 transition disabled:opacity-70"
+            >
+              {availabilitySaving ? "Saving..." : editingAvailabilityId ? "Update entry" : "Add entry"}
+            </button>
+          </form>
+
+          {availabilityError && (
+            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {availabilityError}
+            </div>
+          )}
+
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Appointment duration rule</p>
+                <p className="text-xs text-slate-500">Doctor-side scheduling now defaults to your preferred visit length.</p>
+              </div>
+              <select
+                value={preferredDuration}
+                onChange={(event) => handlePreferredDurationChange(event.target.value)}
+                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              >
+                {durationOptions.map((minutes) => (
+                  <option key={minutes} value={String(minutes)}>{minutes} minutes</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-3">
+            {[
+              { key: "workHours", title: "Work days & hours", empty: "No weekly work-hour blocks yet." },
+              { key: "breaks", title: "Breaks", empty: "No break windows defined yet." },
+              { key: "blocked", title: "Blocked dates", empty: "No blocked dates defined yet." },
+            ].map((section) => (
+              <div key={section.key} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <h3 className="text-sm font-semibold text-slate-900">{section.title}</h3>
+                <div className="mt-3 space-y-3">
+                  {availabilityLoading ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">
+                      Loading...
+                    </div>
+                  ) : availabilityByType[section.key].length > 0 ? (
+                    availabilityByType[section.key].map((entry) => (
+                      <div key={entry.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                        <p className="text-sm font-semibold text-slate-900">{availabilityTimingLabel(entry)}</p>
+                        {entry.reason ? <p className="mt-1 text-xs text-slate-500">{entry.reason}</p> : null}
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => startEditAvailability(entry)}
+                            className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            disabled={availabilitySaving}
+                            onClick={() => handleDeleteAvailability(entry.id)}
+                            className="rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-600 disabled:opacity-70"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">
+                      {section.empty}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="bg-white rounded-3xl shadow p-6 mb-6">
           <h2 className="text-xl font-semibold text-slate-800 mb-1">Schedule For Assigned Patient</h2>
           <p className="text-sm text-slate-500 mb-4">
             Available time slots come from the backend availability endpoint for the selected day.
@@ -491,10 +805,9 @@ export default function DoctorAppointments() {
               className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
               required
             >
-              <option value="15">15 minutes</option>
-              <option value="30">30 minutes</option>
-              <option value="45">45 minutes</option>
-              <option value="60">60 minutes</option>
+              {durationOptions.map((minutes) => (
+                <option key={minutes} value={String(minutes)}>{minutes} minutes</option>
+              ))}
             </select>
 
             <select
