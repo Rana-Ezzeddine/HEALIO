@@ -23,7 +23,6 @@ import CaregiverNote from './CaregiverNote.js';
 import PasswordResetToken from './PasswordResetToken.js';
 
 import CaregiverInvite from './CaregiverInvite.js';
-import EmailVerificationToken from './EmailVerificationToken.js';
 
 import Availability from './Availability.js';
 
