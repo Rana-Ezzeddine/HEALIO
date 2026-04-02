@@ -1,18 +1,18 @@
 'use strict';
 
-module.exports = {
+export default {
   async up(queryInterface, Sequelize) {
-    await queryInterface.addColumn('Symptoms', 'loggedBy', {
+    await queryInterface.addColumn('symptoms', 'loggedBy', {
       type: Sequelize.ENUM('patient', 'caregiver'),
       allowNull: false,
       defaultValue: 'patient',
     });
 
-    await queryInterface.addColumn('Symptoms', 'loggedByUserId', {
+    await queryInterface.addColumn('symptoms', 'loggedByUserId', {
       type: Sequelize.UUID,
       allowNull: true,
       references: {
-        model: 'Users',
+        model: 'users',
         key: 'id',
       },
       onUpdate: 'CASCADE',
@@ -21,7 +21,7 @@ module.exports = {
   },
 
   async down(queryInterface, Sequelize) {
-    await queryInterface.removeColumn('Symptoms', 'loggedBy');
-    await queryInterface.removeColumn('Symptoms', 'loggedByUserId');
+    await queryInterface.removeColumn('symptoms', 'loggedBy');
+    await queryInterface.removeColumn('symptoms', 'loggedByUserId');
   },
 };
