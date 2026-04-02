@@ -288,7 +288,7 @@ export default function DashboardDoctor() {
             title="Assigned Patients"
             mainText={`${assignedPatients.length}`}
             subText="Active doctor-patient links"
-            navPage="/doctor-review"
+            navPage="/doctor-patients"
           />
           <DashboardCard
             title="Completed Today"

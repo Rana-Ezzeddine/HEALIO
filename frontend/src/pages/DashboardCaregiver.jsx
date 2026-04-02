@@ -218,7 +218,7 @@ export default function DashboardCaregiver() {
           </p>
 
           <div className="mt-4 max-w-sm">
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-white/70">
+            <label className="mb-3 block text-xs font-semibold uppercase tracking-[0.16em] text-white/70">
               Active patient context
             </label>
             <select
