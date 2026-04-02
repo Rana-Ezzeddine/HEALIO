@@ -8,6 +8,8 @@ import { getDoctorLinkRequests, getMyCaregivers, getMyDoctors } from "../api/lin
 import { buildPatientSetupChecklist } from "../utils/patientSetup";
 import { formatDoseTime, getNextMedicationDose, isActiveMedication } from "../utils/medicationSchedule";
 
+const NEW_PATIENT_WELCOME_FLAG = "healio:new-patient-signup";
+
 function formatAppointmentDate(dateLike) {
   return new Date(dateLike).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
@@ -52,10 +54,19 @@ export default function DashboardPatient() {
   const [doctorCount, setDoctorCount] = useState(0);
   const [caregiverCount, setCaregiverCount] = useState(0);
   const [pendingDoctorRequestCount, setPendingDoctorRequestCount] = useState(0);
+  const [isNewPatientGreeting, setIsNewPatientGreeting] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
   const greetingName =
     profile?.firstName || user?.firstName || localStorage.getItem("firstName") || user?.email || "Patient";
+
+  useEffect(() => {
+    const isNewSignup = localStorage.getItem(NEW_PATIENT_WELCOME_FLAG) === "true";
+    if (isNewSignup) {
+      setIsNewPatientGreeting(true);
+      localStorage.removeItem(NEW_PATIENT_WELCOME_FLAG);
+    }
+  }, []);
 
   useEffect(() => {
     function refreshDashboard() {
@@ -173,6 +184,8 @@ export default function DashboardPatient() {
   const profileCompletion = checklist.profileStatus;
   const profileMissingPreview = profileCompletion.missing.slice(0, 3);
   const setupProgressPercent = Math.round((checklist.doneCount / checklist.totalCount) * 100);
+  const appointmentPreview = upcomingAppointments.slice(0, 2);
+  const remainingAppointmentCount = Math.max(upcomingAppointments.length - appointmentPreview.length, 0);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -181,7 +194,7 @@ export default function DashboardPatient() {
       <main className="mx-auto max-w-6xl px-6 pb-10 pt-28">
         <section className="rounded-[2rem] bg-gradient-to-r from-slate-900 via-sky-800 to-cyan-600 p-8 text-white shadow-xl">
           <p className="text-sm font-semibold uppercase tracking-[0.25em] text-white/75">Patient Dashboard</p>
-          <h1 className="mt-3 text-4xl font-black">Welcome back, {greetingName}</h1>
+          <h1 className="mt-3 text-4xl font-black">{isNewPatientGreeting ? `Welcome, ${greetingName}` : `Welcome back, ${greetingName}`}</h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-white/85">
             Keep your profile, care team, medications, symptoms, and appointments moving together from one place.
           </p>
@@ -275,12 +288,12 @@ export default function DashboardPatient() {
           />
         </section>
 
-        <section className="mt-6 grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
+        <section className="mt-6 grid gap-6 lg:grid-cols-[1fr_1fr] xl:grid-cols-[0.95fr_1.05fr]">
           <div className="rounded-3xl bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-semibold text-slate-900">Upcoming appointments</h2>
-                <p className="mt-1 text-sm text-slate-500">Requested and scheduled visits stay visible here.</p>
+                <p className="mt-1 text-sm text-slate-500">A quick look at your nearest visits and pending requests.</p>
               </div>
               <button
                 type="button"
@@ -293,7 +306,7 @@ export default function DashboardPatient() {
 
             <div className="mt-5 space-y-3">
               {upcomingAppointments.length > 0 ? (
-                upcomingAppointments.slice(0, 4).map((appointment) => (
+                appointmentPreview.map((appointment) => (
                   <div key={appointment.id} className="rounded-2xl border border-slate-200 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
@@ -318,6 +331,15 @@ export default function DashboardPatient() {
                   No appointment requests yet. Link a doctor, then request your first visit.
                 </div>
               )}
+              {remainingAppointmentCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => navigate("/patientAppointments")}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                >
+                  View {remainingAppointmentCount} more appointment{remainingAppointmentCount === 1 ? "" : "s"}
+                </button>
+              ) : null}
             </div>
           </div>
 
@@ -361,13 +383,33 @@ export default function DashboardPatient() {
                   </span>
                 ) : null}
               </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Symptoms logged</p>
+                  <p className="mt-1 text-lg font-bold text-slate-900">{symptoms.length}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Appointment requests</p>
+                  <p className="mt-1 text-lg font-bold text-slate-900">{requestedAppointments}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Doctor-link pending</p>
+                  <p className="mt-1 text-lg font-bold text-slate-900">{pendingDoctorRequestCount}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Conversations</p>
+                  <p className="mt-1 text-lg font-bold text-slate-900">{conversationCount}</p>
+                </div>
+              </div>
             </section>
 
             <section className="rounded-3xl bg-white p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-slate-900">Quick actions</h2>
-              <div className="mt-4 grid gap-3">
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {[
                   { label: "Health summary", href: "/healthSummary", style: "bg-sky-100 text-sky-700" },
+                  { label: "Notification center", href: "/patient-notifications", style: "bg-indigo-100 text-indigo-700" },
                   {
                     label: profileCompletion.complete
                       ? "Profile complete"
@@ -390,20 +432,6 @@ export default function DashboardPatient() {
                     {action.label}
                   </button>
                 ))}
-              </div>
-            </section>
-
-            <section className="rounded-3xl bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-semibold text-slate-900">Journey summary</h2>
-              <div className="mt-4 space-y-3 text-sm text-slate-600">
-                <p>Symptoms logged: <span className="font-semibold text-slate-900">{symptoms.length}</span></p>
-                <p>Appointment requests pending: <span className="font-semibold text-slate-900">{requestedAppointments}</span></p>
-                <p>Doctor-link requests pending: <span className="font-semibold text-slate-900">{pendingDoctorRequestCount}</span></p>
-                <p>Profile completion: <span className="font-semibold text-slate-900">{profileCompletion.percent}%</span></p>
-                <p>Missing profile items: <span className="font-semibold text-slate-900">{profileCompletion.missing.length}</span></p>
-                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                  <div className="h-full rounded-full bg-gradient-to-r from-sky-500 to-cyan-400" style={{ width: `${profileCompletion.percent}%` }} />
-                </div>
               </div>
             </section>
           </div>

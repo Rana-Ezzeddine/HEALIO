@@ -646,9 +646,14 @@ export const getDoctorLinkRequests = async (req, res) => {
     }
 
     if (req.user?.role === "patient") {
+      const includeDecisions = String(req.query?.includeDecisions || "false").toLowerCase() === "true";
+      const statuses = includeDecisions ? ["pending", "active", "rejected"] : ["pending"];
       const links = await DoctorPatientAssignment.findAll({
-        where: { patientId: req.user.id, status: "pending" },
-        order: [["createdAt", "DESC"]],
+        where: {
+          patientId: req.user.id,
+          status: { [Op.in]: statuses },
+        },
+        order: [[includeDecisions ? "updatedAt" : "createdAt", "DESC"]],
       });
       const doctorIds = links.map((link) => link.doctorId);
       const doctors = doctorIds.length
@@ -669,6 +674,7 @@ export const getDoctorLinkRequests = async (req, res) => {
             patientId: link.patientId,
             status: link.status,
             createdAt: link.createdAt,
+            updatedAt: link.updatedAt,
             doctor: doctor
               ? {
                   id: doctor.id,

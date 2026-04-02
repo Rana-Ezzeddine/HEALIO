@@ -63,12 +63,14 @@ export default function Navbar({ onLogin, onSignup }) {
   const isPatientAppointments = path.toLowerCase().startsWith("/patientappointments");
   const isHealthSummary = path.toLowerCase().startsWith("/healthsummary");
   const isPatientMessages = path.toLowerCase().startsWith("/patientmessages");
+  const isPatientNotifications = path.toLowerCase().startsWith("/patient-notifications");
   const isCaregiverMessages = path.toLowerCase().startsWith("/caregivermessages");
   const isLanding = path === "/";
   const isPublicPage = PUBLIC_PATHS.has(path.toLowerCase());
   const patientMoreNavItems = isPatient
     ? [
       { label: "Health Summary", href: "/healthSummary", active: isHealthSummary, isDanger: false },
+      { label: "Notifications", href: "/patient-notifications", active: isPatientNotifications, isDanger: false },
       { label: "Medications", href: "/medication", active: isMedication, isDanger: false },
       { label: "Symptoms", href: "/symptoms", active: isSymptoms, isDanger: false },
       { label: "Care Team", href: "/care-team", active: isCareTeam, isDanger: false },
@@ -215,6 +217,19 @@ export default function Navbar({ onLogin, onSignup }) {
                     }`}
                   >
                     Appointments
+                  </button>
+                )}
+                {isPatient && (
+                  <button
+                    onClick={() => navigate("/patient-notifications")}
+                    className={`group inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
+                      isPatientNotifications
+                        ? "border-indigo-300 bg-indigo-50 text-indigo-800 shadow-sm"
+                        : "border-slate-200 text-slate-600 hover:border-indigo-200 hover:bg-indigo-50/70 hover:text-indigo-700"
+                    }`}
+                  >
+                    <span className={`h-2 w-2 rounded-full transition ${isPatientNotifications ? "bg-indigo-500" : "bg-slate-300 group-hover:bg-indigo-400"}`} />
+                    Notifications
                   </button>
                 )}
                 {isPatient && (

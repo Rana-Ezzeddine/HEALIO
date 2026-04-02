@@ -15,6 +15,7 @@ import Medication from "./pages/medication";
 import LandingPage from "./pages/LandingPage";
 import Symptoms from "./pages/Symptoms";
 import PatientMessages from "./pages/PatientMessages";
+import PatientNotificationCenter from "./pages/PatientNotificationCenter";
 import CaregiverMessages from "./pages/CaregiverMessages";
 import DoctorAppointments from "./pages/DoctorAppointments";
 import PatientAppointments from "./pages/PatientAppointments";
@@ -248,6 +249,14 @@ function RoutedApp() {
           element={
             <ProtectedRoute allowedRoles={["patient"]}>
               <PatientMessages />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/patient-notifications"
+          element={
+            <ProtectedRoute allowedRoles={["patient"]}>
+              <PatientNotificationCenter />
             </ProtectedRoute>
           }
         />
