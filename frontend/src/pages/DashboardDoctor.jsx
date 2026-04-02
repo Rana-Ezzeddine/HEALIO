@@ -617,7 +617,7 @@ export default function DashboardDoctor() {
             title="Assigned Patients"
             mainText={`${assignedPatients.length}`}
             subText="Active doctor-patient links"
-            navPage="/profileDoctor"
+            navPage="/doctorAppointments"
             tone="emerald"
           />
         </section>

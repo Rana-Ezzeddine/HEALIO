@@ -8,6 +8,7 @@ import {
   getMyAppointments,
   getMyDoctorAvailability,
   reviewAppointmentRequest,
+  suggestAppointmentSlot,
   updateAppointmentStatus,
   updateDoctorAvailability,
 } from "../api/appointments";
@@ -63,7 +64,7 @@ function statusLabel(status) {
 }
 
 function patientLabel(patientRecord) {
-  return patientRecord.profile?.displayName || patientRecord.patient?.email || patientRecord.email || "Patient";
+  return patientRecord.profile?.displayName || patientRecord.patient?.displayName || patientRecord.patient?.email || patientRecord.email || "Patient";
 }
 
 function availabilityTypeLabel(type) {
@@ -107,6 +108,17 @@ export default function DoctorAppointments() {
   const [availableSlots, setAvailableSlots] = useState([]);
   const [statusLoadingId, setStatusLoadingId] = useState("");
   const [decisionNotes, setDecisionNotes] = useState({});
+  const [suggestOpenId, setSuggestOpenId] = useState("");
+  const [suggestLoadingId, setSuggestLoadingId] = useState("");
+  const [suggestSlotsLoading, setSuggestSlotsLoading] = useState(false);
+  const [suggestSlots, setSuggestSlots] = useState([]);
+  const [suggestForm, setSuggestForm] = useState({
+    appointmentId: "",
+    date: "",
+    duration: getPreferredDuration(),
+    timeSlot: "",
+    note: "",
+  });
   const [availabilityEntries, setAvailabilityEntries] = useState([]);
   const [preferredDuration, setPreferredDuration] = useState(getPreferredDuration());
   const [availabilityLoading, setAvailabilityLoading] = useState(true);
@@ -231,6 +243,56 @@ export default function DoctorAppointments() {
       cancelled = true;
     };
   }, [form.date, form.duration]);
+
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSuggestedSlots() {
+      if (!suggestOpenId || !suggestForm.date) {
+        setSuggestSlots([]);
+        return;
+      }
+
+      const durationMinutes = Number(suggestForm.duration || getPreferredDuration());
+      if (!Number.isInteger(durationMinutes) || durationMinutes <= 0) {
+        setSuggestSlots([]);
+        return;
+      }
+
+      try {
+        setSuggestSlotsLoading(true);
+        const dayStart = new Date(`${suggestForm.date}T00:00:00`);
+        const dayEnd = new Date(dayStart);
+        dayEnd.setDate(dayEnd.getDate() + 1);
+
+        const data = await getDoctorAvailability({
+          from: dayStart.toISOString(),
+          to: dayEnd.toISOString(),
+          slotMinutes: durationMinutes,
+        });
+
+        if (!cancelled) {
+          const now = Date.now();
+          setSuggestSlots((data.slots || []).filter((slot) => new Date(slot.startsAt).getTime() > now));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setSuggestSlots([]);
+          setError((current) => current || err.message || "Failed to load suggested slots.");
+        }
+      } finally {
+        if (!cancelled) {
+          setSuggestSlotsLoading(false);
+        }
+      }
+    }
+
+    loadSuggestedSlots();
+    return () => {
+      cancelled = true;
+    };
+  }, [suggestOpenId, suggestForm.date, suggestForm.duration]);
 
   const requestedAppointments = useMemo(() => {
     return appointments
@@ -370,6 +432,51 @@ export default function DoctorAppointments() {
     }
   }
 
+  function openSuggestSlot(appointment) {
+    const defaultDate = toDateKey(appointment.startsAt);
+    setSuggestOpenId(appointment.id);
+    setSuggestForm({
+      appointmentId: appointment.id,
+      date: defaultDate,
+      duration: String(Math.round((new Date(appointment.endsAt) - new Date(appointment.startsAt)) / 60000) || Number(getPreferredDuration())),
+      timeSlot: "",
+      note: decisionNotes[appointment.id] || "",
+    });
+    setError("");
+  }
+
+  function closeSuggestSlot() {
+    setSuggestOpenId("");
+    setSuggestSlots([]);
+    setSuggestSlotsLoading(false);
+  }
+
+  async function handleSuggestSlot(appointment) {
+    if (!suggestForm.timeSlot) {
+      setError("Select an alternative slot before sending the suggestion.");
+      return;
+    }
+
+    try {
+      setSuggestLoadingId(appointment.id);
+      const startsAt = new Date(suggestForm.timeSlot);
+      const durationMinutes = Number(suggestForm.duration || getPreferredDuration());
+      const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
+      await suggestAppointmentSlot(appointment.id, {
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString(),
+        notes: suggestForm.note,
+      });
+      setDecisionNotes((current) => ({ ...current, [appointment.id]: suggestForm.note }));
+      closeSuggestSlot();
+      await loadPageData();
+    } catch (err) {
+      setError(err.message || "Failed to suggest another slot.");
+    } finally {
+      setSuggestLoadingId("");
+    }
+  }
+
   function changeMonth(direction) {
     setVisibleMonth(
       (previousMonth) => new Date(previousMonth.getFullYear(), previousMonth.getMonth() + direction, 1)
@@ -506,49 +613,54 @@ export default function DoctorAppointments() {
         )}
 
         <section className="bg-white rounded-3xl shadow p-6 mb-6">
-          <h2 className="text-xl font-semibold text-slate-800 mb-4">Patient Requests</h2>
+          <div className="mb-4">
+            <h2 className="text-xl font-semibold text-slate-800">Patient Requests</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Review the requested slot, patient note, location, and your internal review note before approving, denying, or suggesting another time.
+            </p>
+          </div>
 
-          <div className="overflow-x-auto">
-            <table className="min-h-full text-sm text-left w-full">
-              <thead className="text-slate-500 border-b">
-                <tr>
-                  <th className="py-3 px-4">Patient</th>
-                  <th className="py-3 px-4">Date</th>
-                  <th className="py-3 px-4">Time</th>
-                  <th className="py-3 px-4">Location</th>
-                  <th className="py-3 px-4">Patient Note</th>
-                  <th className="py-3 px-4">Decision Note</th>
-                  <th className="py-3 px-4">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {loading ? (
-                  <tr>
-                    <td colSpan={7} className="py-6 px-4 text-center text-slate-500">
-                      Loading requests...
-                    </td>
-                  </tr>
-                ) : requestedAppointments.length > 0 ? (
-                  requestedAppointments.map((appointment) => (
-                    <tr key={appointment.id} className="hover:bg-slate-50">
-                      <td className="py-3 px-4 text-slate-800 font-medium">
-                        {patientNameById.get(appointment.patient?.id || appointment.patientId) ||
-                          appointment.patient?.email ||
-                          "Patient"}
-                      </td>
-                      <td className="py-3 px-4 text-slate-700">
-                        {new Date(appointment.startsAt).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
-                      </td>
-                      <td className="py-3 px-4 text-slate-700">{formatTime(appointment.startsAt)}</td>
-                      <td className="py-3 px-4 text-slate-600">{appointment.location || "-"}</td>
-                      <td className="py-3 px-4 text-slate-600">{appointment.notes || "-"}</td>
-                      <td className="py-3 px-4">
-                        <input
-                          type="text"
+          <div className="space-y-4">
+            {loading ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
+                Loading requests...
+              </div>
+            ) : requestedAppointments.length > 0 ? (
+              requestedAppointments.map((appointment) => {
+                const patientName =
+                  patientNameById.get(appointment.patient?.id || appointment.patientId) ||
+                  appointment.patient?.email ||
+                  "Patient";
+                const requestedDuration = Math.round((new Date(appointment.endsAt) - new Date(appointment.startsAt)) / 60000);
+                const isSuggesting = suggestOpenId === appointment.id;
+
+                return (
+                  <div key={appointment.id} className="rounded-3xl border border-slate-200 p-5">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-lg font-semibold text-slate-900">{patientName}</h3>
+                          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">Requested</span>
+                        </div>
+                        <p className="mt-2 text-sm text-slate-500">
+                          Requested slot: {formatDateLabel(toDateKey(appointment.startsAt))} at {formatTime(appointment.startsAt)}
+                          {appointment.endsAt ? ` for ${requestedDuration} minutes` : ""}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                        <p><span className="font-semibold text-slate-900">Location:</span> {appointment.location || "Not specified"}</p>
+                        <p className="mt-1"><span className="font-semibold text-slate-900">Appointment ID:</span> {appointment.id.slice(0, 8)}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                      <div className="rounded-2xl bg-slate-50 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Patient note</p>
+                        <p className="mt-2 text-sm text-slate-700">{appointment.notes || "No note provided by the patient."}</p>
+                      </div>
+                      <div className="rounded-2xl bg-slate-50 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Doctor review note</p>
+                        <textarea
                           value={decisionNotes[appointment.id] || ""}
                           onChange={(event) =>
                             setDecisionNotes((current) => ({
@@ -556,41 +668,123 @@ export default function DoctorAppointments() {
                               [appointment.id]: event.target.value,
                             }))
                           }
-                          placeholder="Optional note"
-                          className="w-52 rounded-lg border border-slate-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-sky-500"
+                          placeholder="Add context for your decision or a message for the patient"
+                          rows={3}
+                          className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
                         />
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex gap-2">
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={statusLoadingId === appointment.id || suggestLoadingId === appointment.id}
+                        onClick={() => handleReviewRequest(appointment.id, "scheduled")}
+                        className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-70"
+                      >
+                        Approve requested slot
+                      </button>
+                      <button
+                        type="button"
+                        disabled={statusLoadingId === appointment.id || suggestLoadingId === appointment.id}
+                        onClick={() => handleReviewRequest(appointment.id, "denied")}
+                        className="rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-600 disabled:opacity-70"
+                      >
+                        Deny request
+                      </button>
+                      <button
+                        type="button"
+                        disabled={statusLoadingId === appointment.id || suggestLoadingId === appointment.id}
+                        onClick={() => (isSuggesting ? closeSuggestSlot() : openSuggestSlot(appointment))}
+                        className="rounded-xl border border-sky-300 bg-white px-4 py-2 text-sm font-semibold text-sky-700 hover:bg-sky-50 disabled:opacity-70"
+                      >
+                        {isSuggesting ? "Close suggestion" : "Suggest another slot"}
+                      </button>
+                    </div>
+
+                    {isSuggesting ? (
+                      <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50/60 p-4">
+                        <div className="mb-3">
+                          <h4 className="text-sm font-semibold text-slate-900">Suggest another slot</h4>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Pick a new date, duration, and available time. The appointment stays in requested state, but its requested slot updates to your suggestion.
+                          </p>
+                        </div>
+
+                        <div className="grid gap-3 md:grid-cols-4">
+                          <input
+                            type="date"
+                            value={suggestForm.date}
+                            onChange={(event) => setSuggestForm((current) => ({ ...current, date: event.target.value, timeSlot: "" }))}
+                            className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                          />
+                          <select
+                            value={suggestForm.duration}
+                            onChange={(event) => setSuggestForm((current) => ({ ...current, duration: event.target.value, timeSlot: "" }))}
+                            className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                          >
+                            {durationOptions.map((minutes) => (
+                              <option key={minutes} value={String(minutes)}>{minutes} minutes</option>
+                            ))}
+                          </select>
+                          <select
+                            value={suggestForm.timeSlot}
+                            onChange={(event) => setSuggestForm((current) => ({ ...current, timeSlot: event.target.value }))}
+                            disabled={!suggestForm.date || suggestSlotsLoading}
+                            className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 md:col-span-2"
+                          >
+                            <option value="">
+                              {!suggestForm.date
+                                ? "Select date first"
+                                : suggestSlotsLoading
+                                ? "Loading suggested slots..."
+                                : suggestSlots.length === 0
+                                ? "No available slots"
+                                : "Select suggested slot"}
+                            </option>
+                            {suggestSlots.map((slot) => (
+                              <option key={slot.startsAt} value={slot.startsAt}>
+                                {formatTime(slot.startsAt)} - {formatTime(slot.endsAt)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <textarea
+                          value={suggestForm.note}
+                          onChange={(event) => setSuggestForm((current) => ({ ...current, note: event.target.value }))}
+                          rows={3}
+                          placeholder="Optional note to explain why you are suggesting another slot"
+                          className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                        />
+
+                        <div className="mt-3 flex flex-wrap gap-2">
                           <button
                             type="button"
-                            disabled={statusLoadingId === appointment.id}
-                            onClick={() => handleReviewRequest(appointment.id, "scheduled")}
-                            className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600 disabled:opacity-70"
+                            onClick={() => handleSuggestSlot(appointment)}
+                            disabled={suggestLoadingId === appointment.id || !suggestForm.timeSlot}
+                            className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-70"
                           >
-                            Approve
+                            {suggestLoadingId === appointment.id ? "Sending..." : "Send suggested slot"}
                           </button>
                           <button
                             type="button"
-                            disabled={statusLoadingId === appointment.id}
-                            onClick={() => handleReviewRequest(appointment.id, "denied")}
-                            className="rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-600 disabled:opacity-70"
+                            onClick={closeSuggestSlot}
+                            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                           >
-                            Deny
+                            Cancel
                           </button>
                         </div>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={7} className="py-6 px-4 text-center text-slate-500">
-                      No pending requests.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })
+            ) : (
+              <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
+                No pending requests.
+              </div>
+            )}
           </div>
         </section>
 

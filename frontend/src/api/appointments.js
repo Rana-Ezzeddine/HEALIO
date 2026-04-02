@@ -126,3 +126,10 @@ export function reviewAppointmentRequest(id, status, notes) {
     body: JSON.stringify({ status, notes }),
   });
 }
+
+export function suggestAppointmentSlot(id, payload) {
+  return request(`/api/appointments/requests/${id}/suggest-slot`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

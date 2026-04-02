@@ -3,6 +3,7 @@ import Appointment from "../models/Appointment.js";
 import Availability from "../models/Availability.js";
 import User from "../models/User.js";
 import DoctorPatientAssignment from "../models/DoctorPatientAssignment.js";
+import PatientProfile from "../models/PatientProfile.js";
 import { DOCTOR_APPROVAL_STATUS } from "../lib/doctorApproval.js";
 
 function parseISODate(value, fieldName) {
@@ -194,6 +195,7 @@ export async function getDoctorSchedule(req, res) {
           model: User,
           as: "patient",
           attributes: ["id", "email"],
+          include: [{ model: PatientProfile, as: "patientProfile", attributes: ["firstName", "lastName"] }],
         },
       ],
       order: [["startsAt", "ASC"]],
@@ -216,6 +218,11 @@ export async function getDoctorSchedule(req, res) {
           ? {
               id: a.patient.id,
               email: a.patient.email,
+              displayName: buildDisplayName(
+                a.patient.email,
+                a.patient.patientProfile?.firstName,
+                a.patient.patientProfile?.lastName
+              ),
             }
           : null,
       })),
@@ -358,6 +365,7 @@ export async function getRequestableDoctors(req, res) {
     const doctors = await patient.getDoctors({
       where: { doctorApprovalStatus: DOCTOR_APPROVAL_STATUS.APPROVED },
       attributes: ["id", "email"],
+      include: [{ model: PatientProfile, as: "patientProfile", attributes: ["firstName", "lastName"] }],
       joinTableAttributes: [],
       through: { where: { status: "active" } },
     });
@@ -367,7 +375,11 @@ export async function getRequestableDoctors(req, res) {
       doctors: doctors.map((doctor) => ({
         id: doctor.id,
         email: doctor.email,
-        displayName: buildDisplayName(doctor.email, null, null),
+        displayName: buildDisplayName(
+          doctor.email,
+          doctor.patientProfile?.firstName,
+          doctor.patientProfile?.lastName
+        ),
       })),
     });
   } catch (err) {
@@ -626,8 +638,18 @@ export async function getMyAppointments(req, res) {
     const appointments = await Appointment.findAll({
       where,
       include: [
-        { model: User, as: "doctor", attributes: ["id", "email"] },
-        { model: User, as: "patient", attributes: ["id", "email"] },
+        {
+          model: User,
+          as: "doctor",
+          attributes: ["id", "email"],
+          include: [{ model: PatientProfile, as: "patientProfile", attributes: ["firstName", "lastName"] }],
+        },
+        {
+          model: User,
+          as: "patient",
+          attributes: ["id", "email"],
+          include: [{ model: PatientProfile, as: "patientProfile", attributes: ["firstName", "lastName"] }],
+        },
       ],
       order: [["startsAt", "ASC"]],
       limit: 200,
@@ -646,14 +668,22 @@ export async function getMyAppointments(req, res) {
           ? {
               id: a.doctor.id,
               email: a.doctor.email,
-              displayName: buildDisplayName(a.doctor.email, null, null),
+              displayName: buildDisplayName(
+                a.doctor.email,
+                a.doctor.patientProfile?.firstName,
+                a.doctor.patientProfile?.lastName
+              ),
             }
           : null,
         patient: a.patient
           ? {
               id: a.patient.id,
               email: a.patient.email,
-              displayName: buildDisplayName(a.patient.email, null, null),
+              displayName: buildDisplayName(
+                a.patient.email,
+                a.patient.patientProfile?.firstName,
+                a.patient.patientProfile?.lastName
+              ),
             }
           : null,
       })),
