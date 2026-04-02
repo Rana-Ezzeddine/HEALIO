@@ -60,6 +60,41 @@ function canUsePermission(permissions, key) {
   return Boolean(permissions?.[key]);
 }
 
+const CAREGIVER_SCOPE_ALLOWED = [
+  "Support patient routines (medications, symptoms, appointments) only when patient grants access.",
+  "Work within one active patient context at a time to avoid cross-patient mistakes.",
+  "Use secure messaging only when messaging permission is enabled.",
+];
+
+const CAREGIVER_SCOPE_RESTRICTED = [
+  "Cannot diagnose or prescribe medical treatment.",
+  "Cannot access patient data that has not been explicitly granted by permission.",
+  "Cannot manage doctor-only workflows unless patient and doctor permissions allow related visibility.",
+];
+
+const CAREGIVER_PERMISSION_HELP = {
+  canViewMedications: {
+    label: "Medication visibility",
+    description: "See active medications and dose timing in patient scope.",
+  },
+  canViewSymptoms: {
+    label: "Symptom visibility",
+    description: "Review patient symptom logs and trends.",
+  },
+  canViewAppointments: {
+    label: "Appointment visibility",
+    description: "View upcoming and requested appointments.",
+  },
+  canMessageDoctor: {
+    label: "Secure messaging",
+    description: "Access patient-related communication workflows.",
+  },
+  canReceiveReminders: {
+    label: "Reminder routing",
+    description: "Receive care reminders configured by patient settings.",
+  },
+};
+
 export default function DashboardCaregiver() {
   const navigate = useNavigate();
   const user = getUser();
@@ -323,6 +358,44 @@ export default function DashboardCaregiver() {
           </section>
         ) : null}
 
+        <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900">Caregiver role scope</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Your role is support-focused and permission-scoped. Access depends on what the patient granted.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate("/profileCaregiver")}
+              className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
+            >
+              Review permissions
+            </button>
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+              <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">Can do</p>
+              <ul className="mt-2 space-y-2 text-sm text-emerald-900">
+                {CAREGIVER_SCOPE_ALLOWED.map((item) => (
+                  <li key={item}>• {item}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-semibold uppercase tracking-wide text-amber-700">Cannot do</p>
+              <ul className="mt-2 space-y-2 text-sm text-amber-900">
+                {CAREGIVER_SCOPE_RESTRICTED.map((item) => (
+                  <li key={item}>• {item}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+
         <section className="mt-6 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
           <DashboardCard
             title="Active Medications"
@@ -463,10 +536,20 @@ export default function DashboardCaregiver() {
             <section className="rounded-3xl bg-white p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-slate-900">Permission summary</h2>
               <div className="mt-4 space-y-3 text-sm text-slate-600">
-                <p>View medications: <span className="font-semibold text-slate-900">{canViewMedications ? "Enabled" : "Disabled"}</span></p>
-                <p>View symptoms: <span className="font-semibold text-slate-900">{canViewSymptoms ? "Enabled" : "Disabled"}</span></p>
-                <p>View appointments: <span className="font-semibold text-slate-900">{canViewAppointments ? "Enabled" : "Disabled"}</span></p>
-                <p>Message patient: <span className="font-semibold text-slate-900">{canMessagePatient ? "Enabled" : "Disabled"}</span></p>
+                {Object.entries(CAREGIVER_PERMISSION_HELP).map(([key, info]) => {
+                  const enabled = canUsePermission(activePermissions, key);
+                  return (
+                    <div key={key} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-semibold text-slate-900">{info.label}</p>
+                        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${enabled ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-700"}`}>
+                          {enabled ? "Enabled" : "Disabled"}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">{info.description}</p>
+                    </div>
+                  );
+                })}
               </div>
             </section>
           </div>
