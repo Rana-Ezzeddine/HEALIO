@@ -37,6 +37,10 @@ import CareTeam from "./pages/CareTeam";
 import CaregiverMyPatients from "./pages/CaregiverMyPatients";
 import CaregiverAppointments from "./pages/CaregiverAppointments";
 import CareNotes from "./pages/CareNotes";
+import CaregiverAcceptInvite from "./pages/CaregiverAcceptInvite";
+import CaregiverMedications from "./pages/CaregiverMedications";
+import CaregiverSymptoms from "./pages/CaregiverSymptoms";
+import CaregiverCareConcern from "./pages/CaregiverCareConcern";
 
 
 
@@ -251,16 +255,6 @@ function RoutedApp() {
         <Route path="/careNotes" element={<ProtectedRoute allowedRoles={["caregiver"]}><CareNotes /></ProtectedRoute>} />
 
         <Route
-          path="/caregiverOnboarding"
-          element={
-            <ProtectedRoute allowedRoles={["caregiver"]}>
-              <CaregiverOnboarding />
-            </ProtectedRoute>
-          }
-        />
-
-
-        <Route
           path="/caregiverMessages"
           element={
             <ProtectedRoute allowedRoles={["caregiver"]}>
@@ -268,6 +262,10 @@ function RoutedApp() {
             </ProtectedRoute>
           }
         />
+        <Route path="/caregiverAcceptInvite" element={<CaregiverAcceptInvite />} />
+        <Route path="/caregiverMedications" element={<ProtectedRoute allowedRoles={["caregiver"]}><CaregiverMedications /></ProtectedRoute>} />
+        <Route path="/caregiverSymptoms" element={<ProtectedRoute allowedRoles={["caregiver"]}><CaregiverSymptoms /></ProtectedRoute>} />
+        <Route path="/caregiverCareConcern" element={<ProtectedRoute allowedRoles={["caregiver"]}><CaregiverCareConcern /></ProtectedRoute>} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

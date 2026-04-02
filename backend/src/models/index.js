@@ -21,12 +21,12 @@ import Reminder from './Reminder.js';
 import ActivityLog from './ActivityLog.js';
 import CaregiverNote from './CaregiverNote.js';
 import PasswordResetToken from './PasswordResetToken.js';
-<<<<<<< HEAD
+
 import CaregiverInvite from './CaregiverInvite.js';
 import EmailVerificationToken from './EmailVerificationToken.js';
-=======
+
 import Availability from './Availability.js';
->>>>>>> bdb995dcce16e4953535574199999729d153c04c
+
 
 // ========================================
 // ASSOCIATIONS
@@ -299,11 +299,8 @@ export {
   Reminder,
   ActivityLog,
   CaregiverNote,
-<<<<<<< HEAD
   CaregiverInvite,
-=======
   Availability,
->>>>>>> bdb995dcce16e4953535574199999729d153c04c
 };
 
 export default {
@@ -322,9 +319,6 @@ export default {
   Reminder,
   ActivityLog,
   CaregiverNote,
-<<<<<<< HEAD
   CaregiverInvite,
-=======
   Availability,
->>>>>>> bdb995dcce16e4953535574199999729d153c04c
 };

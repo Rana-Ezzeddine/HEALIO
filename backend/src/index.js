@@ -38,6 +38,9 @@ import appointmentsRoutes from "./routes/appointments.routes.js";
 import caregiverRoutes from "./routes/caregiver.routes.js";
 import caregiverInviteRoutes from './routes/caregiverInvite.routes.js';
 import caregiverNotesRoutes from './routes/caregiverNotes.routes.js';
+import caregiverActionsRoutes from './routes/caregiverActions.routes.js';
+import caregiverInviteRoutes from './routes/caregiverInvite.routes.js';
+import caregiverNotesRoutes from './routes/caregiverNotes.routes.js';
 
 /////////////////////////////////////////////////
 // ✅ Initialize App
@@ -77,7 +80,9 @@ app.use("/api/appointments", appointmentsRoutes);
 app.use("/api/caregivers", caregiverRoutes);
 app.use('/api/caregiver-invites', caregiverInviteRoutes);
 app.use('/api/caregiver-notes', caregiverNotesRoutes);  
-
+app.use('/api/caregiver-actions', caregiverActionsRoutes);   
+app.use('/api/caregiver-invites', caregiverInviteRoutes);  
+app.use('/api/caregiver-notes', caregiverNotesRoutes); 
 
 
 /////////////////////////////////////////////////
