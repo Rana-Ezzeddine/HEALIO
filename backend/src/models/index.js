@@ -21,12 +21,27 @@ import Reminder from './Reminder.js';
 import ActivityLog from './ActivityLog.js';
 import CaregiverNote from './CaregiverNote.js';
 import PasswordResetToken from './PasswordResetToken.js';
+<<<<<<< HEAD
 import CaregiverInvite from './CaregiverInvite.js';
 import EmailVerificationToken from './EmailVerificationToken.js';
+=======
+import Availability from './Availability.js';
+>>>>>>> bdb995dcce16e4953535574199999729d153c04c
 
 // ========================================
 // ASSOCIATIONS
 // ========================================
+
+// User ↔ Availability (1:Many)
+User.hasMany(Availability, {
+  foreignKey: 'doctorId',
+  as: 'availabilities',
+  onDelete: 'CASCADE'
+});
+Availability.belongsTo(User, {
+  foreignKey: 'doctorId',
+  as: 'doctor'
+});
 
 // User ↔ PatientProfile (1:1)
 User.hasOne(PatientProfile, {
@@ -284,7 +299,11 @@ export {
   Reminder,
   ActivityLog,
   CaregiverNote,
+<<<<<<< HEAD
   CaregiverInvite,
+=======
+  Availability,
+>>>>>>> bdb995dcce16e4953535574199999729d153c04c
 };
 
 export default {
@@ -303,5 +322,9 @@ export default {
   Reminder,
   ActivityLog,
   CaregiverNote,
+<<<<<<< HEAD
   CaregiverInvite,
+=======
+  Availability,
+>>>>>>> bdb995dcce16e4953535574199999729d153c04c
 };

@@ -1,5 +1,12 @@
 import { apiUrl, authHeaders } from "./http";
 
+function makeApiError(data, fallback, status) {
+  const err = new Error(data.message || data.error || fallback);
+  err.code = data.code;
+  err.status = status;
+  return err;
+}
+
 async function request(path, options = {}) {
   const response = await fetch(`${apiUrl}${path}`, {
     ...options,
@@ -12,7 +19,7 @@ async function request(path, options = {}) {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.message || data.error || "Request failed");
+    throw makeApiError(data, "Request failed", response.status);
   }
 
   return data;

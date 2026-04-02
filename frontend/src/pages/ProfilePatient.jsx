@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiUrl, authHeaders, getUser } from "../api/http";
+import { apiUrl, authHeaders, getUser, updateSessionUser } from "../api/http";
 import Navbar from "../components/Navbar";
 import userMale from "../assets/userMale.png";
 import userFemale from "../assets/userFemale.png";
@@ -190,6 +190,18 @@ export default function ProfilePatient() {
 
       localStorage.setItem("firstName", data.firstName || profileState.firstName);
       localStorage.setItem("lastName", data.lastName || profileState.lastName);
+
+      const currentUser = getUser();
+      if (currentUser) {
+        updateSessionUser({
+          ...currentUser,
+          firstName: data.firstName || profileState.firstName || currentUser.firstName,
+          lastName: data.lastName || profileState.lastName || currentUser.lastName,
+        });
+      }
+
+      localStorage.setItem("healio:profile-updated", String(Date.now()));
+
       setIsEditing(false);
       setSaveStatus({ error: "", success: "Profile updated successfully." });
       await loadProfile();
@@ -214,14 +226,14 @@ export default function ProfilePatient() {
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.25em] text-sky-700">Patient Profile</p>
-              <h1 className="mt-3 bg-gradient-to-r from-cyan-500 to-blue-600 bg-clip-text text-5xl font-black text-transparent">
+              <h1 className="mt-3 bg-gradient-to-r from-cyan-500 to-blue-600 bg-clip-text text-3xl font-black text-transparent">
                 My Profile
               </h1>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
                 Review and update your personal, medical, and contact information. A more complete profile makes onboarding, emergency access, and care-team coordination smoother.
               </p>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col items-center gap-4">
               <div className="h-32 w-32 overflow-hidden rounded-full border border-slate-200">
                 <img
                   className="h-full w-full object-cover"

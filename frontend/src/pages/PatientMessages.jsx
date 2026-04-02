@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Navbar from "../components/Navbar";
 import { getUser } from "../api/http";
-import { getMyDoctors } from "../api/links";
+import { getMyCaregivers } from "../api/links";
 import {
   createConversation,
   getConversationMessages,
@@ -23,7 +23,7 @@ function getOtherParticipant(conversation, currentUserId) {
 }
 
 function participantLabel(participant) {
-  return participant?.displayName || participant?.email || "Doctor";
+  return participant?.displayName || participant?.email || "Caregiver";
 }
 
 export default function PatientMessages() {
@@ -31,8 +31,8 @@ export default function PatientMessages() {
   const currentUserId = user?.id;
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [doctorOptions, setDoctorOptions] = useState([]);
-  const [selectedDoctorId, setSelectedDoctorId] = useState("");
+  const [caregiverOptions, setCaregiverOptions] = useState([]);
+  const [selectedCaregiverId, setSelectedCaregiverId] = useState("");
   const [conversations, setConversations] = useState([]);
   const [selectedConversationId, setSelectedConversationId] = useState("");
   const [messages, setMessages] = useState([]);
@@ -63,22 +63,22 @@ export default function PatientMessages() {
       setError("");
 
       try {
-        const [doctorsData, conversationsData] = await Promise.all([
-          getMyDoctors(),
+        const [caregiversData, conversationsData] = await Promise.all([
+          getMyCaregivers(),
           getConversations(),
         ]);
 
         if (cancelled) return;
 
-        const doctors = doctorsData.doctors || [];
+        const caregivers = caregiversData.caregivers || [];
         const conversationsList = conversationsData.conversations || [];
-        const doctorMap = new Map();
+        const caregiverMap = new Map();
 
-        for (const record of doctors) {
-          if (record.doctor?.id) {
-            doctorMap.set(record.doctor.id, {
-              id: record.doctor.id,
-              label: participantLabel(record.doctor),
+        for (const record of caregivers) {
+          if (record.caregiver?.id) {
+            caregiverMap.set(record.caregiver.id, {
+              id: record.caregiver.id,
+              label: participantLabel(record.caregiver),
             });
           }
         }
@@ -86,14 +86,14 @@ export default function PatientMessages() {
         for (const conversation of conversationsList) {
           const other = getOtherParticipant(conversation, currentUserId);
           if (other?.id) {
-            doctorMap.set(other.id, {
+            caregiverMap.set(other.id, {
               id: other.id,
               label: participantLabel(other),
             });
           }
         }
 
-        setDoctorOptions(Array.from(doctorMap.values()).sort((left, right) => left.label.localeCompare(right.label)));
+        setCaregiverOptions(Array.from(caregiverMap.values()).sort((left, right) => left.label.localeCompare(right.label)));
         setConversations(conversationsList);
         setSelectedConversationId((current) => current || conversationsList[0]?.id || "");
       } catch (err) {
@@ -160,19 +160,19 @@ export default function PatientMessages() {
     event.preventDefault();
     setCreateError("");
 
-    if (!selectedDoctorId) {
-      setCreateError("Select a doctor first.");
+    if (!selectedCaregiverId) {
+      setCreateError("Select a caregiver first.");
       return;
     }
 
     try {
-      const data = await createConversation({ recipientId: selectedDoctorId });
+      const data = await createConversation({ recipientId: selectedCaregiverId });
       const conversationId = data.conversation?.id;
       await loadConversations();
       if (conversationId) {
         setSelectedConversationId(conversationId);
       }
-      setSelectedDoctorId("");
+      setSelectedCaregiverId("");
     } catch (err) {
       setCreateError(err.message || "Failed to start conversation.");
     }
@@ -204,7 +204,7 @@ export default function PatientMessages() {
       <main className="pt-28 max-w-6xl mx-auto px-6 py-8">
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-slate-800">Messages</h1>
-          <p className="mt-1 text-slate-500">Chat securely with doctors linked to your care.</p>
+          <p className="mt-1 text-slate-500">Chat securely with caregivers linked to your care.</p>
         </div>
 
         {error && (
@@ -217,7 +217,7 @@ export default function PatientMessages() {
           <aside className="md:col-span-1 bg-white rounded-2xl shadow p-4">
             <input
               type="text"
-              placeholder="Search doctor..."
+              placeholder="Search caregiver..."
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               className="w-full mb-4 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
@@ -225,14 +225,14 @@ export default function PatientMessages() {
 
             <form onSubmit={handleCreateConversation} className="space-y-2 mb-4">
               <select
-                value={selectedDoctorId}
-                onChange={(event) => setSelectedDoctorId(event.target.value)}
+                value={selectedCaregiverId}
+                onChange={(event) => setSelectedCaregiverId(event.target.value)}
                 className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
               >
-                <option value="">Start chat with doctor</option>
-                {doctorOptions.map((doctor) => (
-                  <option key={doctor.id} value={doctor.id}>
-                    {doctor.label}
+                <option value="">Start chat with caregiver</option>
+                {caregiverOptions.map((caregiver) => (
+                  <option key={caregiver.id} value={caregiver.id}>
+                    {caregiver.label}
                   </option>
                 ))}
               </select>

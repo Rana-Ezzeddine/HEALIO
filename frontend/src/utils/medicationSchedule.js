@@ -13,7 +13,7 @@ function parseDateOnly(dateString) {
   return new Date(year, month, day, 0, 0, 0, 0);
 }
 
-export function isActiveMedication(medication, now) {
+export function isActiveMedication(medication, now = new Date()) {
   const start = parseDateOnly(medication?.startDate);
   const end = parseDateOnly(medication?.endDate);
 

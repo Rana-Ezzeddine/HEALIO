@@ -6,7 +6,7 @@ import { getMyAppointments } from "../api/appointments";
 import { getConversations } from "../api/messaging";
 import { getMyCaregivers, getMyDoctors } from "../api/links";
 import { buildPatientSetupChecklist } from "../utils/patientSetup";
-import { formatDoseTime, getNextMedicationDose } from "../utils/medicationSchedule";
+import { formatDoseTime, getNextMedicationDose, isActiveMedication } from "../utils/medicationSchedule";
 
 function formatAppointmentDate(dateLike) {
   return new Date(dateLike).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -29,7 +29,7 @@ function DashboardCard({ title, mainText, subText, navPage }) {
       onClick={() => navigate(navPage)}
       className="group rounded-3xl bg-white p-5 text-left shadow-sm transition hover:-translate-y-1 hover:bg-slate-50 hover:shadow-md"
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-1">
         <div>
           <h3 className="text-sm text-slate-500">{title}</h3>
           <p className="mt-1 text-2xl font-bold text-slate-900">{mainText}</p>
@@ -44,7 +44,6 @@ function DashboardCard({ title, mainText, subText, navPage }) {
 export default function DashboardPatient() {
   const navigate = useNavigate();
   const user = getUser();
-  const greetingName = user?.firstName || user?.email || "Patient";
   const [appointments, setAppointments] = useState([]);
   const [conversationCount, setConversationCount] = useState(0);
   const [medications, setMedications] = useState([]);
@@ -52,55 +51,89 @@ export default function DashboardPatient() {
   const [profile, setProfile] = useState({});
   const [doctorCount, setDoctorCount] = useState(0);
   const [caregiverCount, setCaregiverCount] = useState(0);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const greetingName =
+    profile?.firstName || user?.firstName || localStorage.getItem("firstName") || user?.email || "Patient";
+
+  useEffect(() => {
+    function refreshDashboard() {
+      setReloadKey((current) => current + 1);
+    }
+
+    function onStorage(event) {
+      if (event.key === "healio:profile-updated") {
+        refreshDashboard();
+      }
+    }
+
+    window.addEventListener("focus", refreshDashboard);
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      window.removeEventListener("focus", refreshDashboard);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadDashboardData() {
-      try {
-        const [appointmentsData, conversationsData, medicationsRes, symptomsRes, profileRes, doctorsRes, caregiversRes] =
-          await Promise.all([
-            getMyAppointments(),
-            getConversations(),
-            fetch(`${apiUrl}/api/medications`, {
-              headers: { "Content-Type": "application/json", ...authHeaders() },
-            }).then((res) => (res.ok ? res.json() : [])),
-            fetch(`${apiUrl}/api/symptoms`, {
-              headers: { "Content-Type": "application/json", ...authHeaders() },
-            }).then((res) => (res.ok ? res.json() : [])),
-            fetch(`${apiUrl}/api/profile`, {
-              headers: { "Content-Type": "application/json", ...authHeaders() },
-            }).then(async (res) => (res.status === 404 ? {} : res.json().catch(() => ({})))),
-            getMyDoctors().catch(() => ({ doctors: [] })),
-            getMyCaregivers().catch(() => ({ caregivers: [] })),
-          ]);
+      const results = await Promise.allSettled([
+        getMyAppointments(),
+        getConversations(),
+        fetch(`${apiUrl}/api/medications`, {
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+        }).then((res) => (res.ok ? res.json() : [])),
+        fetch(`${apiUrl}/api/symptoms`, {
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+        }).then((res) => (res.ok ? res.json() : [])),
+        fetch(`${apiUrl}/api/profile`, {
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+        }).then(async (res) => {
+          if (res.status === 404) return {};
+          if (!res.ok) throw new Error("Failed to load profile");
+          return res.json().catch(() => ({}));
+        }),
+        getMyDoctors(),
+        getMyCaregivers(),
+      ]);
 
-        if (cancelled) return;
+      if (cancelled) return;
 
-        setAppointments(appointmentsData.appointments || []);
-        setConversationCount((conversationsData.conversations || []).length);
-        setMedications(Array.isArray(medicationsRes) ? medicationsRes : []);
-        setSymptoms(Array.isArray(symptomsRes) ? symptomsRes : []);
-        setProfile(profileRes || {});
-        setDoctorCount((doctorsRes.doctors || []).length);
-        setCaregiverCount((caregiversRes.caregivers || []).length);
-      } catch {
-        if (cancelled) return;
-        setAppointments([]);
-        setConversationCount(0);
-        setMedications([]);
-        setSymptoms([]);
-        setProfile({});
-        setDoctorCount(0);
-        setCaregiverCount(0);
-      }
+      const [appointmentsResult, conversationsResult, medicationsResult, symptomsResult, profileResult, doctorsResult, caregiversResult] = results;
+
+      setAppointments(
+        appointmentsResult.status === "fulfilled" ? appointmentsResult.value.appointments || [] : []
+      );
+      setConversationCount(
+        conversationsResult.status === "fulfilled" ? (conversationsResult.value.conversations || []).length : 0
+      );
+      setMedications(
+        medicationsResult.status === "fulfilled" && Array.isArray(medicationsResult.value)
+          ? medicationsResult.value
+          : []
+      );
+      setSymptoms(
+        symptomsResult.status === "fulfilled" && Array.isArray(symptomsResult.value)
+          ? symptomsResult.value
+          : []
+      );
+      setProfile(profileResult.status === "fulfilled" ? profileResult.value || {} : {});
+      setDoctorCount(
+        doctorsResult.status === "fulfilled" ? (doctorsResult.value.doctors || []).length : 0
+      );
+      setCaregiverCount(
+        caregiversResult.status === "fulfilled" ? (caregiversResult.value.caregivers || []).length : 0
+      );
     }
 
     loadDashboardData();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadKey]);
 
   const upcomingAppointments = useMemo(
     () =>
@@ -111,7 +144,11 @@ export default function DashboardPatient() {
   );
 
   const nextAppointment = upcomingAppointments[0];
-  const nextDose = useMemo(() => getNextMedicationDose(medications), [medications]);
+  const activeMedications = useMemo(
+    () => medications.filter((medication) => isActiveMedication(medication)),
+    [medications]
+  );
+  const nextDose = useMemo(() => getNextMedicationDose(activeMedications), [activeMedications]);
 
   const checklist = useMemo(
     () =>
@@ -191,7 +228,7 @@ export default function DashboardPatient() {
         <section className="mt-6 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
           <DashboardCard
             title="Active Medications"
-            mainText={`${medications.length} tracked`}
+            mainText={`${activeMedications.length} tracked`}
             subText={nextDose ? `Next dose: ${nextDose.medication?.name} at ${formatDoseTime(nextDose.at)}` : "Add medication reminders"}
             navPage="/medication"
           />
@@ -206,9 +243,9 @@ export default function DashboardPatient() {
             navPage="/patientAppointments"
           />
           <DashboardCard
-            title="Doctor Conversations"
+            title="Caregiver Conversations"
             mainText={`${conversationCount}`}
-            subText="Open secure chats"
+            subText="Open secure caregiver chats"
             navPage="/patientMessages"
           />
           <DashboardCard

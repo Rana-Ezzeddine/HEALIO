@@ -39,6 +39,12 @@ const Appointment = sequelize.define('Appointment', {
     type: DataTypes.STRING,
     allowNull: true
   },
+  requestedAt: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.getDataValue('createdAt');
+    }
+  },
   status: {
     type: DataTypes.ENUM('requested', 'scheduled', 'cancelled', 'completed', 'denied'),
     allowNull: false,

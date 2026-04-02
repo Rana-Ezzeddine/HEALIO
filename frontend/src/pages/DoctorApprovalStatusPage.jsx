@@ -119,12 +119,12 @@ export default function DoctorApprovalStatusPage() {
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.24em] text-sky-500">Doctor application</p>
-                <h1 className="mt-3 text-4xl font-black tracking-tight text-slate-900">Approval Status</h1>
+                <h1 className="mt-3 text-4xl font-black tracking-tight text-slate-900">Doctor Application Status</h1>
                 <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600">{statusMessage(application)}</p>
               </div>
               {application ? (
                 <span className={`inline-flex rounded-full border px-4 py-2 text-sm font-semibold ${badgeStyle}`}>
-                  {application.requestedMoreInfo && application.status === DOCTOR_APPROVAL_STATUS.PENDING
+                  {application.requestedMoreInfo
                     ? "More information requested"
                     : statusLabels[application.status] || application.status}
                 </span>
