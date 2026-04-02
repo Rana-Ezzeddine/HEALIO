@@ -6,6 +6,7 @@ import logo from "../assets/logo.png";
 
 const PUBLIC_PATHS = new Set(["/", "/support", "/privacy", "/terms"]);
 
+
 function PublicNavLink({ to, children }) {
   const isAnchor = to.startsWith("#");
 
@@ -34,6 +35,7 @@ export default function Navbar({ onLogin, onSignup }) {
   const userRole = user?.role?.toLowerCase() || null;
   const isDoctor = userRole === "doctor";
   const isPatient = userRole === "patient";
+  const isCaregiver = userRole === "caregiver";
   const doctorApprovalHeld = needsDoctorApprovalHold(user);
   const dashboardPathByRole = {
     doctor: "/dashboardDoctor",
@@ -63,6 +65,13 @@ export default function Navbar({ onLogin, onSignup }) {
   const isCaregiverMessages = path.toLowerCase().startsWith("/caregivermessages");
   const isLanding = path === "/";
   const isPublicPage = PUBLIC_PATHS.has(path.toLowerCase());
+  const isCaregiverMyPatients = path.toLowerCase().startsWith("/caregivermypatients");
+  const isCaregiverAppointments = path.toLowerCase().startsWith("/caregiverappointments");
+  const isCareNotes = path.toLowerCase().startsWith("/carenotes");
+  const isCaregiverMedications = path.toLowerCase().startsWith("/caregivermedications");
+  const isCaregiverSymptoms = path.toLowerCase().startsWith("/caregiverSymptoms");
+  const isCaregiverCareConcern = path.toLowerCase().startsWith("/caregivercareconcern");
+
 
   useEffect(() => {
     if (!showLogoutConfirm) return;
@@ -224,6 +233,42 @@ export default function Navbar({ onLogin, onSignup }) {
                     Messages
                   </button>
                 )}
+
+                {isCaregiver && (
+                  <>
+                    <button onClick={() => navigate("/caregiverMyPatients")}
+                      className={`text-sm font-medium transition ${isCaregiverMyPatients ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"}`}>
+                      My Patients
+                    </button>
+                    <button
+                      onClick={() => navigate("/caregiverMedications")}
+                      className={`text-sm font-medium transition ${isCaregiverMedications ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"}`}
+                    >
+                      Medications
+                    </button>
+                    <button onClick={() => navigate("/caregiverAppointments")}
+                      className={`text-sm font-medium transition ${isCaregiverAppointments ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"}`}>
+                      Appointments
+                    </button>
+                    <button onClick={() => navigate("/careNotes")}
+                      className={`text-sm font-medium transition ${isCareNotes ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"}`}>
+                      Care Notes
+                    </button>
+                    <button
+                      onClick={() => navigate("/caregiverCareConcern")}
+                      className={`text-sm font-medium transition ${isCaregiverCareConcern ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"}`}
+                    >
+                      Care Concerns
+                    </button>
+                  </>
+                )}
+{isPatient && (
+  <button onClick={() => navigate("/careTeam")}
+    className={`text-sm font-medium transition ${path === "/careTeam" ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"}`}>
+    Care Team
+  </button>
+)}
+
                 {userRole === "caregiver" && (
                   <button
                     onClick={() => navigate("/caregiverMessages")}
@@ -234,6 +279,7 @@ export default function Navbar({ onLogin, onSignup }) {
                     Messages
                   </button>
                 )}
+
 
                 <button
                   onClick={() => navigate(profilePath)}

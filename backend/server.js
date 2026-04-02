@@ -51,9 +51,16 @@ import messagingRoutes from "./src/routes/messaging.routes.js";
 import auditRoutes from './src/routes/audit.routes.js';
 import emergencyRoutes from './src/routes/emergency.routes.js';
 import caregiverNotesRoutes from './src/routes/caregiverNotes.routes.js';
+
 import doctorNotesRoutes from './src/routes/doctorNotes.routes.js';
 import patientmedHistoryRoutes from './src/routes/patientmedHistory.routes.js';
 import searchRoutes from './src/routes/search.routes.js';
+
+import doctorNotesRoutes from './routes/doctorNotes.routes.js';
+import patientmedHistoryRoutes from './src/routes/patientmedHistory.routes.js';
+import patientmedHistoryRoutes from '.src/routes/patientmedHistory.routes.js';
+import searchRoutes from '.src/routes/search.routes.js';
+
 
 /////////////////////////////////////////////////
 // Initialize App
@@ -128,7 +135,9 @@ app.use("/api/caregiver-notes", caregiverNotesRoutes);
 app.use('/api/doctor-notes', doctorNotesRoutes);
 app.use('/api/patientmedhistory', patientmedHistoryRoutes);
 app.use('/api/search', searchRoutes);
-
+app.use('/api/patient-med-history', patientmedHistoryRoutes);
+app.use('/api/search', searchRoutes);
+app.use('/api/doctor-notes', doctorNotesRoutes);
 /////////////////////////////////////////////////
 // 404 Handler
 /////////////////////////////////////////////////
