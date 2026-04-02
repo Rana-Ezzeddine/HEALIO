@@ -44,7 +44,7 @@ const Symptom = sequelize.define('Symptom', {
     type: DataTypes.DATE,
     allowNull: false,
     defaultValue: DataTypes.NOW
-  }
+  },
   loggedBy: {
     type: DataTypes.ENUM('patient', 'caregiver'),
     allowNull: false,
