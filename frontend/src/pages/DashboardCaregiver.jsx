@@ -631,6 +631,12 @@ export default function DashboardCaregiver() {
                     enabled: canViewAppointments,
                   },
                   {
+                    label: "Care notes",
+                    href: "/caregiverNotes",
+                    style: "bg-teal-100 text-teal-700",
+                    enabled: linkedPatients.length > 0,
+                  },
+                  {
                     label: "Open patient chat",
                     href: "/caregiverMessages",
                     style: "bg-cyan-100 text-cyan-700",

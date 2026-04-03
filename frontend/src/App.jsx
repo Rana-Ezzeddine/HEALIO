@@ -20,6 +20,7 @@ import CaregiverMessages from "./pages/CaregiverMessages";
 import DoctorAppointments from "./pages/DoctorAppointments";
 import PatientAppointments from "./pages/PatientAppointments";
 import CaregiverAppointments from "./pages/CaregiverAppointments";
+import CaregiverCareNotes from "./pages/CaregiverCareNotes";
 import CareTeamPatient from "./pages/CareTeamPatient";
 import PatientEmergency from "./pages/PatientEmergency";
 import VerifyEmailPage from "./pages/VerifyEmailPage";
@@ -235,6 +236,14 @@ function RoutedApp() {
           element={
             <ProtectedRoute allowedRoles={["caregiver"]}>
               <CaregiverAppointments />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/caregiverNotes"
+          element={
+            <ProtectedRoute allowedRoles={["caregiver"]}>
+              <CaregiverCareNotes />
             </ProtectedRoute>
           }
         />

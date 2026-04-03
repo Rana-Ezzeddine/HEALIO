@@ -62,6 +62,7 @@ export default function Navbar({ onLogin, onSignup }) {
   const isDoctorAppointments = path.toLowerCase().startsWith("/doctorappointments");
   const isPatientAppointments = path.toLowerCase().startsWith("/patientappointments");
   const isCaregiverAppointments = path.toLowerCase().startsWith("/caregiverappointments");
+  const isCaregiverNotes = path.toLowerCase().startsWith("/caregivernotes");
   const isHealthSummary = path.toLowerCase().startsWith("/healthsummary");
   const isPatientMessages = path.toLowerCase().startsWith("/patientmessages");
   const isPatientNotifications = path.toLowerCase().startsWith("/patient-notifications");
@@ -228,6 +229,16 @@ export default function Navbar({ onLogin, onSignup }) {
                     }`}
                   >
                     Appointments
+                  </button>
+                )}
+                {userRole === "caregiver" && (
+                  <button
+                    onClick={() => navigate("/caregiverNotes")}
+                    className={`text-sm font-medium transition ${
+                      isCaregiverNotes ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Care Notes
                   </button>
                 )}
                 {isPatient && (
