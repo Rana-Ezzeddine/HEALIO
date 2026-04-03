@@ -279,41 +279,154 @@ export default function DashboardCaregiver() {
       <Navbar />
 
       <main className="mx-auto max-w-6xl px-6 pb-10 pt-28">
-        <section className="rounded-[2rem] bg-gradient-to-r from-slate-900 via-sky-800 to-cyan-600 p-8 text-white shadow-xl">
-          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-white/75">Caregiver Dashboard</p>
-          <h1 className="mt-3 text-4xl font-black">Welcome back, {greetingName}</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-white/85">
-            Manage support tasks in a patient-scoped context so each action is tied to the right person.
-          </p>
+        {linkedPatients.length === 0 ? (
+          <>
+            <section className="rounded-[2rem] bg-gradient-to-r from-slate-900 via-emerald-800 to-teal-600 p-12 text-white shadow-xl">
+              <p className="text-sm font-semibold uppercase tracking-[0.25em] text-white/75">Caregiver Dashboard</p>
+              <h1 className="mt-3 text-4xl font-black">Welcome, {greetingName}</h1>
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-white/85">
+                You're all set. Now let's connect you with a patient. Once you're linked, you'll be able to support their medications, symptoms, appointments, and communication—within the permissions they grant.
+              </p>
+            </section>
 
-          <div className="mt-4 max-w-sm">
-            <label className="mb-3 block text-xs font-semibold uppercase tracking-[0.16em] text-white/70">
-              Active patient context
-            </label>
-            <select
-              value={activePatientId}
-              onChange={(event) => {
-                const nextId = event.target.value;
-                setActivePatientId(nextId);
-                setActiveCaregiverPatientId(nextId);
-              }}
-              className="w-full rounded-xl border border-white/30 bg-white/95 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-300"
-            >
-              {linkedPatients.length > 0 ? (
-                linkedPatients.map(({ patient }) => (
-                  <option key={patient?.id} value={patient?.id || ""}>
-                    {patient?.displayName || patient?.email || "Patient"}
-                  </option>
-                ))
-              ) : (
-                <option value="">No linked patients</option>
-              )}
-            </select>
-          </div>
-        </section>
+            <section className="mt-10 grid gap-6 lg:grid-cols-2">
+              <div className="order-2 flex flex-col justify-between lg:order-1">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900">Caregiver Responsibilities</h2>
+                  <p className="mt-2 text-sm text-slate-600">
+                    Understand your role so you can support patients confidently and appropriately.
+                  </p>
 
-        {caregiverSetupChecklist.incomplete ? (
-          <section className="mt-6 rounded-3xl border border-cyan-100 bg-white p-6 shadow-sm">
+                  <div className="mt-6 space-y-4">
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                      <p className="text-sm font-bold uppercase tracking-wide text-emerald-700">✓ You can do this</p>
+                      <ul className="mt-3 space-y-2 text-sm text-emerald-900">
+                        {CAREGIVER_SCOPE_ALLOWED.map((item) => (
+                          <li key={item} className="flex gap-2">
+                            <span className="font-bold">•</span>
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                      <p className="text-sm font-bold uppercase tracking-wide text-amber-700">✗ You cannot do this</p>
+                      <ul className="mt-3 space-y-2 text-sm text-amber-900">
+                        {CAREGIVER_SCOPE_RESTRICTED.map((item) => (
+                          <li key={item} className="flex gap-2">
+                            <span className="font-bold">•</span>
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="order-1 lg:order-2">
+                <div className="rounded-3xl bg-gradient-to-br from-emerald-50 to-teal-50 border-2 border-emerald-200 p-8 text-center shadow-sm">
+                  <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
+                    <span className="text-3xl">👥</span>
+                  </div>
+
+                  <h3 className="text-2xl font-bold text-slate-900">Ready to get linked?</h3>
+                  <p className="mt-2 text-sm text-slate-600">
+                    A patient will send you an invitation link when they want to add you as a caregiver. Check your pending invitations below.
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => navigate("/profileCaregiver")}
+                    className="mt-6 w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 px-6 py-4 text-base font-bold text-white shadow-md hover:shadow-lg hover:from-emerald-600 hover:to-teal-600 transition"
+                  >
+                    Check pending invitations
+                  </button>
+
+                  <p className="mt-4 text-xs text-slate-500">
+                    No invitations yet? Share your email with the patient or ask them to find you by email in their Care Team section.
+                  </p>
+
+                  <div className="mt-6 border-t border-emerald-200 pt-6">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-600">In the meantime</p>
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => navigate("/profileCaregiver")}
+                        className="w-full rounded-2xl bg-white border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
+                      >
+                        Complete your profile
+                      </button>
+                      <p className="text-xs text-slate-500 text-center">
+                        Adding your details helps patients feel confident linking with you.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="mt-10 rounded-3xl bg-white border border-slate-200 p-8 shadow-sm">
+              <h2 className="text-xl font-bold text-slate-900">How it works</h2>
+              <div className="mt-6 grid gap-6 md:grid-cols-3">
+                <div className="text-center">
+                  <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-lg font-bold text-sky-700">1</div>
+                  <h3 className="mt-3 font-semibold text-slate-900">Patient invites you</h3>
+                  <p className="mt-2 text-sm text-slate-600">A patient sends you a caregiver invitation link via email.</p>
+                </div>
+
+                <div className="text-center">
+                  <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-lg font-bold text-sky-700">2</div>
+                  <h3 className="mt-3 font-semibold text-slate-900">You accept and set permissions</h3>
+                  <p className="mt-2 text-sm text-slate-600">Review what the patient is allowing you to see and do.</p>
+                </div>
+
+                <div className="text-center">
+                  <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-lg font-bold text-sky-700">3</div>
+                  <h3 className="mt-3 font-semibold text-slate-900">Start supporting</h3>
+                  <p className="mt-2 text-sm text-slate-600">Access their care team dashboard and help monitor their health journey.</p>
+                </div>
+              </div>
+            </section>
+          </>
+        ) : (
+          <>
+            <section className="rounded-[2rem] bg-gradient-to-r from-slate-900 via-sky-800 to-cyan-600 p-8 text-white shadow-xl">
+              <p className="text-sm font-semibold uppercase tracking-[0.25em] text-white/75">Caregiver Dashboard</p>
+              <h1 className="mt-3 text-4xl font-black">Welcome back, {greetingName}</h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-white/85">
+                Manage support tasks in a patient-scoped context so each action is tied to the right person.
+              </p>
+
+              <div className="mt-4 max-w-sm">
+                <label className="mb-3 block text-xs font-semibold uppercase tracking-[0.16em] text-white/70">
+                  Active patient context
+                </label>
+                <select
+                  value={activePatientId}
+                  onChange={(event) => {
+                    const nextId = event.target.value;
+                    setActivePatientId(nextId);
+                    setActiveCaregiverPatientId(nextId);
+                  }}
+                  className="w-full rounded-xl border border-white/30 bg-white/95 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-300"
+                >
+                  {linkedPatients.length > 0 ? (
+                    linkedPatients.map(({ patient }) => (
+                      <option key={patient?.id} value={patient?.id || ""}>
+                        {patient?.displayName || patient?.email || "Patient"}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">No linked patients</option>
+                  )}
+                </select>
+              </div>
+            </section>
+
+            {caregiverSetupChecklist.incomplete ? (
+              <section className="mt-6 rounded-3xl border border-cyan-100 bg-white p-6 shadow-sm">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-wide text-cyan-700">Caregiver setup checklist</p>
@@ -554,6 +667,8 @@ export default function DashboardCaregiver() {
             </section>
           </div>
         </section>
+          </>
+        )}
       </main>
     </div>
   );
