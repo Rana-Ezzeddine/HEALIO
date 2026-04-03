@@ -61,6 +61,7 @@ export default function Navbar({ onLogin, onSignup }) {
   const isEmergency = path.toLowerCase().startsWith("/emergency");
   const isDoctorAppointments = path.toLowerCase().startsWith("/doctorappointments");
   const isPatientAppointments = path.toLowerCase().startsWith("/patientappointments");
+  const isCaregiverAppointments = path.toLowerCase().startsWith("/caregiverappointments");
   const isHealthSummary = path.toLowerCase().startsWith("/healthsummary");
   const isPatientMessages = path.toLowerCase().startsWith("/patientmessages");
   const isPatientNotifications = path.toLowerCase().startsWith("/patient-notifications");
@@ -214,6 +215,16 @@ export default function Navbar({ onLogin, onSignup }) {
                     onClick={() => navigate("/patientAppointments")}
                     className={`text-sm font-medium transition ${
                       isPatientAppointments ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Appointments
+                  </button>
+                )}
+                {userRole === "caregiver" && (
+                  <button
+                    onClick={() => navigate("/caregiverAppointments")}
+                    className={`text-sm font-medium transition ${
+                      isCaregiverAppointments ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
                     }`}
                   >
                     Appointments

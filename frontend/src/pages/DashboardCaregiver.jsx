@@ -533,7 +533,7 @@ export default function DashboardCaregiver() {
                 ? (nextAppointment ? `${formatAppointmentTime(nextAppointment.startsAt)} scheduled` : "No upcoming visit")
                 : "Enable appointment visibility"
             }
-            navPage="/patientAppointments"
+            navPage="/caregiverAppointments"
             disabled={!canViewAppointments}
           />
           {/* <DashboardCard
@@ -623,6 +623,12 @@ export default function DashboardCaregiver() {
                     href: "/symptoms",
                     style: "bg-indigo-100 text-indigo-700",
                     enabled: canViewSymptoms,
+                  },
+                  {
+                    label: "Appointments",
+                    href: "/caregiverAppointments",
+                    style: "bg-amber-100 text-amber-700",
+                    enabled: canViewAppointments,
                   },
                   {
                     label: "Open patient chat",
