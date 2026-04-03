@@ -663,6 +663,39 @@ export default function DashboardCaregiver() {
                   </>
                 )}
               </div>
+              <div className="rounded-2xl border border-slate-200 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-semibold text-slate-900">Next appointment</p>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/caregiverAppointments")}
+                    disabled={!canViewAppointments}
+                    className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
+                      canViewAppointments
+                        ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                        : "cursor-not-allowed bg-slate-100 text-slate-400"
+                    }`}
+                  >
+                    Open appts
+                  </button>
+                </div>
+
+                {!canViewAppointments ? (
+                  <p className="mt-1 text-sm text-slate-600">Not visible in current permissions.</p>
+                ) : !nextAppointment ? (
+                  <p className="mt-1 text-sm text-slate-600">No upcoming appointment booked.</p>
+                ) : (
+                  <>
+                    <p className="mt-1 text-sm text-slate-600">
+                      <span className="font-semibold text-slate-900">{formatAppointmentDate(nextAppointment.startsAt)}</span>
+                      {" "}at {formatAppointmentTime(nextAppointment.startsAt)}
+                    </p>
+                    <p className="mt-2 text-xs text-slate-500">
+                      Status: {nextAppointment.status || "scheduled"}
+                    </p>
+                  </>
+                )}
+              </div>
               {linkedPatients.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
                   No linked patients yet. Accept an invitation to unlock patient-scoped tasks.
