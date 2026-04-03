@@ -37,6 +37,7 @@ export default function PatientMessages() {
   const [selectedConversationId, setSelectedConversationId] = useState("");
   const [messages, setMessages] = useState([]);
   const [draftMessage, setDraftMessage] = useState("");
+  const [showCreatePanel, setShowCreatePanel] = useState(false);
   const [loading, setLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [error, setError] = useState("");
@@ -153,6 +154,20 @@ export default function PatientMessages() {
     });
   }, [conversations, currentUserId, searchTerm]);
 
+  const caregiverIdsWithConversation = useMemo(() => {
+    const ids = new Set();
+    for (const conversation of conversations) {
+      const other = getOtherParticipant(conversation, currentUserId);
+      if (other?.id) ids.add(other.id);
+    }
+    return ids;
+  }, [conversations, currentUserId]);
+
+  const availableCaregiverOptions = useMemo(
+    () => caregiverOptions.filter((caregiver) => !caregiverIdsWithConversation.has(caregiver.id)),
+    [caregiverIdsWithConversation, caregiverOptions]
+  );
+
   const selectedConversation =
     conversations.find((conversation) => conversation.id === selectedConversationId) || null;
 
@@ -166,6 +181,17 @@ export default function PatientMessages() {
     }
 
     try {
+      const existingConversation = conversations.find((conversation) => {
+        const other = getOtherParticipant(conversation, currentUserId);
+        return other?.id === selectedCaregiverId;
+      });
+
+      if (existingConversation?.id) {
+        setSelectedConversationId(existingConversation.id);
+        setCreateError("A conversation with this caregiver already exists.");
+        return;
+      }
+
       const data = await createConversation({ recipientId: selectedCaregiverId });
       const conversationId = data.conversation?.id;
       await loadConversations();
@@ -173,6 +199,7 @@ export default function PatientMessages() {
         setSelectedConversationId(conversationId);
       }
       setSelectedCaregiverId("");
+      setShowCreatePanel(false);
     } catch (err) {
       setCreateError(err.message || "Failed to start conversation.");
     }
@@ -198,54 +225,73 @@ export default function PatientMessages() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="h-screen overflow-hidden bg-slate-50 flex flex-col">
       <Navbar />
 
-      <main className="pt-28 max-w-6xl mx-auto px-6 py-8">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-slate-800">Messages</h1>
+      <main className="pt-26 max-w-6xl mx-auto w-full px-6 pb-5 flex-1 min-h-0 flex flex-col overflow-hidden">
+        <div className="mb-6 shrink-0">
+          <h1 className="text-3xl font-bold text-slate-800">Caregiver Messages</h1>
           <p className="mt-1 text-slate-500">Chat securely with caregivers linked to your care.</p>
         </div>
 
         {error && (
-          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shrink-0">
             {error}
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <aside className="md:col-span-1 bg-white rounded-2xl shadow p-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 flex-1 min-h-0 pb-2">
+          <aside className="md:col-span-1 bg-white rounded-2xl shadow p-4 h-full overflow-hidden flex flex-col">
             <input
               type="text"
               placeholder="Search caregiver..."
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              className="w-full mb-4 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              className="w-full mb-4 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 shrink-0"
             />
 
-            <form onSubmit={handleCreateConversation} className="space-y-2 mb-4">
-              <select
-                value={selectedCaregiverId}
-                onChange={(event) => setSelectedCaregiverId(event.target.value)}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-              >
-                <option value="">Start chat with caregiver</option>
-                {caregiverOptions.map((caregiver) => (
-                  <option key={caregiver.id} value={caregiver.id}>
-                    {caregiver.label}
-                  </option>
-                ))}
-              </select>
+            <div className="mb-4 shrink-0">
               <button
-                type="submit"
-                className="w-full rounded-xl bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600 transition"
+                type="button"
+                onClick={() => {
+                  setShowCreatePanel((current) => !current);
+                  setCreateError("");
+                }}
+                className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-500 hover:text-sky-700"
               >
-                Start Conversation
+                {showCreatePanel ? "Hide new conversation" : "Start new conversation"}
               </button>
-              {createError && <p className="text-sm text-red-700">{createError}</p>}
-            </form>
 
-            <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+              {showCreatePanel ? (
+                <form onSubmit={handleCreateConversation} className="mt-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <select
+                    value={selectedCaregiverId}
+                    onChange={(event) => setSelectedCaregiverId(event.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  >
+                    <option value="">Choose caregiver</option>
+                    {availableCaregiverOptions.map((caregiver) => (
+                      <option key={caregiver.id} value={caregiver.id}>
+                        {caregiver.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="submit"
+                    className="w-full rounded-xl bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-900 transition"
+                    disabled={!selectedCaregiverId || availableCaregiverOptions.length === 0}
+                  >
+                    Create Conversation
+                  </button>
+                  {availableCaregiverOptions.length === 0 ? (
+                    <p className="text-xs text-slate-500">All linked caregivers already have an existing conversation.</p>
+                  ) : null}
+                  {createError && <p className="text-sm text-red-700">{createError}</p>}
+                </form>
+              ) : null}
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-1 space-y-2 min-h-0">
               {loading ? (
                 <p className="text-sm text-slate-500">Loading conversations...</p>
               ) : filteredConversations.length > 0 ? (
@@ -282,17 +328,17 @@ export default function PatientMessages() {
             </div>
           </aside>
 
-          <section className="md:col-span-2 bg-white rounded-2xl shadow p-4 flex flex-col h-[620px]">
+          <section className="md:col-span-2 bg-white rounded-2xl shadow p-4 flex flex-col h-full overflow-hidden">
             {selectedConversation ? (
               <>
-                <div className="border-b border-slate-200 pb-3 mb-3">
+                <div className="border-b border-slate-200 pb-3 mb-3 shrink-0">
                   <h2 className="text-lg font-semibold text-slate-800">
                     {participantLabel(getOtherParticipant(selectedConversation, currentUserId))}
                   </h2>
                   <p className="text-xs text-slate-500">Secure chat</p>
                 </div>
 
-                <div className="flex-1 overflow-y-auto pr-1 space-y-3">
+                <div className="flex-1 overflow-y-auto pr-1 space-y-3 min-h-0">
                   {messagesLoading ? (
                     <p className="text-sm text-slate-500">Loading messages...</p>
                   ) : messages.length > 0 ? (
@@ -328,9 +374,9 @@ export default function PatientMessages() {
                   )}
                 </div>
 
-                {sendError && <p className="mt-3 text-sm text-red-700">{sendError}</p>}
+                {sendError && <p className="mt-3 text-sm text-red-700 shrink-0">{sendError}</p>}
 
-                <form onSubmit={handleSendMessage} className="pt-3 mt-3 border-t border-slate-200 flex gap-2">
+                <form onSubmit={handleSendMessage} className="pt-3 mt-3 border-t border-slate-200 flex gap-2 shrink-0">
                   <input
                     type="text"
                     value={draftMessage}
