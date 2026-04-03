@@ -132,6 +132,33 @@ export default function CareTeamPatient() {
           </div>
         ) : null}
 
+        <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-xl font-semibold text-slate-900">What caregiver access means</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Caregivers support your routine care. They do not replace your doctor and only see what you allow.
+          </p>
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+              <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">Caregiver can</p>
+              <ul className="mt-2 space-y-2 text-sm text-emerald-900">
+                <li>• View selected medications, symptoms, and appointments.</li>
+                <li>• Help monitor reminders and care follow-through.</li>
+                <li>• Collaborate in care communication where enabled.</li>
+              </ul>
+            </div>
+
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-semibold uppercase tracking-wide text-amber-700">Caregiver cannot</p>
+              <ul className="mt-2 space-y-2 text-sm text-amber-900">
+                <li>• Diagnose conditions or prescribe treatment.</li>
+                <li>• Access permissions you did not grant.</li>
+                <li>• Replace doctor review for medical decisions.</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
         <section className="mt-6 grid gap-6 lg:grid-cols-2">
           <div className="rounded-3xl bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between gap-3">

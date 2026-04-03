@@ -36,8 +36,13 @@ export function linkDoctorByEmail(doctorEmail) {
   });
 }
 
-export function getDoctorLinkRequests() {
-  return request("/api/doctors/assignments/requests");
+export function getDoctorLinkRequests(options = {}) {
+  const params = new URLSearchParams();
+  if (options.includeDecisions) {
+    params.set("includeDecisions", "true");
+  }
+  const query = params.toString();
+  return request(`/api/doctors/assignments/requests${query ? `?${query}` : ""}`);
 }
 
 export function reviewDoctorLinkRequest(patientId, status) {

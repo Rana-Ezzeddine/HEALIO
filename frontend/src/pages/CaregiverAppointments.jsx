@@ -1,224 +1,317 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
-import { CalendarDays, Plus, X } from "lucide-react";
+import { apiUrl, authHeaders } from "../api/http";
+import { getMyAppointments } from "../api/appointments";
 import {
-  getCaregiverPatientAppointments,
-  caregiverRequestAppointment,
-  getMyPatients,
-} from "../api/caregiver";
+  resolveActiveCaregiverPatientId,
+  setActiveCaregiverPatientId,
+} from "../utils/caregiverPatientContext";
 
-const STATUS_STYLES = {
-  scheduled: "bg-emerald-100 text-emerald-700",
-  cancelled: "bg-red-100 text-red-700",
-  completed: "bg-slate-100 text-slate-600",
-};
+function getOwnerId(record) {
+  return (
+    record?.patientId ||
+    record?.patient?.id ||
+    record?.ownerId ||
+    record?.userId ||
+    ""
+  );
+}
+
+function patientLabel(record) {
+  return record?.patient?.displayName || record?.patient?.email || "Patient";
+}
+
+function doctorLabel(appointment) {
+  return appointment?.doctor?.displayName || appointment?.doctor?.email || "Doctor";
+}
+
+function formatDateTimeParts(dateLike) {
+  const date = new Date(dateLike);
+  return {
+    date: date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+    time: date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+  };
+}
+
+function statusLabel(status) {
+  if (status === "requested") return "Requested";
+  if (status === "scheduled") return "Scheduled";
+  if (status === "completed") return "Completed";
+  if (status === "cancelled") return "Cancelled";
+  if (status === "denied") return "Denied";
+  return status || "Unknown";
+}
+
+function statusClass(status) {
+  if (status === "requested") return "bg-amber-100 text-amber-700";
+  if (status === "scheduled") return "bg-emerald-100 text-emerald-700";
+  if (status === "completed") return "bg-sky-100 text-sky-700";
+  if (status === "cancelled") return "bg-slate-200 text-slate-700";
+  if (status === "denied") return "bg-rose-100 text-rose-700";
+  return "bg-slate-100 text-slate-700";
+}
 
 export default function CaregiverAppointments() {
-  const [patients, setPatients] = useState([]);
-  const [patientId, setPatientId] = useState("");
+  const navigate = useNavigate();
+
+  const [linkedPatients, setLinkedPatients] = useState([]);
   const [appointments, setAppointments] = useState([]);
-  const [permission, setPermission] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [form, setForm] = useState({ startsAt: "", endsAt: "", location: "", notes: "" });
-  const [message, setMessage] = useState(null);
+  const [activePatientId, setActivePatientId] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    getMyPatients().then((data) => {
-      const pts = data.patients || [];
-      setPatients(pts);
-      if (pts.length > 0) setPatientId(pts[0].patient.id);
-    });
+    let cancelled = false;
+
+    async function loadPageData() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const [patientsRes, appointmentsData] = await Promise.all([
+          fetch(`${apiUrl}/api/caregivers/patients`, {
+            headers: { "Content-Type": "application/json", ...authHeaders() },
+          }).then(async (res) => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.message || "Failed to load linked patients.");
+            return data;
+          }),
+          getMyAppointments(),
+        ]);
+
+        if (cancelled) return;
+
+        const patients = patientsRes.patients || [];
+        const resolvedId = resolveActiveCaregiverPatientId(patients);
+
+        setLinkedPatients(patients);
+        setActivePatientId(resolvedId);
+        setAppointments(appointmentsData.appointments || []);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err.message || "Failed to load caregiver appointments.");
+          setLinkedPatients([]);
+          setActivePatientId("");
+          setAppointments([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadPageData();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  useEffect(() => {
-    if (!patientId) return;
-    const entry = patients.find((p) => p.patient.id === patientId);
-    setPermission(entry?.permissions?.canViewAppointments ?? false);
-    loadAppointments();
-  }, [patientId, patients]);
+  const activePatientRecord = useMemo(
+    () => linkedPatients.find((record) => record.patient?.id === activePatientId) || null,
+    [activePatientId, linkedPatients]
+  );
 
-  const loadAppointments = () => {
-    if (!patientId) return;
-    setLoading(true);
-    getCaregiverPatientAppointments(patientId)
-      .then((data) => setAppointments(data.appointments || []))
-      .catch(() => setAppointments([]))
-      .finally(() => setLoading(false));
-  };
+  const canViewAppointments = Boolean(activePatientRecord?.permissions?.canViewAppointments);
 
-  const handleRequest = async () => {
-    if (!form.startsAt || !form.endsAt) {
-      setMessage("Start and end times are required.");
-      return;
-    }
-    try {
-      await caregiverRequestAppointment(patientId, form);
-      setMessage("Appointment requested successfully.");
-      setIsModalOpen(false);
-      setForm({ startsAt: "", endsAt: "", location: "", notes: "" });
-      loadAppointments();
-    } catch (err) {
-      setMessage(err.message || "Failed to request appointment.");
-    }
-  };
+  const scopedAppointments = useMemo(() => {
+    if (!activePatientId) return [];
+    return appointments
+      .filter((appointment) => {
+        const ownerId = getOwnerId(appointment);
+        return ownerId ? ownerId === activePatientId : true;
+      })
+      .sort((left, right) => new Date(left.startsAt) - new Date(right.startsAt));
+  }, [activePatientId, appointments]);
+
+  const upcomingAppointments = useMemo(
+    () => scopedAppointments.filter((item) => new Date(item.startsAt).getTime() >= Date.now()),
+    [scopedAppointments]
+  );
+
+  const pastAppointments = useMemo(
+    () => scopedAppointments.filter((item) => new Date(item.startsAt).getTime() < Date.now()).reverse(),
+    [scopedAppointments]
+  );
+
+  const requestedCount = useMemo(
+    () => scopedAppointments.filter((item) => item.status === "requested").length,
+    [scopedAppointments]
+  );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-indigo-50">
+    <div className="min-h-screen bg-slate-50">
       <Navbar />
-      <main className="mx-auto max-w-3xl px-6 pt-28 pb-10">
-        <div className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-3">
-            <CalendarDays className="text-sky-500" size={24} />
-            <h1 className="text-3xl font-bold text-slate-800">Appointments</h1>
-          </div>
-          {/*request appointment on behalf of patient */}
-          {permission && (
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="inline-flex items-center gap-2 rounded-2xl bg-sky-500 px-5 py-2 text-sm font-semibold text-white hover:bg-sky-600 transition"
+
+      <main className="mx-auto max-w-6xl px-6 pb-10 pt-28">
+        <section className="rounded-[2rem] bg-gradient-to-r from-slate-900 via-cyan-800 to-sky-600 p-8 text-white shadow-xl">
+          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-white/75">Caregiver Appointments</p>
+          <h1 className="mt-3 text-4xl font-black">Patient Visit Timeline</h1>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-white/85">
+            Track scheduled, requested, and completed appointments for your active patient context.
+          </p>
+
+          <div className="mt-5 max-w-sm">
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-white/70">
+              Active patient context
+            </label>
+            <select
+              value={activePatientId}
+              onChange={(event) => {
+                const nextId = event.target.value;
+                setActivePatientId(nextId);
+                setActiveCaregiverPatientId(nextId);
+              }}
+              className="w-full rounded-xl border border-white/30 bg-white/95 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-300"
+              disabled={linkedPatients.length === 0}
             >
-              <Plus size={16} /> Request Appointment
+              {linkedPatients.length > 0 ? (
+                linkedPatients.map((record) => (
+                  <option key={record.patient?.id} value={record.patient?.id || ""}>
+                    {patientLabel(record)}
+                  </option>
+                ))
+              ) : (
+                <option value="">No linked patients</option>
+              )}
+            </select>
+          </div>
+        </section>
+
+        {error ? (
+          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        ) : null}
+
+        {loading ? (
+          <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-8 text-sm text-slate-500 shadow-sm">
+            Loading caregiver appointments...
+          </section>
+        ) : linkedPatients.length === 0 ? (
+          <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+            <h2 className="text-xl font-semibold text-slate-900">No linked patients yet</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Accept a patient invitation first to unlock appointment visibility in caregiver mode.
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate("/caregiver-patients")}
+              className="mt-5 rounded-2xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-600"
+            >
+              Open patient invitations
             </button>
-          )}
-        </div>
+          </section>
+        ) : !canViewAppointments ? (
+          <section className="mt-6 rounded-3xl border border-amber-200 bg-amber-50 p-8 shadow-sm">
+            <h2 className="text-xl font-semibold text-amber-900">Appointments are not enabled</h2>
+            <p className="mt-2 text-sm text-amber-800">
+              This patient has not granted appointment visibility for your caregiver role in the current context.
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate("/caregiver-patients")}
+              className="mt-5 rounded-2xl border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-800 transition hover:bg-amber-100"
+            >
+              Review patient permissions
+            </button>
+          </section>
+        ) : (
+          <>
+            <section className="mt-6 grid gap-4 sm:grid-cols-3">
+              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total in scope</p>
+                <p className="mt-2 text-3xl font-black text-slate-900">{scopedAppointments.length}</p>
+                <p className="mt-1 text-sm text-slate-500">Across all statuses</p>
+              </div>
+              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Upcoming</p>
+                <p className="mt-2 text-3xl font-black text-slate-900">{upcomingAppointments.length}</p>
+                <p className="mt-1 text-sm text-slate-500">Future visits and requests</p>
+              </div>
+              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Requested</p>
+                <p className="mt-2 text-3xl font-black text-slate-900">{requestedCount}</p>
+                <p className="mt-1 text-sm text-slate-500">Pending scheduling decisions</p>
+              </div>
+            </section>
 
-        {/* schedule and reminder access */}
-        <p className="text-slate-500 mb-6">
-          View your patient's appointment schedule and reminders.
-          {permission
-            ? " You can also request appointments on their behalf."
-            : " Appointment access depends on patient permissions."}
-        </p>
-
-        {patients.length > 1 && (
-          <select
-            value={patientId}
-            onChange={(e) => setPatientId(e.target.value)}
-            className="mb-6 rounded-xl border border-slate-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-          >
-            {patients.map((e) => (
-              <option key={e.patient.id} value={e.patient.id}>
-                {e.patient.email}
-              </option>
-            ))}
-          </select>
-        )}
-
-        {message && (
-          <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-700">
-            {message}
-          </div>
-        )}
-
-        {!permission && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 mb-6">
-            You do not have permission to view appointments for this patient.
-          </div>
-        )}
-
-        {loading && <p className="text-slate-400 text-sm">Loading appointments...</p>}
-
-        {permission && !loading && appointments.length === 0 && (
-          <div className="rounded-3xl border border-dashed border-slate-200 p-10 text-center text-slate-400 text-sm">
-            No appointments to show.
-          </div>
-        )}
-
-        <div className="space-y-4">
-          {permission && appointments.map((appt) => (
-            <div key={appt.id} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
+            <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="font-semibold text-slate-800">
-                    {new Date(appt.startsAt).toLocaleDateString(undefined, {
-                      weekday: "long", month: "long", day: "numeric",
-                    })}
-                  </p>
-                  <p className="text-sm text-slate-500 mt-1">
-                    {new Date(appt.startsAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
-                    {" — "}
-                    {new Date(appt.endsAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
-                  </p>
-                  {appt.location && <p className="text-sm text-slate-400 mt-1">{appt.location}</p>}
-                  {appt.doctor && <p className="text-sm text-slate-400 mt-1">Dr. {appt.doctor.email}</p>}
-                  {appt.notes && <p className="text-sm text-slate-400 mt-1">{appt.notes}</p>}
+                  <h2 className="text-xl font-semibold text-slate-900">Upcoming appointments</h2>
+                  <p className="mt-1 text-sm text-slate-500">What is scheduled next for this patient.</p>
                 </div>
-                {/* Appointment.status exact values */}
-                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_STYLES[appt.status] ?? "bg-slate-100 text-slate-500"}`}>
-                  {appt.status}
-                </span>
               </div>
-            </div>
-          ))}
-        </div>
-      </main>
 
-      {/* Request appointment modal  */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-lg">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-slate-900">Request Appointment</h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
-                <X size={24} />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Start Time</label>
-                <input
-                  type="datetime-local"
-                  value={form.startsAt}
-                  onChange={(e) => setForm((f) => ({ ...f, startsAt: e.target.value }))}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                />
+              <div className="mt-5 space-y-3">
+                {upcomingAppointments.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 px-6 py-8 text-center text-sm text-slate-500">
+                    No upcoming appointments in this patient context.
+                  </div>
+                ) : (
+                  upcomingAppointments.map((appointment) => {
+                    const dateTime = formatDateTimeParts(appointment.startsAt);
+                    return (
+                      <article key={appointment.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">{dateTime.date}</p>
+                            <p className="mt-1 text-lg font-semibold text-slate-900">{dateTime.time}</p>
+                            <p className="mt-1 text-sm text-slate-600">With {doctorLabel(appointment)}</p>
+                            {appointment.location ? (
+                              <p className="mt-1 text-sm text-slate-500">Location: {appointment.location}</p>
+                            ) : null}
+                          </div>
+                          <span className={`h-fit rounded-full px-3 py-1 text-xs font-semibold ${statusClass(appointment.status)}`}>
+                            {statusLabel(appointment.status)}
+                          </span>
+                        </div>
+                        {appointment.notes ? (
+                          <p className="mt-3 rounded-xl bg-white px-3 py-2 text-sm text-slate-600">
+                            {appointment.notes}
+                          </p>
+                        ) : null}
+                      </article>
+                    );
+                  })
+                )}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">End Time</label>
-                <input
-                  type="datetime-local"
-                  value={form.endsAt}
-                  onChange={(e) => setForm((f) => ({ ...f, endsAt: e.target.value }))}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                />
+            </section>
+
+            <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h2 className="text-xl font-semibold text-slate-900">Recent history</h2>
+              <p className="mt-1 text-sm text-slate-500">Completed or past appointment records for reference.</p>
+
+              <div className="mt-5 space-y-3">
+                {pastAppointments.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 px-6 py-8 text-center text-sm text-slate-500">
+                    No past appointments found.
+                  </div>
+                ) : (
+                  pastAppointments.slice(0, 8).map((appointment) => {
+                    const dateTime = formatDateTimeParts(appointment.startsAt);
+                    return (
+                      <article key={appointment.id} className="rounded-2xl border border-slate-200 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-slate-900">{dateTime.date} at {dateTime.time}</p>
+                            <p className="text-sm text-slate-500">With {doctorLabel(appointment)}</p>
+                          </div>
+                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClass(appointment.status)}`}>
+                            {statusLabel(appointment.status)}
+                          </span>
+                        </div>
+                      </article>
+                    );
+                  })
+                )}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Location (optional)</label>
-                <input
-                  type="text"
-                  value={form.location}
-                  onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Notes (optional)</label>
-                <textarea
-                  value={form.notes}
-                  onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                  rows={2}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                />
-              </div>
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="flex-1 rounded-xl border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleRequest}
-                className="flex-1 rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600"
-              >
-                Request
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </section>
+          </>
+        )}
+      </main>
     </div>
   );
 }

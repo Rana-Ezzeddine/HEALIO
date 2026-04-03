@@ -5,6 +5,8 @@ import { clearSession, getToken, getUser, setSession } from "../api/http";
 import { getPostAuthRoute } from "../utils/authRouting";
 import logo from "../assets/logo.png";
 
+const NEW_PATIENT_WELCOME_FLAG = "healio:new-patient-signup";
+
 function GoogleIcon() {
   return (
     <svg aria-hidden="true" className="h-5 w-5" viewBox="0 0 48 48">
@@ -126,6 +128,9 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
 
       if (registerResponse?.token && registerResponse?.user) {
         setSession({ token: registerResponse.token, user: registerResponse.user });
+        if (registerResponse.user?.role === "patient") {
+          localStorage.setItem(NEW_PATIENT_WELCOME_FLAG, "true");
+        }
         navigate(getPostAuthRoute(registerResponse.user), { replace: true });
         return;
       }

@@ -4,9 +4,11 @@ import Navbar from "../components/Navbar";
 import { apiUrl, authHeaders, getUser } from "../api/http";
 import { getMyAppointments } from "../api/appointments";
 import { getConversations } from "../api/messaging";
-import { getMyCaregivers, getMyDoctors } from "../api/links";
+import { getDoctorLinkRequests, getMyCaregivers, getMyDoctors } from "../api/links";
 import { buildPatientSetupChecklist } from "../utils/patientSetup";
 import { formatDoseTime, getNextMedicationDose, isActiveMedication } from "../utils/medicationSchedule";
+
+const NEW_PATIENT_WELCOME_FLAG = "healio:new-patient-signup";
 
 function formatAppointmentDate(dateLike) {
   return new Date(dateLike).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -51,10 +53,20 @@ export default function DashboardPatient() {
   const [profile, setProfile] = useState({});
   const [doctorCount, setDoctorCount] = useState(0);
   const [caregiverCount, setCaregiverCount] = useState(0);
+  const [pendingDoctorRequestCount, setPendingDoctorRequestCount] = useState(0);
+  const [isNewPatientGreeting, setIsNewPatientGreeting] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
   const greetingName =
     profile?.firstName || user?.firstName || localStorage.getItem("firstName") || user?.email || "Patient";
+
+  useEffect(() => {
+    const isNewSignup = localStorage.getItem(NEW_PATIENT_WELCOME_FLAG) === "true";
+    if (isNewSignup) {
+      setIsNewPatientGreeting(true);
+      localStorage.removeItem(NEW_PATIENT_WELCOME_FLAG);
+    }
+  }, []);
 
   useEffect(() => {
     function refreshDashboard() {
@@ -98,11 +110,12 @@ export default function DashboardPatient() {
         }),
         getMyDoctors(),
         getMyCaregivers(),
+        getDoctorLinkRequests(),
       ]);
 
       if (cancelled) return;
 
-      const [appointmentsResult, conversationsResult, medicationsResult, symptomsResult, profileResult, doctorsResult, caregiversResult] = results;
+      const [appointmentsResult, conversationsResult, medicationsResult, symptomsResult, profileResult, doctorsResult, caregiversResult, doctorRequestsResult] = results;
 
       setAppointments(
         appointmentsResult.status === "fulfilled" ? appointmentsResult.value.appointments || [] : []
@@ -126,6 +139,9 @@ export default function DashboardPatient() {
       );
       setCaregiverCount(
         caregiversResult.status === "fulfilled" ? (caregiversResult.value.caregivers || []).length : 0
+      );
+      setPendingDoctorRequestCount(
+        doctorRequestsResult.status === "fulfilled" ? (doctorRequestsResult.value.requests || []).length : 0
       );
     }
 
@@ -165,6 +181,11 @@ export default function DashboardPatient() {
 
   const requestedAppointments = appointments.filter((item) => item.status === "requested").length;
   const setupIncomplete = checklist.doneCount < checklist.totalCount;
+  const profileCompletion = checklist.profileStatus;
+  const profileMissingPreview = profileCompletion.missing.slice(0, 3);
+  const setupProgressPercent = Math.round((checklist.doneCount / checklist.totalCount) * 100);
+  const appointmentPreview = upcomingAppointments.slice(0, 2);
+  const remainingAppointmentCount = Math.max(upcomingAppointments.length - appointmentPreview.length, 0);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -173,7 +194,7 @@ export default function DashboardPatient() {
       <main className="mx-auto max-w-6xl px-6 pb-10 pt-28">
         <section className="rounded-[2rem] bg-gradient-to-r from-slate-900 via-sky-800 to-cyan-600 p-8 text-white shadow-xl">
           <p className="text-sm font-semibold uppercase tracking-[0.25em] text-white/75">Patient Dashboard</p>
-          <h1 className="mt-3 text-4xl font-black">Welcome back, {greetingName}</h1>
+          <h1 className="mt-3 text-4xl font-black">{isNewPatientGreeting ? `Welcome, ${greetingName}` : `Welcome back, ${greetingName}`}</h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-white/85">
             Keep your profile, care team, medications, symptoms, and appointments moving together from one place.
           </p>
@@ -200,8 +221,18 @@ export default function DashboardPatient() {
               </button>
             </div>
 
+            <div className="mt-5">
+              <div className="flex items-center justify-between gap-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <span>Setup progress</span>
+                <span>{setupProgressPercent}% complete</span>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-full rounded-full bg-gradient-to-r from-sky-500 to-cyan-400" style={{ width: `${setupProgressPercent}%` }} />
+              </div>
+            </div>
+
             <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {checklist.tasks.map((task) => (
+              {checklist.tasks.map((task, index) => (
                 <button
                   key={task.key}
                   type="button"
@@ -218,6 +249,7 @@ export default function DashboardPatient() {
                       {task.done ? "Done" : "Next"}
                     </span>
                   </div>
+                  <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Step {index + 1}</p>
                   <p className="mt-2 text-sm text-slate-600">{task.description}</p>
                 </button>
               ))}
@@ -243,25 +275,25 @@ export default function DashboardPatient() {
             navPage="/patientAppointments"
           />
           <DashboardCard
-            title="Caregiver Conversations"
+            title="Updates & Communication"
             mainText={`${conversationCount}`}
-            subText="Open secure caregiver chats"
+            subText="Check care updates and secure chats"
             navPage="/patientMessages"
           />
           <DashboardCard
             title="Care Team"
             mainText={`${doctorCount + caregiverCount} linked`}
-            subText={`${doctorCount} doctor${doctorCount === 1 ? "" : "s"}, ${caregiverCount} caregiver${caregiverCount === 1 ? "" : "s"}`}
+            subText={`${doctorCount} doctor${doctorCount === 1 ? "" : "s"}, ${caregiverCount} caregiver${caregiverCount === 1 ? "" : "s"}${pendingDoctorRequestCount > 0 ? `, ${pendingDoctorRequestCount} pending request${pendingDoctorRequestCount === 1 ? "" : "s"}` : ""}`}
             navPage="/care-team"
           />
         </section>
 
-        <section className="mt-6 grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
+        <section className="mt-6 grid gap-6 lg:grid-cols-[1fr_1fr] xl:grid-cols-[0.95fr_1.05fr]">
           <div className="rounded-3xl bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-semibold text-slate-900">Upcoming appointments</h2>
-                <p className="mt-1 text-sm text-slate-500">Requested and scheduled visits stay visible here.</p>
+                <p className="mt-1 text-sm text-slate-500">A quick look at your nearest visits and pending requests.</p>
               </div>
               <button
                 type="button"
@@ -274,7 +306,7 @@ export default function DashboardPatient() {
 
             <div className="mt-5 space-y-3">
               {upcomingAppointments.length > 0 ? (
-                upcomingAppointments.slice(0, 4).map((appointment) => (
+                appointmentPreview.map((appointment) => (
                   <div key={appointment.id} className="rounded-2xl border border-slate-200 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
@@ -299,15 +331,92 @@ export default function DashboardPatient() {
                   No appointment requests yet. Link a doctor, then request your first visit.
                 </div>
               )}
+              {remainingAppointmentCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => navigate("/patientAppointments")}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                >
+                  View {remainingAppointmentCount} more appointment{remainingAppointmentCount === 1 ? "" : "s"}
+                </button>
+              ) : null}
             </div>
           </div>
 
           <div className="space-y-6">
+            <section className="rounded-3xl border border-sky-100 bg-white p-6 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-semibold text-slate-900">Profile completion guidance</h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Your profile is {profileCompletion.percent}% complete. Fill missing details to improve appointment readiness and emergency access.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate("/profilePatient")}
+                  className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Complete profile
+                </button>
+              </div>
+
+              <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-full rounded-full bg-gradient-to-r from-sky-500 to-cyan-400" style={{ width: `${profileCompletion.percent}%` }} />
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {profileCompletion.missing.length > 0 ? (
+                  profileMissingPreview.map((item) => (
+                    <span key={item.key} className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+                      Missing: {item.label}
+                    </span>
+                  ))
+                ) : (
+                  <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                    Profile is complete
+                  </span>
+                )}
+                {profileCompletion.missing.length > profileMissingPreview.length ? (
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                    +{profileCompletion.missing.length - profileMissingPreview.length} more missing
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Symptoms logged</p>
+                  <p className="mt-1 text-lg font-bold text-slate-900">{symptoms.length}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Appointment requests</p>
+                  <p className="mt-1 text-lg font-bold text-slate-900">{requestedAppointments}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Doctor-link pending</p>
+                  <p className="mt-1 text-lg font-bold text-slate-900">{pendingDoctorRequestCount}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Conversations</p>
+                  <p className="mt-1 text-lg font-bold text-slate-900">{conversationCount}</p>
+                </div>
+              </div>
+            </section>
+
             <section className="rounded-3xl bg-white p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-slate-900">Quick actions</h2>
-              <div className="mt-4 grid gap-3">
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {[
-                  { label: "Complete profile", href: "/profilePatient", style: "bg-sky-100 text-sky-700" },
+                  { label: "Health summary", href: "/healthSummary", style: "bg-sky-100 text-sky-700" },
+                  { label: "Notification center", href: "/patient-notifications", style: "bg-indigo-100 text-indigo-700" },
+                  {
+                    label: profileCompletion.complete
+                      ? "Profile complete"
+                      : `Complete profile (${profileCompletion.missing.length} left)`,
+                    href: "/profilePatient",
+                    style: "bg-sky-100 text-sky-700",
+                  },
                   { label: "Manage care team", href: "/care-team", style: "bg-cyan-100 text-cyan-700" },
                   { label: "Add medication", href: "/medication", style: "bg-indigo-100 text-indigo-700" },
                   { label: "Log symptom", href: "/symptoms", style: "bg-amber-100 text-amber-700" },
@@ -323,16 +432,6 @@ export default function DashboardPatient() {
                     {action.label}
                   </button>
                 ))}
-              </div>
-            </section>
-
-            <section className="rounded-3xl bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-semibold text-slate-900">Journey summary</h2>
-              <div className="mt-4 space-y-3 text-sm text-slate-600">
-                <p>Symptoms logged: <span className="font-semibold text-slate-900">{symptoms.length}</span></p>
-                <p>Appointment requests pending: <span className="font-semibold text-slate-900">{requestedAppointments}</span></p>
-                <p>Profile completion: <span className="font-semibold text-slate-900">{checklist.profileStatus.percent}%</span></p>
-                <p>Missing profile items: <span className="font-semibold text-slate-900">{checklist.profileStatus.missing.length}</span></p>
               </div>
             </section>
           </div>

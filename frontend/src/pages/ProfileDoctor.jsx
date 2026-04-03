@@ -1,4 +1,4 @@
-import { apiUrl, authHeaders, getUser } from "../api/http";
+﻿import { apiUrl, authHeaders, getUser } from "../api/http";
 import Navbar from "../components/Navbar";
 import { useState, useEffect, useCallback } from "react";
 import { getDoctorLinkRequests, reviewDoctorLinkRequest } from "../api/links";
@@ -333,43 +333,6 @@ export default function ProfileDoctor(){
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> 
                 <FormInput label="Phone Number" type="text" value={phone} onChange={(e)=>setPhone(e.target.value)} isEditing={isEditing} />
                 <FormInput label="Email" type="text" value={email} onChange={(e)=>setEmail(e.target.value)} isEditing={false} />
-              </div>
-            </section>
-
-            <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
-              <h2 className="text-xl font-semibold text-slate-800 mb-4">Patient Link Requests</h2>
-              {requestError ? <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{requestError}</div> : null}
-              <div className="space-y-3">
-                {pendingRequests.length > 0 ? pendingRequests.map((request) => (
-                  <div key={request.patientId} className="rounded-xl border border-slate-200 px-4 py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-slate-800">{request.patient?.displayName || request.patient?.email || "Patient"}</p>
-                        <p className="text-sm text-slate-500">{request.patient?.email || "-"}</p>
-                      </div>
-                      <div className="flex gap-2">
-                        <button type="button" onClick={() => handleReviewRequest(request.patientId, "active")} className="rounded-lg bg-emerald-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-600">
-                          Approve
-                        </button>
-                        <button type="button" onClick={() => handleReviewRequest(request.patientId, "rejected")} className="rounded-lg bg-rose-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-600">
-                          Reject
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )) : <p className="text-sm text-slate-500">No pending patient requests.</p>}
-              </div>
-            </section>
-
-            <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
-              <h2 className="text-xl font-semibold text-slate-800 mb-4">Assigned Patients</h2>
-              <div className="space-y-2">
-                {assignedPatients.length > 0 ? assignedPatients.map((record) => (
-                  <div key={record.patient.id} className="rounded-xl border border-slate-200 px-3 py-2">
-                    <p className="font-medium text-slate-800">{record.patient.email}</p>
-                    <p className="text-sm text-slate-500">Status: {record.status}</p>
-                  </div>
-                )) : <p className="text-sm text-slate-500">No active patients linked yet.</p>}
               </div>
             </section>
           </div>
