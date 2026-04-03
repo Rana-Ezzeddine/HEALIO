@@ -54,6 +54,9 @@ import caregiverNotesRoutes from './src/routes/caregiverNotes.routes.js';
 import doctorNotesRoutes from './src/routes/doctorNotes.routes.js';
 import patientmedHistoryRoutes from './src/routes/patientmedHistory.routes.js';
 import searchRoutes from './src/routes/search.routes.js';
+import caregiverInviteRoutes from './src/routes/caregiverInvite.routes.js';
+import caregiverActionsRoutes from './src/routes/caregiverActions.routes.js';
+
 
 /////////////////////////////////////////////////
 // Initialize App
@@ -128,7 +131,9 @@ app.use("/api/caregiver-notes", caregiverNotesRoutes);
 app.use('/api/doctor-notes', doctorNotesRoutes);
 app.use('/api/patientmedhistory', patientmedHistoryRoutes);
 app.use('/api/search', searchRoutes);
-
+app.use('/api/patient-med-history', patientmedHistoryRoutes);
+app.use('/api/caregiver-invites', caregiverInviteRoutes);
+app.use('/api/caregiver-actions', caregiverActionsRoutes);
 /////////////////////////////////////////////////
 // 404 Handler
 /////////////////////////////////////////////////
