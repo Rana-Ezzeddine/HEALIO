@@ -547,7 +547,7 @@ export default function DashboardCaregiver() {
             title="Linked Patients"
             mainText={`${allPatientCount}`}
             subText={activePatientLabel}
-            navPage="/profileCaregiver"
+            navPage="/caregiver-patients"
           />
         </section>
 
@@ -590,7 +590,7 @@ export default function DashboardCaregiver() {
                   <div className="mt-3">
                     <button
                       type="button"
-                      onClick={() => navigate("/profileCaregiver")}
+                       onClick={() => navigate("/caregiver-patients")}
                       className="rounded-xl bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-200 transition"
                     >
                       Open invitations
@@ -606,6 +606,12 @@ export default function DashboardCaregiver() {
               <h2 className="text-xl font-semibold text-slate-900">Quick actions</h2>
               <div className="mt-4 grid gap-3">
                 {[
+                  {
+                    label: "My patients",
+                    href: "/caregiver-patients",
+                    style: "bg-teal-100 text-teal-700",
+                    enabled: true,
+                  },
                   {
                     label: "Medication tasks",
                     href: "/medication",

@@ -33,6 +33,7 @@ import DoctorApprovedRoute from "./components/DoctorApprovedRoute";
 import DoctorApprovalStatusPage from "./pages/DoctorApprovalStatusPage";
 import DoctorReviewPage from "./pages/DoctorReviewPage";
 import DoctorPatients from "./pages/DoctorPatients";
+import CaregiverPatients from "./pages/CaregiverPatients";
 import { getPostAuthRoute } from "./utils/authRouting";
 
 function AuthSync() {
@@ -265,6 +266,14 @@ function RoutedApp() {
           element={
             <ProtectedRoute allowedRoles={["caregiver"]}>
               <CaregiverMessages />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/caregiver-patients"
+          element={
+            <ProtectedRoute allowedRoles={["caregiver"]}>
+              <CaregiverPatients />
             </ProtectedRoute>
           }
         />
