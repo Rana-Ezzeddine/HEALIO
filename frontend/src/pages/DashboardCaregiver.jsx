@@ -4,7 +4,12 @@ import Navbar from "../components/Navbar";
 import { apiUrl, authHeaders, getUser } from "../api/http";
 import { getMyAppointments } from "../api/appointments";
 import { getConversations } from "../api/messaging";
-import { formatDoseTime, getNextMedicationDose } from "../utils/medicationSchedule";
+import {
+  formatDoseTime,
+  getNextMedicationDose,
+  getScheduleTimes,
+  isActiveMedication,
+} from "../utils/medicationSchedule";
 import {
   resolveActiveCaregiverPatientId,
   setActiveCaregiverPatientId,
@@ -58,6 +63,19 @@ function getOwnerId(record) {
 
 function canUsePermission(permissions, key) {
   return Boolean(permissions?.[key]);
+}
+
+function getDoseDateForToday(timeString, now = new Date()) {
+  if (typeof timeString !== "string") return null;
+  const [hourString, minuteString] = timeString.split(":");
+  const hour = Number(hourString);
+  const minute = Number(minuteString);
+
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) return null;
+
+  const doseDate = new Date(now);
+  doseDate.setHours(hour, minute, 0, 0);
+  return doseDate;
 }
 
 const CAREGIVER_SCOPE_ALLOWED = [
@@ -153,6 +171,30 @@ export default function DashboardCaregiver() {
 
   const nextAppointment = upcomingAppointments[0] || null;
   const nextDose = useMemo(() => getNextMedicationDose(scopedMedications), [scopedMedications]);
+  const medicationDosesToday = useMemo(() => {
+    const now = new Date();
+    const doses = [];
+
+    for (const medication of scopedMedications) {
+      if (!isActiveMedication(medication, now)) continue;
+
+      const times = getScheduleTimes(medication);
+      for (const time of times) {
+        const at = getDoseDateForToday(time, now);
+        if (!at) continue;
+        doses.push({
+          id: `${medication.id}-${time}`,
+          medication,
+          at,
+          isPast: at.getTime() < now.getTime(),
+        });
+      }
+    }
+
+    return doses.sort((left, right) => left.at - right.at);
+  }, [scopedMedications]);
+  const dueTodayCount = medicationDosesToday.filter((dose) => !dose.isPast).length;
+  const nextDueDoses = medicationDosesToday.filter((dose) => !dose.isPast).slice(0, 4);
 
   useEffect(() => {
     let cancelled = false;
@@ -583,6 +625,43 @@ export default function DashboardCaregiver() {
                 <p className="mt-1 text-sm text-slate-600">
                   {canViewAppointments ? `${scopedAppointments.length} total` : "Not visible in current permissions"}
                 </p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-semibold text-slate-900">Medications due today</p>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/medication")}
+                    disabled={!canViewMedications}
+                    className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
+                      canViewMedications
+                        ? "bg-sky-100 text-sky-700 hover:bg-sky-200"
+                        : "cursor-not-allowed bg-slate-100 text-slate-400"
+                    }`}
+                  >
+                    Open meds
+                  </button>
+                </div>
+
+                {!canViewMedications ? (
+                  <p className="mt-1 text-sm text-slate-600">Not visible in current permissions.</p>
+                ) : medicationDosesToday.length === 0 ? (
+                  <p className="mt-1 text-sm text-slate-600">No scheduled doses today.</p>
+                ) : (
+                  <>
+                    <p className="mt-1 text-sm text-slate-600">
+                      <span className="font-semibold text-slate-900">{dueTodayCount}</span> remaining of {medicationDosesToday.length} scheduled doses.
+                    </p>
+                    <ul className="mt-3 space-y-2">
+                      {nextDueDoses.map((dose) => (
+                        <li key={dose.id} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm">
+                          <span className="font-medium text-slate-700">{dose.medication?.name || "Medication"}</span>
+                          <span className="text-slate-500">{formatDoseTime(dose.at)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
               </div>
               {linkedPatients.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
