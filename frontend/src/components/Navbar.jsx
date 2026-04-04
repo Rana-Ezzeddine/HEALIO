@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { clearSession, getUser } from "../api/http";
 import { needsDoctorApprovalHold } from "../utils/authRouting";
 import logo from "../assets/logo.png";
+import DoctorPatientDock from "./doctor/DoctorPatientDock";
 
 const PUBLIC_PATHS = new Set(["/", "/support", "/privacy", "/terms"]);
 
@@ -142,13 +143,14 @@ export default function Navbar({ onLogin, onSignup }) {
   }
 
   return (
-    <header className="fixed top-0 left-0 w-full z-40">
-      <div className="mx-auto max-w-7xl px-6 py-4">
-        <div
-          className="flex items-center justify-between rounded-2xl
+    <>
+      <header className="fixed top-0 left-0 w-full z-40">
+        <div className="mx-auto max-w-7xl px-6 py-4">
+          <div
+            className="flex items-center justify-between rounded-2xl
                      bg-white/70 backdrop-blur-md border border-white/60
                      shadow-sm px-6 py-3"
-        >
+          >
           <button
             onClick={() => navigate("/")}
             className="flex items-center gap-2"
@@ -382,8 +384,10 @@ export default function Navbar({ onLogin, onSignup }) {
               </>
             )}
           </div>
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
+      {isDoctor && !doctorApprovalHeld ? <DoctorPatientDock /> : null}
+    </>
   );
 }

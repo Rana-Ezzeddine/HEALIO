@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import { apiUrl, authHeaders } from "../api/http";
+import { rememberDoctorPatientTab } from "../utils/doctorPatientTabs";
 
 function patientDisplayName(record) {
   const patient = record?.patient || record;
@@ -37,7 +38,12 @@ export default function DoctorClinicalNotes() {
           throw new Error(data.message || "Failed to load assigned patients.");
         }
         if (!cancelled) {
-          setAssignedPatients(data.patients || []);
+          const patients = data.patients || [];
+          setAssignedPatients(patients);
+          const current = patients.find((record) => (record.patient?.id || record.id) === selectedPatientId);
+          if (current) {
+            rememberDoctorPatientTab({ id: selectedPatientId, name: patientDisplayName(current) });
+          }
         }
       } catch (err) {
         if (!cancelled) {
@@ -75,141 +81,68 @@ export default function DoctorClinicalNotes() {
           </p>
         </section>
 
-        <section className="mt-6 grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-semibold text-slate-900">Patient context</h2>
-                <p className="mt-1 text-sm text-slate-500">Pick a patient to scope notes and clinical information.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => navigate("/doctor-patients")}
-                className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
-              >
-                Manage patients
-              </button>
-            </div>
-
-            {error ? (
-              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {error}
-              </div>
-            ) : null}
-
-            <div className="mt-4">
-              <select
-                value={selectedPatientId}
-                onChange={(event) => {
-                  const id = event.target.value;
-                  navigate(id ? `/doctor-clinical-notes?patientId=${id}` : "/doctor-clinical-notes");
-                }}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-300"
-                disabled={loading || assignedPatients.length === 0}
-              >
-                <option value="">{loading ? "Loading patients..." : "Select a patient"}</option>
-                {assignedPatients.map((record) => {
-                  const id = record.patient?.id || record.id;
-                  return (
-                    <option key={id} value={id}>
-                      {patientDisplayName(record)}
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-
-            <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-              {selectedPatient
-                ? `Current patient: ${patientDisplayName(selectedPatient)}`
-                : "No patient selected yet. Choose a patient to open clinical notes workflows."}
-            </div>
-          </div>
-
+        <section className="mt-6">
           <div className="space-y-6">
-            <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-semibold text-slate-900">Clinical notes shell</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                This workspace is set up for note timeline, note creation, and treatment plan visibility.
-              </p>
+            {!selectedPatientId ? (
+              <section className="rounded-3xl border border-dashed border-slate-200 bg-white p-8 text-sm text-slate-500 shadow-sm">
+                Open a patient from the patients page first. Clinical notes are scoped through patient context now.
+              </section>
+            ) : (
+              <>
+                <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <h2 className="text-xl font-semibold text-slate-900">
+                        {selectedPatient ? `${patientDisplayName(selectedPatient)} · Clinical notes` : "Clinical notes"}
+                      </h2>
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/doctor-patients/${selectedPatientId}`)}
+                        className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                      >
+                        Back to patient detail
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/doctor-treatment-plans?patientId=${selectedPatientId}`)}
+                        className="rounded-xl bg-violet-100 px-4 py-2 text-sm font-semibold text-violet-700 transition hover:bg-violet-200"
+                      >
+                        Open treatment plans
+                      </button>
+                    </div>
+                  </div>
+                </section>
 
-              <div className="mt-5 grid gap-4 sm:grid-cols-3">
-                <div className="rounded-2xl bg-slate-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Notes</p>
-                  <p className="mt-2 text-2xl font-black text-slate-900">--</p>
-                  <p className="mt-1 text-xs text-slate-500">Count appears after patient selection + data binding</p>
-                </div>
-                <div className="rounded-2xl bg-slate-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Treatment plans</p>
-                  <p className="mt-2 text-2xl font-black text-slate-900">--</p>
-                  <p className="mt-1 text-xs text-slate-500">Plan summary will render here</p>
-                </div>
-                <div className="rounded-2xl bg-slate-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Last update</p>
-                  <p className="mt-2 text-2xl font-black text-slate-900">--</p>
-                  <p className="mt-1 text-xs text-slate-500">Latest note date placeholder</p>
-                </div>
-              </div>
+                <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                  <h2 className="text-xl font-semibold text-slate-900">Clinical notes shell</h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    This workspace stays focused on the selected patient without extra patient-selection controls.
+                  </p>
 
-              <div className="mt-5 flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  disabled={!selectedPatientId}
-                  className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                    selectedPatientId
-                      ? "bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
-                      : "cursor-not-allowed bg-slate-100 text-slate-400"
-                  }`}
-                >
-                  Create clinical note
-                </button>
-                <button
-                  type="button"
-                  disabled={!selectedPatientId}
-                  onClick={() =>
-                    navigate(
-                      selectedPatientId
-                        ? `/doctor-treatment-plans?patientId=${selectedPatientId}`
-                        : "/doctor-treatment-plans"
-                    )
-                  }
-                  className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                    selectedPatientId
-                      ? "bg-sky-100 text-sky-700 hover:bg-sky-200"
-                      : "cursor-not-allowed bg-slate-100 text-slate-400"
-                  }`}
-                >
-                  View treatment plans
-                </button>
-              </div>
-            </section>
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      className="rounded-xl bg-indigo-100 px-4 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-200"
+                    >
+                      Create clinical note
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/doctor-treatment-plans?patientId=${selectedPatientId}`)}
+                      className="rounded-xl bg-sky-100 px-4 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-200"
+                    >
+                      View treatment plans
+                    </button>
+                  </div>
 
-            <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-semibold text-slate-900">Navigation</h2>
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <button
-                  type="button"
-                  onClick={() => navigate("/dashboardDoctor")}
-                  className="rounded-2xl bg-slate-100 px-4 py-3 text-left text-sm font-semibold text-slate-700 hover:bg-slate-200 transition"
-                >
-                  Doctor dashboard
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate("/doctor-patients")}
-                  className="rounded-2xl bg-cyan-100 px-4 py-3 text-left text-sm font-semibold text-cyan-700 hover:bg-cyan-200 transition"
-                >
-                  Doctor patients
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate("/doctor-treatment-plans")}
-                  className="rounded-2xl bg-violet-100 px-4 py-3 text-left text-sm font-semibold text-violet-700 hover:bg-violet-200 transition"
-                >
-                  Treatment plans
-                </button>
-              </div>
-            </section>
+                  <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-sm text-slate-500">
+                    This patient-specific page is ready for full note creation and history without an extra selector or scope panel.
+                  </div>
+                </section>
+              </>
+            )}
           </div>
         </section>
       </main>

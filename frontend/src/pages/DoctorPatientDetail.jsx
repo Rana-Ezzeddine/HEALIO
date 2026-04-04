@@ -2,10 +2,15 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import { apiUrl, authHeaders } from "../api/http";
+import { rememberDoctorPatientTab } from "../utils/doctorPatientTabs";
 
 function patientDisplayName(record) {
   const p = record?.patient || record;
-  return [p?.firstName, p?.lastName].filter(Boolean).join(" ").trim() || p?.displayName || p?.email || "Patient";
+  const profileName = [record?.patientProfile?.firstName, record?.patientProfile?.lastName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  return profileName || [p?.firstName, p?.lastName].filter(Boolean).join(" ").trim() || p?.displayName || p?.email || "Patient";
 }
 function formatDate(value) {
   if (!value) return "Not recorded";
@@ -58,7 +63,10 @@ export default function DoctorPatientDetail() {
           fetchPatientTimeline(patientId),
           fetchPatientNotes(patientId),
         ]);
-        if (!cancelled) setWorkspace({ overview, timeline: timeline.events || [], notes: notes.notes || [] });
+        if (!cancelled) {
+          setWorkspace({ overview, timeline: timeline.events || [], notes: notes.notes || [] });
+          rememberDoctorPatientTab({ id: patientId, name: patientDisplayName(overview) });
+        }
       } catch (err) {
         if (!cancelled) {
           setWorkspace(null);
@@ -94,7 +102,8 @@ export default function DoctorPatientDetail() {
         </section>
         {error ? <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
         {loading ? <div className="mt-6 rounded-2xl border border-dashed border-slate-200 px-6 py-8 text-center text-sm text-slate-500">Loading patient detail...</div> : overview ? (
-          <div className="mt-6 grid gap-5 xl:grid-cols-2">
+          <div className="mt-6">
+            <div className="grid gap-5 xl:grid-cols-2">
             <div className="rounded-3xl bg-white p-5 shadow-sm">
               <h3 className="text-lg font-semibold text-slate-900">Profile and emergency</h3>
               <div className="mt-4 space-y-2 text-sm text-slate-600">
@@ -152,6 +161,7 @@ export default function DoctorPatientDetail() {
                   </div>
                 )) : <p className="text-sm text-slate-500">No recent activity for this patient yet.</p>}
               </div>
+            </div>
             </div>
           </div>
         ) : null}

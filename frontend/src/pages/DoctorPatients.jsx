@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import { apiUrl, authHeaders } from "../api/http";
+import { rememberDoctorPatientTab } from "../utils/doctorPatientTabs";
 
 function patientInitials(record) {
   const p = record?.patient || record;
@@ -146,19 +147,23 @@ export default function DoctorPatients() {
               assignedPatients.map((record) => {
                 const patientId = record.patient?.id || record.id;
                 const snapshot = record.snapshot || {};
+                const displayName = patientDisplayName(record);
                 return (
                   <button
                     key={patientId}
                     type="button"
-                    onClick={() => navigate(`/doctor-patients/${patientId}`)}
+                    onClick={() => {
+                      rememberDoctorPatientTab({ id: patientId, name: displayName });
+                      navigate(`/doctor-patients/${patientId}`);
+                    }}
                     className="flex w-full items-start gap-4 rounded-2xl border border-slate-200 p-4 text-left transition hover:border-slate-300 hover:bg-slate-50"
                   >
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-cyan-100 text-sm font-bold text-cyan-700">{patientInitials(record)}</div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="truncate font-semibold text-slate-900">{patientDisplayName(record)}</p>
-                          {record.patient?.email && patientDisplayName(record) !== record.patient.email ? <p className="truncate text-sm text-slate-500">{record.patient.email}</p> : null}
+                          <p className="truncate font-semibold text-slate-900">{displayName}</p>
+                          {record.patient?.email && displayName !== record.patient.email ? <p className="truncate text-sm text-slate-500">{record.patient.email}</p> : null}
                         </div>
                       </div>
                       <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">

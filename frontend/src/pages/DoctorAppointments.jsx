@@ -16,6 +16,27 @@ import { apiUrl, authHeaders } from "../api/http";
 
 const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const durationOptions = [15, 30, 45, 60];
+const plannerDays = [1, 2, 3, 4, 5, 6];
+const plannerStartHour = 7;
+const plannerEndHour = 20;
+const availabilityPresets = [
+  { label: "Morning clinic", startTime: "09:00", endTime: "12:00" },
+  { label: "Afternoon clinic", startTime: "13:00", endTime: "17:00" },
+  { label: "Full day", startTime: "09:00", endTime: "17:00" },
+  { label: "Evening clinic", startTime: "17:00", endTime: "20:00" },
+];
+
+function buildPlannerSlots(slotMinutes) {
+  return Array.from(
+    { length: ((plannerEndHour - plannerStartHour) * 60) / slotMinutes },
+    (_, index) => {
+      const totalMinutes = plannerStartHour * 60 + index * slotMinutes;
+      const hour = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
+      const minute = String(totalMinutes % 60).padStart(2, "0");
+      return `${hour}:${minute}`;
+    }
+  );
+}
 
 function getPreferredDuration() {
   if (typeof window === "undefined") return "30";
@@ -81,6 +102,75 @@ function availabilityTimingLabel(entry) {
   return `${entry.specificDate || "Date"} • ${entry.startTime.slice(0, 5)} - ${entry.endTime.slice(0, 5)}`;
 }
 
+function toMinutes(timeValue) {
+  const [hours, minutes] = String(timeValue || "00:00").split(":").map(Number);
+  return (hours || 0) * 60 + (minutes || 0);
+}
+
+function plannerKey(dayOfWeek, slotTime) {
+  return `${dayOfWeek}-${slotTime}`;
+}
+
+function buildPlannerSelection(entries, slots, slotMinutes) {
+  const selection = {};
+  for (const entry of entries) {
+    if (entry.type !== "workHours") continue;
+    const start = toMinutes(entry.startTime);
+    const end = toMinutes(entry.endTime);
+    const day = Number(entry.dayOfWeek);
+
+    for (const slot of slots) {
+      const slotStart = toMinutes(slot);
+      const slotEnd = slotStart + slotMinutes;
+      if (slotStart >= start && slotEnd <= end) {
+        selection[plannerKey(day, slot)] = true;
+      }
+    }
+  }
+  return selection;
+}
+
+function compressPlannerSelection(selection, slots, slotMinutes) {
+  return plannerDays.flatMap((dayOfWeek) => {
+    const activeSlots = slots.filter((slot) => selection[plannerKey(dayOfWeek, slot)]);
+    if (!activeSlots.length) return [];
+
+    const ranges = [];
+    let rangeStart = activeSlots[0];
+    let previous = activeSlots[0];
+
+    for (let index = 1; index < activeSlots.length; index += 1) {
+      const current = activeSlots[index];
+      if (toMinutes(current) !== toMinutes(previous) + slotMinutes) {
+        ranges.push({
+          dayOfWeek,
+          startTime: rangeStart,
+          endTime: previous,
+        });
+        rangeStart = current;
+      }
+      previous = current;
+    }
+
+    ranges.push({
+      dayOfWeek,
+      startTime: rangeStart,
+      endTime: previous,
+    });
+
+    return ranges.map((range) => {
+      const endMinutes = toMinutes(range.endTime) + slotMinutes;
+      const endHour = String(Math.floor(endMinutes / 60)).padStart(2, "0");
+      const endMinute = String(endMinutes % 60).padStart(2, "0");
+      return {
+        dayOfWeek: range.dayOfWeek,
+        startTime: range.startTime,
+        endTime: `${endHour}:${endMinute}`,
+      };
+    });
+  });
+}
+
 async function fetchAssignedPatients() {
   const response = await fetch(`${apiUrl}/api/doctors/assigned-patients`, {
     headers: { ...authHeaders() },
@@ -124,10 +214,13 @@ export default function DoctorAppointments() {
   const [availabilityLoading, setAvailabilityLoading] = useState(true);
   const [availabilityError, setAvailabilityError] = useState("");
   const [availabilitySaving, setAvailabilitySaving] = useState(false);
+  const [plannerSaving, setPlannerSaving] = useState(false);
+  const [plannerSelection, setPlannerSelection] = useState({});
   const [editingAvailabilityId, setEditingAvailabilityId] = useState("");
   const [availabilityForm, setAvailabilityForm] = useState({
-    type: "workHours",
+    type: "break",
     dayOfWeek: "1",
+    selectedWeekdays: ["1"],
     specificDate: "",
     startTime: "09:00",
     endTime: "17:00",
@@ -335,6 +428,30 @@ export default function DoctorAppointments() {
     blocked: availabilityEntries.filter((entry) => entry.type === "blocked"),
   }), [availabilityEntries]);
 
+  const groupedWorkHours = useMemo(() => {
+    const grouped = new Map();
+
+    for (const entry of availabilityByType.workHours) {
+      const dayIndex = Number(entry.dayOfWeek);
+      const dayLabel = weekDays[dayIndex] || "Day";
+      const current = grouped.get(dayLabel) || [];
+      current.push(`${entry.startTime.slice(0, 5)}-${entry.endTime.slice(0, 5)}`);
+      grouped.set(dayLabel, current);
+    }
+
+    return Array.from(grouped.entries()).map(([dayLabel, ranges]) => ({
+      dayLabel,
+      ranges,
+    }));
+  }, [availabilityByType.workHours]);
+
+  const plannerSlotMinutes = useMemo(() => Number(preferredDuration || "30"), [preferredDuration]);
+  const plannerSlots = useMemo(() => buildPlannerSlots(plannerSlotMinutes), [plannerSlotMinutes]);
+
+  useEffect(() => {
+    setPlannerSelection(buildPlannerSelection(availabilityEntries, plannerSlots, plannerSlotMinutes));
+  }, [availabilityEntries, plannerSlots, plannerSlotMinutes]);
+
   const monthDays = useMemo(() => {
     const year = visibleMonth.getFullYear();
     const month = visibleMonth.getMonth();
@@ -485,8 +602,9 @@ export default function DoctorAppointments() {
 
   function resetAvailabilityForm() {
     setAvailabilityForm({
-      type: "workHours",
+      type: "break",
       dayOfWeek: "1",
+      selectedWeekdays: [],
       specificDate: "",
       startTime: "09:00",
       endTime: "17:00",
@@ -506,6 +624,8 @@ export default function DoctorAppointments() {
     setAvailabilityForm({
       type: entry.type,
       dayOfWeek: entry.dayOfWeek !== null && entry.dayOfWeek !== undefined ? String(entry.dayOfWeek) : "1",
+      selectedWeekdays:
+        entry.dayOfWeek !== null && entry.dayOfWeek !== undefined ? [String(entry.dayOfWeek)] : [],
       specificDate: entry.specificDate || "",
       startTime: entry.startTime?.slice(0, 5) || "09:00",
       endTime: entry.endTime?.slice(0, 5) || "17:00",
@@ -523,8 +643,8 @@ export default function DoctorAppointments() {
       return;
     }
 
-    if (availabilityForm.type === "workHours" && availabilityForm.dayOfWeek === "") {
-      setAvailabilityError("Select a day of the week for work hours.");
+    if (availabilityForm.type === "workHours" && (availabilityForm.selectedWeekdays || []).length === 0) {
+      setAvailabilityError("Select at least one weekday for work hours.");
       return;
     }
 
@@ -533,9 +653,8 @@ export default function DoctorAppointments() {
       return;
     }
 
-    const payload = {
+    const basePayload = {
       type: availabilityForm.type,
-      dayOfWeek: availabilityForm.type === "workHours" ? Number(availabilityForm.dayOfWeek) : null,
       specificDate: availabilityForm.type === "workHours" ? null : availabilityForm.specificDate,
       startTime: availabilityForm.startTime,
       endTime: availabilityForm.endTime,
@@ -545,9 +664,30 @@ export default function DoctorAppointments() {
     try {
       setAvailabilitySaving(true);
       if (editingAvailabilityId) {
-        await updateDoctorAvailability(editingAvailabilityId, payload);
+        await updateDoctorAvailability(editingAvailabilityId, {
+          ...basePayload,
+          dayOfWeek:
+            availabilityForm.type === "workHours"
+              ? Number((availabilityForm.selectedWeekdays || [availabilityForm.dayOfWeek])[0])
+              : null,
+        });
       } else {
-        await createDoctorAvailability(payload);
+        if (availabilityForm.type === "workHours") {
+          const weekdays = availabilityForm.selectedWeekdays || [];
+          await Promise.all(
+            weekdays.map((weekday) =>
+              createDoctorAvailability({
+                ...basePayload,
+                dayOfWeek: Number(weekday),
+              })
+            )
+          );
+        } else {
+          await createDoctorAvailability({
+            ...basePayload,
+            dayOfWeek: null,
+          });
+        }
       }
       resetAvailabilityForm();
       await loadPageData();
@@ -574,11 +714,45 @@ export default function DoctorAppointments() {
     }
   }
 
+  async function handleSaveWeeklyPlanner() {
+    const ranges = compressPlannerSelection(plannerSelection, plannerSlots, plannerSlotMinutes);
+
+    if (!ranges.length) {
+      setAvailabilityError("Choose at least one weekly slot before saving.");
+      return;
+    }
+
+    try {
+      setPlannerSaving(true);
+      setAvailabilityError("");
+      const existingWorkHours = availabilityByType.workHours || [];
+
+      await Promise.all(existingWorkHours.map((entry) => deleteDoctorAvailability(entry.id)));
+      await Promise.all(
+        ranges.map((range) =>
+          createDoctorAvailability({
+            type: "workHours",
+            dayOfWeek: range.dayOfWeek,
+            specificDate: null,
+            startTime: range.startTime,
+            endTime: range.endTime,
+            reason: "Saved from weekly planner",
+          })
+        )
+      );
+      await loadPageData();
+    } catch (err) {
+      setAvailabilityError(err.message || "Failed to save weekly planner.");
+    } finally {
+      setPlannerSaving(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
 
-      <main className="pt-28 max-w-6xl mx-auto px-6 py-8">
+      <main className="mx-auto max-w-6xl px-6 pb-8 pt-28">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <h1 className="text-3xl text-slate-800 font-bold">Appointments</h1>
@@ -807,42 +981,145 @@ export default function DoctorAppointments() {
             ) : null}
           </div>
 
-          <form onSubmit={handleSubmitAvailability} className="grid grid-cols-1 md:grid-cols-6 gap-3">
+          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Weekly availability planner</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Paint only the exact booking windows you want open. The grid follows your appointment duration rule.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {availabilityPresets.map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() =>
+                      setPlannerSelection((current) => {
+                        const next = { ...current };
+                        const start = toMinutes(preset.startTime);
+                        const end = toMinutes(preset.endTime);
+                        for (const day of plannerDays) {
+                          for (const slot of plannerSlots) {
+                            const slotStart = toMinutes(slot);
+                            const slotEnd = slotStart + plannerSlotMinutes;
+                            const key = plannerKey(day, slot);
+                            if (slotStart >= start && slotEnd <= end) {
+                              next[key] = true;
+                            }
+                          }
+                        }
+                        return next;
+                      })
+                    }
+                    className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setPlannerSelection({})}
+                  className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-5 overflow-x-auto">
+              <div className="min-w-[980px]">
+                <div className="grid gap-2" style={{ gridTemplateColumns: `120px repeat(${plannerSlots.length}, minmax(28px, 1fr))` }}>
+                  <div />
+                  {plannerSlots.map((slot, index) => (
+                    <div key={slot} className="text-center text-[10px] font-semibold text-slate-400">
+                      {index % 2 === 0 ? slot : ""}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-2 space-y-2">
+                  {plannerDays.map((day) => (
+                    <div
+                      key={day}
+                      className="grid gap-2 items-center"
+                      style={{ gridTemplateColumns: `120px repeat(${plannerSlots.length}, minmax(28px, 1fr))` }}
+                    >
+                      <div className="rounded-2xl bg-white px-3 py-3 text-sm font-semibold text-slate-800">
+                        {weekDays[day]}
+                      </div>
+                      {plannerSlots.map((slot) => {
+                        const key = plannerKey(day, slot);
+                        const active = Boolean(plannerSelection[key]);
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() =>
+                              setPlannerSelection((current) => ({
+                                ...current,
+                                [key]: !current[key],
+                              }))
+                            }
+                            className={`h-9 rounded-xl border transition ${
+                              active
+                                ? "border-sky-300 bg-sky-400 shadow-sm"
+                                : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                            }`}
+                            title={`${weekDays[day]} ${slot}`}
+                          />
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-slate-500">
+                Breaks and blocked dates can still be added below for exceptions. Current slot size: {plannerSlotMinutes} minutes.
+              </p>
+              <button
+                type="button"
+                onClick={handleSaveWeeklyPlanner}
+                disabled={plannerSaving}
+                className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-600 disabled:opacity-70"
+              >
+                {plannerSaving ? "Saving planner..." : "Save weekly availability"}
+              </button>
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmitAvailability} className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-6">
             <select
               value={availabilityForm.type}
               onChange={(event) =>
                 setAvailabilityForm((current) => ({
                   ...current,
                   type: event.target.value,
+                  selectedWeekdays:
+                    event.target.value === "workHours"
+                      ? current.selectedWeekdays?.length
+                        ? current.selectedWeekdays
+                        : [current.dayOfWeek || "1"]
+                      : [],
                   specificDate: event.target.value === "workHours" ? "" : current.specificDate,
                 }))
               }
               className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
             >
-              <option value="workHours">Work hours</option>
               <option value="break">Break</option>
               <option value="blocked">Blocked date</option>
             </select>
 
-            {availabilityForm.type === "workHours" ? (
-              <select
-                value={availabilityForm.dayOfWeek}
-                onChange={(event) => setAvailabilityForm((current) => ({ ...current, dayOfWeek: event.target.value }))}
-                className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-              >
-                {weekDays.map((day, index) => (
-                  <option key={day} value={String(index)}>{day}</option>
-                ))}
-              </select>
-            ) : (
-              <input
-                type="date"
-                value={availabilityForm.specificDate}
-                onChange={(event) => setAvailabilityForm((current) => ({ ...current, specificDate: event.target.value }))}
-                className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                required
-              />
-            )}
+            <input
+              type="date"
+              value={availabilityForm.specificDate}
+              onChange={(event) => setAvailabilityForm((current) => ({ ...current, specificDate: event.target.value }))}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              required
+            />
 
             <input
               type="time"
@@ -876,6 +1153,10 @@ export default function DoctorAppointments() {
               {availabilitySaving ? "Saving..." : editingAvailabilityId ? "Update entry" : "Add entry"}
             </button>
           </form>
+
+          <div className="mt-3 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+            Use the visual planner for weekly bookable hours. Use the form below only for one-off breaks and blocked dates.
+          </div>
 
           {availabilityError && (
             <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -914,19 +1195,41 @@ export default function DoctorAppointments() {
                     <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">
                       Loading...
                     </div>
+                  ) : section.key === "workHours" && groupedWorkHours.length > 0 ? (
+                    <div className="space-y-2">
+                      {groupedWorkHours.map((group) => (
+                        <div key={group.dayLabel} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">{group.dayLabel}</p>
+                              <p className="mt-1 text-sm text-slate-600">{group.ranges.join("  •  ")}</p>
+                            </div>
+                            <span className="rounded-full bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-700">
+                              Edit in planner
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   ) : availabilityByType[section.key].length > 0 ? (
                     availabilityByType[section.key].map((entry) => (
                       <div key={entry.id} className="rounded-2xl border border-slate-200 bg-white p-4">
                         <p className="text-sm font-semibold text-slate-900">{availabilityTimingLabel(entry)}</p>
                         {entry.reason ? <p className="mt-1 text-xs text-slate-500">{entry.reason}</p> : null}
                         <div className="mt-3 flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => startEditAvailability(entry)}
-                            className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                          >
-                            Edit
-                          </button>
+                          {entry.type === "workHours" ? (
+                            <span className="rounded-lg bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700">
+                              Edit in planner
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => startEditAvailability(entry)}
+                              className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                            >
+                              Edit
+                            </button>
+                          )}
                           <button
                             type="button"
                             disabled={availabilitySaving}
