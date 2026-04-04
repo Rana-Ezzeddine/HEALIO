@@ -861,14 +861,14 @@ export const getPatientWorkspace = async (req, res) => {
 
     const patient = await User.findByPk(patientId, {
       attributes: ["id", "email", "role"],
-      include: [{ model: PatientProfile, as: "patientProfile" }],
     });
 
     if (!patient) {
       return res.status(404).json({ message: "Patient not found." });
     }
 
-    const [medications, diagnoses, appointments, recentSymptoms, caregiverNotes, doctorNotes, timelineRows, updateRows] = await Promise.all([
+    const [profile, medications, diagnoses, appointments, recentSymptoms, caregiverNotes, doctorNotes, timelineRows, updateRows] = await Promise.all([
+      PatientProfile.findOne({ where: { userId: patientId } }),
       Medication.findAll({
         where: { patientId },
         order: [["createdAt", "DESC"]],
@@ -904,7 +904,7 @@ export const getPatientWorkspace = async (req, res) => {
         SELECT 'note' as type, id, 'Medical Note' as title, LEFT(note, 100) as detail, "createdAt" as "timestamp"
         FROM medical_notes WHERE "patientId" = :patientId AND "doctorId" = :doctorId
         UNION ALL
-        SELECT 'appointment' as type, id, 'Appointment' as title, status as detail, "startsAt" as "timestamp"
+        SELECT 'appointment' as type, id, 'Appointment' as title, status::text as detail, "startsAt" as "timestamp"
         FROM appointments WHERE "patientId" = :patientId AND "doctorId" = :doctorId
         UNION ALL
         SELECT 'diagnosis' as type, id, 'Diagnosis' as title, "diagnosisText" as detail, "diagnosedAt" as "timestamp"
@@ -925,7 +925,6 @@ export const getPatientWorkspace = async (req, res) => {
 
     const timeline = timelineRows[0] || [];
     const updates = updateRows[0] || [];
-    const profile = patient.patientProfile || null;
     let emergencyContact = profile?.emergencyContact || null;
     if (typeof emergencyContact === "string") {
       try {
@@ -1045,7 +1044,7 @@ export const getPatientTimeline = async (req, res) => {
       SELECT 'note' as type, id, 'Medical Note' as title, LEFT(note, 100) as detail, "createdAt" as "timestamp"
       FROM medical_notes WHERE "patientId" = :patientId AND "doctorId" = :doctorId
       UNION ALL
-      SELECT 'appointment' as type, id, 'Appointment' as title, status as detail, "startsAt" as "timestamp"
+      SELECT 'appointment' as type, id, 'Appointment' as title, status::text as detail, "startsAt" as "timestamp"
       FROM appointments WHERE "patientId" = :patientId AND "doctorId" = :doctorId
       UNION ALL
       SELECT 'diagnosis' as type, id, 'Diagnosis' as title, "diagnosisText" as detail, "diagnosedAt" as "timestamp"
