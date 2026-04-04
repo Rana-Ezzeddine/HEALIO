@@ -47,6 +47,7 @@ export default function DoctorPatients() {
   const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -75,6 +76,20 @@ export default function DoctorPatients() {
     load();
     return () => { cancelled = true; };
   }, []);
+
+  const filteredPatients = assignedPatients.filter((record) => {
+    const patient = record.patient || record;
+    const displayName = patientDisplayName(record).toLowerCase();
+    const email = (patient?.email || "").toLowerCase();
+    const query = searchTerm.trim().toLowerCase();
+
+    return (
+      !query ||
+      displayName.includes(query) ||
+      email.includes(query) ||
+      ((record.snapshot?.latestSymptom?.name || "").toLowerCase().includes(query))
+    );
+  });
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -136,6 +151,16 @@ export default function DoctorPatients() {
             </button>
           </div>
 
+          <div className="mt-5">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search by patient name, email, or symptom"
+              className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
+            />
+          </div>
+
           <div className="mt-5 space-y-3">
             {loading ? (
               <p className="text-sm text-slate-500">Loading...</p>
@@ -143,8 +168,12 @@ export default function DoctorPatients() {
               <div className="rounded-2xl border border-dashed border-slate-200 px-6 py-8 text-center text-sm text-slate-500">
                 No patients linked yet.
               </div>
+            ) : filteredPatients.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 px-6 py-8 text-center text-sm text-slate-500">
+                No patients match the current search.
+              </div>
             ) : (
-              assignedPatients.map((record) => {
+              filteredPatients.map((record) => {
                 const patientId = record.patient?.id || record.id;
                 const snapshot = record.snapshot || {};
                 const displayName = patientDisplayName(record);
