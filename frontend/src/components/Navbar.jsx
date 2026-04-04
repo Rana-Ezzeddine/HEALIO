@@ -65,6 +65,7 @@ export default function Navbar({ onLogin, onSignup }) {
   const isCaregiverNotes = path.toLowerCase().startsWith("/caregivernotes");
   const isDoctorPatients = path.toLowerCase().startsWith("/doctor-patients");
   const isDoctorClinicalNotes = path.toLowerCase().startsWith("/doctor-clinical-notes");
+  const isDoctorTreatmentPlans = path.toLowerCase().startsWith("/doctor-treatment-plans");
   const isHealthSummary = path.toLowerCase().startsWith("/healthsummary");
   const isPatientMessages = path.toLowerCase().startsWith("/patientmessages");
   const isPatientNotifications = path.toLowerCase().startsWith("/patient-notifications");
@@ -231,6 +232,16 @@ export default function Navbar({ onLogin, onSignup }) {
                     }`}
                   >
                     Clinical Notes
+                  </button>
+                )}
+                {isDoctor && !doctorApprovalHeld && (
+                  <button
+                    onClick={() => navigate("/doctor-treatment-plans")}
+                    className={`text-sm font-medium transition ${
+                      isDoctorTreatmentPlans ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Treatment Plans
                   </button>
                 )}
                 {isPatient && (
