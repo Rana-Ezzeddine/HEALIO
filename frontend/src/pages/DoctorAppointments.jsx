@@ -103,13 +103,13 @@ function MetricCard({ label, value, hint, tone = "sky" }) {
     rose: "from-rose-500 to-pink-400",
   };
   return (
-    <div className="rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
+    <div className="rounded-2xl border border-white/15 bg-white/10 p-3 backdrop-blur-sm">
       <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70">{label}</p>
-      <p className="mt-2 text-3xl font-black text-white">{value}</p>
-      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/15">
+      <p className="mt-2 text-2xl font-black text-white">{value}</p>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/15">
         <div className={`h-full rounded-full bg-gradient-to-r ${tones[tone] || tones.sky}`} style={{ width: "100%" }} />
       </div>
-      <p className="mt-2 text-xs text-white/70">{hint}</p>
+      <p className="mt-2 text-[11px] text-white/70">{hint}</p>
     </div>
   );
 }
@@ -801,15 +801,15 @@ export default function DoctorAppointments() {
       <Navbar />
 
       <main className="mx-auto max-w-6xl px-6 pb-8 pt-28">
-        <section className="mb-6 rounded-[2rem] bg-gradient-to-r from-slate-900 via-sky-800 to-cyan-600 p-8 text-white shadow-xl">
-          <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+        <section className="mb-6 rounded-[2rem] bg-gradient-to-r from-slate-900 via-sky-800 to-cyan-600 p-6 text-white shadow-xl">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.25em] text-white/75">Doctor Appointments</p>
-              <h1 className="mt-3 text-4xl font-black">Scheduling and Requests</h1>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-white/85">
-                Review patient requests, suggest better slots, manage schedule status, and shape availability from one workflow page.
+              <h1 className="mt-2 text-3xl font-black">Scheduling and Requests</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-white/85">
+                Review requests, schedule patients, and shape availability from one page.
               </p>
-              <div className="mt-5">
+              <div className="mt-4">
                 <Link
                   to="/doctor-calendar"
                   className="inline-flex rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-100"
@@ -818,7 +818,7 @@ export default function DoctorAppointments() {
                 </Link>
               </div>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:w-[420px]">
+            <div className="grid gap-2 sm:grid-cols-2 xl:w-[360px]">
               <MetricCard label="Requests" value={requestedAppointments.length} hint="Awaiting review" tone="amber" />
               <MetricCard label="Scheduled" value={scheduledCount} hint="Confirmed visits" tone="emerald" />
               <MetricCard label="Completed" value={completedCount} hint="Closed visits" tone="sky" />
