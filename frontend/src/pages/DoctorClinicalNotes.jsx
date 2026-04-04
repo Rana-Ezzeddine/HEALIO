@@ -166,6 +166,13 @@ export default function DoctorClinicalNotes() {
                 <button
                   type="button"
                   disabled={!selectedPatientId}
+                  onClick={() =>
+                    navigate(
+                      selectedPatientId
+                        ? `/doctor-treatment-plans?patientId=${selectedPatientId}`
+                        : "/doctor-treatment-plans"
+                    )
+                  }
                   className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
                     selectedPatientId
                       ? "bg-sky-100 text-sky-700 hover:bg-sky-200"
@@ -196,10 +203,10 @@ export default function DoctorClinicalNotes() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => navigate("/doctorAppointments")}
-                  className="rounded-2xl bg-emerald-100 px-4 py-3 text-left text-sm font-semibold text-emerald-700 hover:bg-emerald-200 transition"
+                  onClick={() => navigate("/doctor-treatment-plans")}
+                  className="rounded-2xl bg-violet-100 px-4 py-3 text-left text-sm font-semibold text-violet-700 hover:bg-violet-200 transition"
                 >
-                  Appointments
+                  Treatment plans
                 </button>
               </div>
             </section>
