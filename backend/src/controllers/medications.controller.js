@@ -1,65 +1,8 @@
 import Medication from "../models/Medication.js";
 import { Op } from "sequelize";
-import { CaregiverPatientPermission } from "../models/index.js";
+import ContextService from "../services/ContextService.js";
+import ReminderSchedulerService from "../services/reminderSchedulerService.js";
 
-const getAuthUserId = (req) => req.user?.id || req.user?.sub || null;
-
-const resolveMedicationPatientId = async (req) => {
-  const authUserId = getAuthUserId(req);
-  const role = req.user?.role;
-
-  if (!authUserId) {
-    return { error: "Not authenticated", status: 401 };
-  }
-
-  if (role === "patient") {
-    return { patientId: authUserId };
-  }
-
-  if (role === "caregiver") {
-    const requestedPatientId =
-      req.query?.patientId || req.body?.patientId || req.params?.patientId || null;
-
-    if (requestedPatientId) {
-      const permission = await CaregiverPatientPermission.findOne({
-        where: {
-          caregiverId: authUserId,
-          patientId: requestedPatientId,
-          canViewMedications: true,
-        },
-      });
-
-      if (!permission) {
-        return { error: "Not authorized for this patient's medications", status: 403 };
-      }
-
-      return { patientId: requestedPatientId };
-    }
-
-    const permissions = await CaregiverPatientPermission.findAll({
-      where: {
-        caregiverId: authUserId,
-        canViewMedications: true,
-      },
-      order: [["createdAt", "ASC"]],
-    });
-
-    if (!permissions.length) {
-      return { error: "No patient medication access found for this caregiver", status: 403 };
-    }
-
-    if (permissions.length > 1) {
-      return {
-        error: "Multiple linked patients found. Please provide patientId.",
-        status: 400,
-      };
-    }
-
-    return { patientId: permissions[0].patientId };
-  }
-
-  return { error: "Forbidden", status: 403 };
-};
 const cleanString = (v) => (typeof v === "string" ? v.trim() : v);
 const nullIfEmpty = (v) => {
   if (v == null) return null;
@@ -116,7 +59,7 @@ const normalizeAdherenceHistory = (value) => {
 
 export const getAllMedications = async (req, res) => {
   try {
-    const resolved = await resolveMedicationPatientId(req);
+    const resolved = await ContextService.resolvePatientContext(req);
     if (resolved.error) {
       return res.status(resolved.status).json({ error: resolved.error });
     }
@@ -136,7 +79,7 @@ export const getAllMedications = async (req, res) => {
 
 export const getMedicationById = async (req, res) => {
   try {
-    const resolved = await resolveMedicationPatientId(req);
+    const resolved = await ContextService.resolvePatientContext(req);
     if (resolved.error) {
       return res.status(resolved.status).json({ error: resolved.error });
     }
@@ -157,7 +100,7 @@ export const getMedicationById = async (req, res) => {
 
 export const createMedication = async (req, res) => {
   try {
-    const resolved = await resolveMedicationPatientId(req);
+    const resolved = await ContextService.resolvePatientContext(req);
     if (resolved.error) {
       return res.status(resolved.status).json({ error: resolved.error });
     }
@@ -181,7 +124,7 @@ export const createMedication = async (req, res) => {
 
     const cleanName = cleanString(name);
     const cleanDosage = cleanString(dosage);
-    const cleanFrequency = cleanString(frequency);
+    const cleanFrequency = cleanString(frequency) || "Daily";
     const cleanAdherenceHistory = normalizeAdherenceHistory(adherenceHistory);
     const cleanReminderLeadMinutes = normalizeReminderLeadMinutes(reminderLeadMinutes);
 
@@ -195,20 +138,16 @@ export const createMedication = async (req, res) => {
         error: "adherenceHistory must be an array of valid medication status entries",
       });
     }
-    if (cleanReminderLeadMinutes === null) {
-      return res.status(400).json({
-        error: "reminderLeadMinutes must be an integer between 0 and 1440",
-      });
-    }
+    const preFill = await ContextService.getPreFillData(patientId, 'medication');
 
     const medication = await Medication.create({
       patientId,
       name: cleanName,
       dosage: cleanDosage,
       frequency: cleanFrequency,
-      prescribedBy: nullIfEmpty(prescribedBy),
+      prescribedBy: nullIfEmpty(prescribedBy) || preFill.prescribedBy,
       doseAmount: doseAmount ?? null,
-      doseUnit: nullIfEmpty(doseUnit),
+      doseUnit: nullIfEmpty(doseUnit) || preFill.doseUnit,
       scheduleJson: scheduleJson ?? null,
       adherenceHistory: cleanAdherenceHistory,
       reminderEnabled: reminderEnabled !== false,
@@ -217,6 +156,8 @@ export const createMedication = async (req, res) => {
       endDate: nullIfEmpty(endDate),
       notes: nullIfEmpty(notes),
     });
+
+    await ReminderSchedulerService.scheduleMedicationReminder(medication);
 
     return res.status(201).json(medication);
   } catch (error) {
@@ -230,7 +171,7 @@ export const createMedication = async (req, res) => {
 
 export const updateMedication = async (req, res) => {
   try {
-    const resolved = await resolveMedicationPatientId(req);
+    const resolved = await ContextService.resolvePatientContext(req);
     if (resolved.error) {
       return res.status(resolved.status).json({ error: resolved.error });
     }
@@ -254,7 +195,7 @@ export const updateMedication = async (req, res) => {
 
     const cleanName = cleanString(name);
     const cleanDosage = cleanString(dosage);
-    const cleanFrequency = cleanString(frequency);
+    const cleanFrequency = cleanString(frequency) || "Daily";
     const cleanAdherenceHistory = normalizeAdherenceHistory(adherenceHistory);
     const cleanReminderLeadMinutes = normalizeReminderLeadMinutes(reminderLeadMinutes);
 
@@ -286,7 +227,7 @@ export const updateMedication = async (req, res) => {
       frequency: cleanFrequency,
       prescribedBy: nullIfEmpty(prescribedBy),
       doseAmount: doseAmount ?? null,
-      doseUnit: nullIfEmpty(doseUnit),
+      doseUnit: nullIfEmpty(doseUnit) || "mg",
       scheduleJson: scheduleJson ?? null,
       adherenceHistory: cleanAdherenceHistory,
       reminderEnabled: reminderEnabled !== false,
@@ -295,6 +236,8 @@ export const updateMedication = async (req, res) => {
       endDate: nullIfEmpty(endDate),
       notes: nullIfEmpty(notes),
     });
+
+    await ReminderSchedulerService.scheduleMedicationReminder(medication);
 
     return res.json(medication);
   } catch (error) {
@@ -308,7 +251,7 @@ export const updateMedication = async (req, res) => {
 
 export const deleteMedication = async (req, res) => {
   try {
-    const resolved = await resolveMedicationPatientId(req);
+    const resolved = await ContextService.resolvePatientContext(req);
     if (resolved.error) {
       return res.status(resolved.status).json({ error: resolved.error });
     }
@@ -320,6 +263,12 @@ export const deleteMedication = async (req, res) => {
 
     if (!medication) return res.status(404).json({ error: "Medication not found" });
 
+    await ReminderSchedulerService.clearPendingReminders({
+      userId: patientId,
+      type: 'medication',
+      relatedId: medication.id,
+    });
+
     await medication.destroy();
     return res.status(204).send();
   } catch (error) {
@@ -330,7 +279,7 @@ export const deleteMedication = async (req, res) => {
 
 export const logMedicationAdherence = async (req, res) => {
   try {
-    const resolved = await resolveMedicationPatientId(req);
+    const resolved = await ContextService.resolvePatientContext(req);
     if (resolved.error) {
       return res.status(resolved.status).json({ error: resolved.error });
     }
@@ -394,7 +343,7 @@ export const logMedicationAdherence = async (req, res) => {
 
 export const searchMedications = async (req, res) => {
   try {
-    const resolved = await resolveMedicationPatientId(req);
+    const resolved = await ContextService.resolvePatientContext(req);
     if (resolved.error) {
       return res.status(resolved.status).json({ error: resolved.error });
     }

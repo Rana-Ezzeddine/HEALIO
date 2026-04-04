@@ -6,6 +6,7 @@ import {
     Conversation,
     ConversationParticipant,
     Message,
+    CommunicationContext,
     DoctorPatientAssignment,
     CaregiverPatientPermission,
 } from "../models/index.js";
@@ -426,9 +427,41 @@ export const sendMessage = async (req, res) => {
         const { id: conversationId } = req.params;
         const userId = req.user.id;
         const body = cleanBody(req.body.body);
+        const providedContextId = cleanBody(req.body.contextId);
+        const contextType = cleanBody(req.body.contextType);
+        const contextRelatedId = cleanBody(req.body.contextRelatedId);
+        const contextMetadata =
+            req.body.contextMetadata && typeof req.body.contextMetadata === "object"
+                ? req.body.contextMetadata
+                : {};
+        const allowedContextTypes = new Set([
+            "appointment",
+            "symptom",
+            "medication",
+            "caregiver_invite",
+            "care_concern",
+            "diagnosis",
+            "medical_note",
+        ]);
 
         if (!body) {
             return res.status(400).json({ message: "Message body is required." });
+        }
+
+        if (contextType && !allowedContextTypes.has(contextType)) {
+            return res.status(400).json({ message: "Invalid contextType." });
+        }
+
+        let contextId = null;
+        if (providedContextId) {
+            contextId = providedContextId;
+        } else if (contextType && contextRelatedId) {
+            const context = await CommunicationContext.create({
+                type: contextType,
+                relatedId: contextRelatedId,
+                metadata: contextMetadata,
+            });
+            contextId = context.id;
         }
 
         const isMember = await ensureConversationMember(conversationId, userId);
@@ -446,6 +479,7 @@ export const sendMessage = async (req, res) => {
             senderId: userId,
             body,
             sentAt: new Date(),
+            contextId,
         });
 
         await conversation.update({ updatedAt: new Date() });
