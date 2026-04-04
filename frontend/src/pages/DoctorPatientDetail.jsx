@@ -3,8 +3,17 @@ import { useNavigate, useParams } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import { apiUrl, authHeaders } from "../api/http";
 import { rememberDoctorPatientTab } from "../utils/doctorPatientTabs";
-import { formatListOutput, getDoctorCaregiverNotes, getPatientClinicalNotes, getPatientTreatmentPlans, saveDoctorCaregiverNote } from "../utils/doctorPatientRecords";
+import {
+  formatListOutput,
+  getDoctorCaregiverNotes,
+  getDoctorEmergencyReview,
+  getPatientClinicalNotes,
+  getPatientTreatmentPlans,
+  saveDoctorCaregiverNote,
+  saveDoctorEmergencyReview,
+} from "../utils/doctorPatientRecords";
 import { formatDoseTime, getNextMedicationDose, getScheduleTimes, isActiveMedication } from "../utils/medicationSchedule";
+import { createConversation, getConversationMessages, sendConversationMessage } from "../api/messaging";
 
 function patientDisplayName(record) {
   const p = record?.patient || record;
@@ -104,6 +113,17 @@ export default function DoctorPatientDetail() {
   const [doctorCaregiverNotes, setDoctorCaregiverNotes] = useState([]);
   const [doctorCaregiverNoteForm, setDoctorCaregiverNoteForm] = useState({ caregiverId: "", note: "" });
   const [doctorCaregiverNoteMessage, setDoctorCaregiverNoteMessage] = useState("");
+  const [emergencyReview, setEmergencyReview] = useState(null);
+  const [emergencyReviewForm, setEmergencyReviewForm] = useState({ disposition: "monitoring", note: "" });
+  const [emergencyReviewMessage, setEmergencyReviewMessage] = useState("");
+  const [communicationConversationId, setCommunicationConversationId] = useState("");
+  const [communicationMessages, setCommunicationMessages] = useState([]);
+  const [communicationLoading, setCommunicationLoading] = useState(false);
+  const [communicationError, setCommunicationError] = useState("");
+  const [communicationDraft, setCommunicationDraft] = useState("");
+  const [sendingCommunication, setSendingCommunication] = useState(false);
+  const [communicationContextType, setCommunicationContextType] = useState("");
+  const [communicationContextRelatedId, setCommunicationContextRelatedId] = useState("");
   const [medicationForm, setMedicationForm] = useState({
     name: "",
     doseAmount: "",
@@ -126,6 +146,13 @@ export default function DoctorPatientDetail() {
     setLocalNotes(getPatientClinicalNotes(currentPatientId));
     setLocalPlans(getPatientTreatmentPlans(currentPatientId));
     setDoctorCaregiverNotes(getDoctorCaregiverNotes(currentPatientId));
+    setEmergencyReview(getDoctorEmergencyReview(currentPatientId));
+    setCommunicationConversationId("");
+    setCommunicationMessages([]);
+    setCommunicationError("");
+    setCommunicationDraft("");
+    setCommunicationContextType("");
+    setCommunicationContextRelatedId("");
     if (!preserveMedicationForm) {
       setMedicationFormOpen(false);
       setEditingMedicationId(null);
@@ -170,9 +197,53 @@ export default function DoctorPatientDetail() {
   const appointments = overview?.appointmentsAsPatient || [];
   const caregivers = overview?.caregivers || [];
   const caregiverNotes = overview?.caregiverNotes || [];
+  const currentUserId = reqUserId();
   const activeMedications = medications.filter((item) => isActiveMedication(item));
   const nextMedicationDose = getNextMedicationDose(activeMedications);
   const activeDiagnosisCount = diagnoses.filter((item) => item.status === "active").length;
+
+  const communicationContextOptions = [
+    ...appointments.map((appointment) => ({
+      key: `appointment-${appointment.id}`,
+      type: "appointment",
+      relatedId: appointment.id,
+      label: `Appointment • ${formatDateTime(appointment.startsAt)}`,
+    })),
+    ...activeMedications.map((medication) => ({
+      key: `medication-${medication.id}`,
+      type: "medication",
+      relatedId: medication.id,
+      label: `Medication • ${medication.name}`,
+    })),
+    ...diagnoses.map((diagnosis) => ({
+      key: `diagnosis-${diagnosis.id}`,
+      type: "diagnosis",
+      relatedId: diagnosis.id,
+      label: `Diagnosis • ${diagnosis.diagnosisText}`,
+    })),
+    ...localNotes.slice(0, 6).map((note) => ({
+      key: `medical_note-${note.id}`,
+      type: "medical_note",
+      relatedId: note.id,
+      label: `Clinical note • ${note.noteTitle || "Untitled note"}`,
+    })),
+    ...(profile?.emergencyStatus ? [{
+      key: `care_concern-${patientId}`,
+      type: "care_concern",
+      relatedId: patientId,
+      label: "Care concern • Active emergency alert",
+    }] : []),
+  ];
+
+  function reqUserId() {
+    try {
+      const raw = sessionStorage.getItem("user");
+      const parsed = raw ? JSON.parse(raw) : null;
+      return parsed?.id || "";
+    } catch {
+      return "";
+    }
+  }
 
   function openMedicationForm(medication = null) {
     if (medication) {
@@ -315,6 +386,79 @@ export default function DoctorPatientDetail() {
     setDoctorCaregiverNoteMessage("Doctor-to-caregiver note saved.");
   }
 
+  function handleSaveEmergencyReview(event) {
+    event.preventDefault();
+    const note = emergencyReviewForm.note.trim();
+    if (!note) {
+      setEmergencyReviewMessage("Add a short triage note before saving.");
+      return;
+    }
+    const review = saveDoctorEmergencyReview(patientId, {
+      reviewedAt: new Date().toISOString(),
+      disposition: emergencyReviewForm.disposition,
+      note,
+    });
+    setEmergencyReview(review);
+    setEmergencyReviewMessage("Emergency review saved.");
+  }
+
+  async function ensurePatientConversation() {
+    const created = await createConversation({ recipientId: patientId });
+    return created.conversation?.id || "";
+  }
+
+  async function loadPatientConversation() {
+    try {
+      setCommunicationLoading(true);
+      setCommunicationError("");
+      const conversationId = await ensurePatientConversation();
+      setCommunicationConversationId(conversationId);
+      if (!conversationId) {
+        setCommunicationMessages([]);
+        return;
+      }
+      const messagesData = await getConversationMessages(conversationId);
+      setCommunicationMessages(messagesData.messages || []);
+    } catch (err) {
+      setCommunicationError(err.message || "Failed to load patient communication.");
+    } finally {
+      setCommunicationLoading(false);
+    }
+  }
+
+  async function handleSendContextMessage(event) {
+    event.preventDefault();
+    const body = communicationDraft.trim();
+    if (!body) {
+      setCommunicationError("Write a message first.");
+      return;
+    }
+    try {
+      setSendingCommunication(true);
+      setCommunicationError("");
+      const conversationId = communicationConversationId || await ensurePatientConversation();
+      setCommunicationConversationId(conversationId);
+      const selectedContext = communicationContextOptions.find(
+        (option) => option.type === communicationContextType && option.relatedId === communicationContextRelatedId
+      );
+      const data = await sendConversationMessage(conversationId, body, communicationContextType && communicationContextRelatedId ? {
+        contextType: communicationContextType,
+        contextRelatedId: communicationContextRelatedId,
+        contextMetadata: {
+          patientId,
+          patientName: overview ? patientDisplayName(overview) : "Patient",
+          label: selectedContext?.label || null,
+        },
+      } : {});
+      setCommunicationMessages((current) => [...current, data.data]);
+      setCommunicationDraft("");
+    } catch (err) {
+      setCommunicationError(err.message || "Failed to send message.");
+    } finally {
+      setSendingCommunication(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
@@ -361,6 +505,83 @@ export default function DoctorPatientDetail() {
                   </div>
                 ))}
               </div>
+            </div>
+            <div className="rounded-3xl bg-gradient-to-br from-white to-rose-50 p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">Emergency alert review</h3>
+                  <p className="mt-1 text-sm text-slate-500">Review the patient's current emergency state and record your triage note.</p>
+                </div>
+                <InfoPill
+                  label="Alert"
+                  value={profile?.emergencyStatus ? "Active" : "Normal"}
+                  tone={profile?.emergencyStatus ? "rose" : "emerald"}
+                />
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Emergency updated</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">{formatDateTime(profile?.emergencyStatusUpdatedAt)}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Emergency contact</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">{formatField(profile?.emergencyContact)}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Latest symptom event</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">
+                    {workspace?.timeline?.find((item) => item.type === "symptom")?.detail || "No recent symptom event"}
+                  </p>
+                </div>
+              </div>
+              {profile?.emergencyStatus ? (
+                <form onSubmit={handleSaveEmergencyReview} className="mt-4 rounded-2xl border border-rose-200 bg-white/90 p-4">
+                  <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
+                    <label className="text-sm font-medium text-slate-700">
+                      Disposition
+                      <select
+                        value={emergencyReviewForm.disposition}
+                        onChange={(event) => setEmergencyReviewForm((current) => ({ ...current, disposition: event.target.value }))}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
+                      >
+                        <option value="monitoring">Continue monitoring</option>
+                        <option value="same-day follow-up">Same-day follow-up needed</option>
+                        <option value="urgent escalation">Urgent escalation</option>
+                      </select>
+                    </label>
+                    <label className="text-sm font-medium text-slate-700">
+                      Doctor triage note
+                      <textarea
+                        value={emergencyReviewForm.note}
+                        onChange={(event) => setEmergencyReviewForm((current) => ({ ...current, note: event.target.value }))}
+                        rows={3}
+                        placeholder="Example: Alert reviewed at 14:10. Patient should be contacted immediately and symptoms rechecked before deciding on ED referral."
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
+                      />
+                    </label>
+                  </div>
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <button type="submit" className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700">
+                      Save emergency review
+                    </button>
+                    {emergencyReviewMessage ? <span className="text-sm font-medium text-rose-700">{emergencyReviewMessage}</span> : null}
+                  </div>
+                </form>
+              ) : (
+                <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  No active emergency alert. This panel stays ready for the next escalation.
+                </div>
+              )}
+              {emergencyReview ? (
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-white/90 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-slate-900">Latest doctor emergency review</p>
+                    <InfoPill label="Disposition" value={emergencyReview.disposition} tone="rose" />
+                  </div>
+                  <p className="mt-2 text-sm text-slate-700">{emergencyReview.note}</p>
+                  <p className="mt-2 text-xs text-slate-400">{formatDateTime(emergencyReview.reviewedAt)}</p>
+                </div>
+              ) : null}
             </div>
             <div className="rounded-3xl bg-gradient-to-br from-white to-amber-50 p-5 shadow-sm">
               <div className="flex items-start justify-between gap-4">
@@ -486,6 +707,122 @@ export default function DoctorPatientDetail() {
               ) : (
                 <p className="mt-4 text-sm text-slate-500">Link a caregiver to this patient before adding caregiver-directed notes.</p>
               )}
+            </div>
+            <div className="rounded-3xl bg-gradient-to-br from-white to-sky-50 p-5 shadow-sm xl:col-span-2">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">Patient-context communication</h3>
+                  <p className="mt-1 text-sm text-slate-500">Send a patient-specific update from this workspace and attach the relevant patient context.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={loadPatientConversation}
+                  className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
+                >
+                  {communicationConversationId ? "Refresh conversation" : "Open patient conversation"}
+                </button>
+              </div>
+              <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+                <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
+                  {communicationLoading ? (
+                    <p className="text-sm text-slate-500">Loading patient conversation...</p>
+                  ) : communicationMessages.length ? (
+                    <div className="space-y-3">
+                      {communicationMessages.slice(-6).map((message) => {
+                        const isCurrentUser = message.sender?.id === currentUserId;
+                        return (
+                          <div
+                            key={message.id}
+                            className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
+                              isCurrentUser
+                                ? "ml-auto bg-sky-600 text-white"
+                                : "bg-slate-100 text-slate-800"
+                            }`}
+                          >
+                            <p>{message.body}</p>
+                            <p className={`mt-2 text-[11px] ${isCurrentUser ? "text-white/75" : "text-slate-400"}`}>
+                              {message.sender?.displayName || message.sender?.email || "Participant"} • {formatDateTime(message.sentAt)}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-500">No patient conversation loaded yet. Open it from this panel to send a contextual update.</p>
+                  )}
+                </div>
+                <form onSubmit={handleSendContextMessage} className="rounded-2xl border border-slate-200 bg-white/90 p-4">
+                  <label className="block text-sm font-medium text-slate-700">
+                    Context type
+                    <select
+                      value={communicationContextType}
+                      onChange={(event) => {
+                        const nextType = event.target.value;
+                        setCommunicationContextType(nextType);
+                        setCommunicationContextRelatedId("");
+                      }}
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                    >
+                      <option value="">General update</option>
+                      <option value="appointment">Appointment</option>
+                      <option value="medication">Medication</option>
+                      <option value="diagnosis">Diagnosis</option>
+                      <option value="medical_note">Clinical note</option>
+                      {profile?.emergencyStatus ? <option value="care_concern">Care concern</option> : null}
+                    </select>
+                  </label>
+                  {communicationContextType ? (
+                    <label className="mt-3 block text-sm font-medium text-slate-700">
+                      Context item
+                      <select
+                        value={communicationContextRelatedId}
+                        onChange={(event) => setCommunicationContextRelatedId(event.target.value)}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                      >
+                        <option value="">Select context</option>
+                        {communicationContextOptions
+                          .filter((option) => option.type === communicationContextType)
+                          .map((option) => (
+                            <option key={option.key} value={option.relatedId}>
+                              {option.label}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                  ) : null}
+                  <label className="mt-3 block text-sm font-medium text-slate-700">
+                    Message
+                    <textarea
+                      value={communicationDraft}
+                      onChange={(event) => setCommunicationDraft(event.target.value)}
+                      rows={4}
+                      placeholder="Example: I reviewed your latest medication adjustment. Keep the evening dose unchanged until the next visit."
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                    />
+                  </label>
+                  {communicationError ? <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{communicationError}</div> : null}
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <button
+                      type="submit"
+                      disabled={sendingCommunication}
+                      className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:bg-slate-400"
+                    >
+                      {sendingCommunication ? "Sending..." : "Send patient update"}
+                    </button>
+                    {communicationContextType && communicationContextRelatedId ? (
+                      <InfoPill
+                        label="Attached"
+                        value={
+                          communicationContextOptions.find(
+                            (option) => option.type === communicationContextType && option.relatedId === communicationContextRelatedId
+                          )?.label || "Context"
+                        }
+                        tone="sky"
+                      />
+                    ) : null}
+                  </div>
+                </form>
+              </div>
             </div>
             <div className="rounded-3xl bg-gradient-to-br from-white to-sky-50 p-5 shadow-sm">
               <div className="flex items-center justify-between gap-3">

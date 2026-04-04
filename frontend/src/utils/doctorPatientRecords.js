@@ -1,6 +1,7 @@
 const NOTES_KEY = "healio:doctor-structured-notes";
 const PLANS_KEY = "healio:doctor-structured-plans";
 const DOCTOR_TO_CAREGIVER_NOTES_KEY = "healio:doctor-caregiver-notes";
+const DOCTOR_EMERGENCY_REVIEWS_KEY = "healio:doctor-emergency-reviews";
 
 function readMap(storageKey) {
   try {
@@ -71,6 +72,21 @@ export function saveDoctorCaregiverNote(patientId, note) {
   map[patientId] = next;
   writeMap(DOCTOR_TO_CAREGIVER_NOTES_KEY, map);
   return next;
+}
+
+export function getDoctorEmergencyReview(patientId) {
+  if (!patientId) return null;
+  const map = readMap(DOCTOR_EMERGENCY_REVIEWS_KEY);
+  const value = map[patientId];
+  return value && typeof value === "object" ? value : null;
+}
+
+export function saveDoctorEmergencyReview(patientId, review) {
+  if (!patientId || !review) return null;
+  const map = readMap(DOCTOR_EMERGENCY_REVIEWS_KEY);
+  map[patientId] = { ...review };
+  writeMap(DOCTOR_EMERGENCY_REVIEWS_KEY, map);
+  return map[patientId];
 }
 
 export function formatListInput(value) {
