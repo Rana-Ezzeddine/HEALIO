@@ -468,6 +468,8 @@ export default function DashboardDoctor() {
                     style: "bg-emerald-100 text-emerald-700",
                   },
                   { label: "Open appointments", onClick: () => navigate("/doctorAppointments"), style: "bg-sky-100 text-sky-700" },
+                  { label: "Doctor patients", onClick: () => navigate("/doctor-patients"), style: "bg-cyan-100 text-cyan-700" },
+                  { label: "Clinical notes", onClick: () => navigate("/doctor-clinical-notes"), style: "bg-indigo-100 text-indigo-700" },
                   { label: "Doctor profile", onClick: () => navigate("/profileDoctor"), style: "bg-indigo-100 text-indigo-700" },
                 ].map((action) => (
                   <button
