@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
+import DoctorPatientWorkspaceSection from "../components/doctor/DoctorPatientWorkspaceSection";
 import { apiUrl, authHeaders, getUser } from "../api/http";
 import {
   createAppointment,
@@ -221,6 +222,8 @@ export default function DashboardDoctor() {
     startTime: "09:00",
     endTime: "17:00",
   });
+  const scheduleFormRef = useRef(null);
+
   const [form, setForm] = useState({
     patientId: "",
     date: "",
@@ -301,8 +304,14 @@ export default function DashboardDoctor() {
     }
 
     if (overviewResult.status === "fulfilled") {
-      setAssignedPatients(overviewResult.value.assignedPatients || []);
-      setUrgentPatients(overviewResult.value.urgentPatients || []);
+      const urgent = overviewResult.value.urgentPatients || [];
+      const urgentIds = new Set(urgent.map((patient) => patient.id));
+      setAssignedPatients((overviewResult.value.assignedPatients || []).map((patient) => ({
+        ...patient,
+        emergencyStatus: urgentIds.has(patient.id),
+        emergencyStatusUpdatedAt: urgent.find((item) => item.id === patient.id)?.emergencyStatusUpdatedAt || null,
+      })));
+      setUrgentPatients(urgent);
       setRecentActivity(overviewResult.value.activityOverview?.items || []);
       setOverviewSummary(overviewResult.value.summary || null);
     } else {
@@ -459,6 +468,15 @@ export default function DashboardDoctor() {
     } finally {
       setAvailabilitySaving(false);
     }
+  }
+
+  function focusScheduleFormForPatient(patientId) {
+    setCreateError("");
+    setForm((current) => ({ ...current, patientId }));
+    setShowScheduleForm(true);
+    setTimeout(() => {
+      scheduleFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
   }
 
   return (
@@ -627,6 +645,11 @@ export default function DashboardDoctor() {
             {scheduleError}
           </div>
         )}
+
+        <DoctorPatientWorkspaceSection
+          assignedPatients={assignedPatients}
+          onSchedulePatient={focusScheduleFormForPatient}
+        />
 
         <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="rounded-3xl bg-white p-6 shadow-sm">
@@ -850,7 +873,7 @@ export default function DashboardDoctor() {
             </section>
 
             {showScheduleForm && (
-              <section className="rounded-3xl bg-white p-6 shadow-sm">
+              <section ref={scheduleFormRef} className="rounded-3xl bg-white p-6 shadow-sm">
                 <form onSubmit={submitSchedule} className="space-y-3">
                   <h3 className="text-lg font-semibold text-slate-900">Create appointment</h3>
 

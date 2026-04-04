@@ -6,6 +6,9 @@ import PatientProfile from "../models/PatientProfile.js";
 import Medication from "../models/Medication.js";
 import Diagnosis from "../models/Diagnosis.js";
 import Appointment from "../models/Appointment.js";
+import Symptom from "../models/Symptom.js";
+import CaregiverNote from "../models/CaregiverNote.js";
+import MedicalNote from "../models/MedicalNote.js";
 import {
   DOCTOR_APPROVAL_STATUS,
   buildDoctorApprovalBlockedPayload,
@@ -840,6 +843,187 @@ export const getPatientOverview = async (req, res) => {
     return res.json(patient);
   } catch (err) {
     console.error("get-patient-overview error:", err);
+    return res.status(500).json({ message: "Server error." });
+  }
+};
+
+export const getPatientWorkspace = async (req, res) => {
+  try {
+    const doctorId = req.user.id;
+    const { patientId } = req.params;
+
+    const assignment = await DoctorPatientAssignment.findOne({
+      where: { doctorId, patientId, status: "active" },
+    });
+    if (!assignment) {
+      return res.status(403).json({ message: "Access denied or patient not assigned." });
+    }
+
+    const patient = await User.findByPk(patientId, {
+      attributes: ["id", "email", "role"],
+      include: [{ model: PatientProfile, as: "patientProfile" }],
+    });
+
+    if (!patient) {
+      return res.status(404).json({ message: "Patient not found." });
+    }
+
+    const [medications, diagnoses, appointments, recentSymptoms, caregiverNotes, doctorNotes, timelineRows, updateRows] = await Promise.all([
+      Medication.findAll({
+        where: { patientId },
+        order: [["createdAt", "DESC"]],
+      }),
+      Diagnosis.findAll({
+        where: { patientId },
+        order: [["diagnosedAt", "DESC"]],
+      }),
+      Appointment.findAll({
+        where: { patientId, doctorId },
+        order: [["startsAt", "DESC"]],
+        limit: 12,
+      }),
+      Symptom.findAll({
+        where: { patientId },
+        order: [["loggedAt", "DESC"], ["createdAt", "DESC"]],
+        limit: 12,
+      }),
+      CaregiverNote.findAll({
+        where: { patientId },
+        order: [["createdAt", "DESC"]],
+        limit: 8,
+      }),
+      MedicalNote.findAll({
+        where: { patientId, doctorId },
+        order: [["createdAt", "DESC"]],
+        limit: 8,
+      }),
+      sequelize.query(`
+        SELECT 'symptom' as type, id, name as title, severity::text as detail, "loggedAt" as "timestamp"
+        FROM symptoms WHERE "patientId" = :patientId
+        UNION ALL
+        SELECT 'note' as type, id, 'Medical Note' as title, LEFT(note, 100) as detail, "createdAt" as "timestamp"
+        FROM medical_notes WHERE "patientId" = :patientId AND "doctorId" = :doctorId
+        UNION ALL
+        SELECT 'appointment' as type, id, 'Appointment' as title, status as detail, "startsAt" as "timestamp"
+        FROM appointments WHERE "patientId" = :patientId AND "doctorId" = :doctorId
+        UNION ALL
+        SELECT 'diagnosis' as type, id, 'Diagnosis' as title, "diagnosisText" as detail, "diagnosedAt" as "timestamp"
+        FROM diagnoses WHERE "patientId" = :patientId
+        ORDER BY "timestamp" DESC
+        LIMIT 16
+      `, { replacements: { patientId, doctorId } }),
+      sequelize.query(`
+        SELECT 'medication' as type, id, name as title, 'Updated' as detail, "updatedAt" as "timestamp"
+        FROM medications WHERE "patientId" = :patientId AND "updatedAt" >= NOW() - INTERVAL '7 days'
+        UNION ALL
+        SELECT 'symptom' as type, id, name as title, 'New Log' as detail, "createdAt" as "timestamp"
+        FROM symptoms WHERE "patientId" = :patientId AND "createdAt" >= NOW() - INTERVAL '7 days'
+        ORDER BY "timestamp" DESC
+        LIMIT 12
+      `, { replacements: { patientId } }),
+    ]);
+
+    const timeline = timelineRows[0] || [];
+    const updates = updateRows[0] || [];
+    const profile = patient.patientProfile || null;
+    let emergencyContact = profile?.emergencyContact || null;
+    if (typeof emergencyContact === "string") {
+      try {
+        emergencyContact = JSON.parse(emergencyContact);
+      } catch {
+        emergencyContact = emergencyContact || null;
+      }
+    }
+    const displayName = [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim() || patient.email;
+    const nextAppointment = appointments
+      .filter((appointment) => new Date(appointment.startsAt).getTime() >= Date.now())
+      .sort((left, right) => new Date(left.startsAt) - new Date(right.startsAt))[0] || null;
+    const latestSymptom = recentSymptoms[0] || null;
+
+    return res.json({
+      patient: {
+        id: patient.id,
+        email: patient.email,
+        role: patient.role,
+        displayName,
+      },
+      profile: profile ? {
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        dateOfBirth: profile.dateOfBirth,
+        sex: profile.sex,
+        bloodType: profile.bloodType,
+        allergies: profile.allergies,
+        medicalConditions: profile.medicalConditions,
+        phoneNumber: profile.phoneNumber,
+        emergencyContact,
+        emergencyStatus: Boolean(profile.emergencyStatus),
+        emergencyStatusUpdatedAt: profile.emergencyStatusUpdatedAt,
+      } : null,
+      summary: {
+        activeMedicationCount: medications.filter((item) => !item.endDate || new Date(item.endDate) >= new Date()).length,
+        activeDiagnosisCount: diagnoses.filter((item) => item.status === "active").length,
+        nextAppointmentAt: nextAppointment?.startsAt || null,
+        nextAppointmentStatus: nextAppointment?.status || null,
+        latestSymptom: latestSymptom ? {
+          id: latestSymptom.id,
+          name: latestSymptom.name,
+          severity: latestSymptom.severity,
+          notes: latestSymptom.notes,
+          loggedAt: latestSymptom.loggedAt,
+          loggedBy: latestSymptom.loggedBy,
+        } : null,
+        emergencyStatus: Boolean(profile?.emergencyStatus),
+        emergencyStatusUpdatedAt: profile?.emergencyStatusUpdatedAt || null,
+      },
+      medications: medications.map((item) => ({
+        id: item.id,
+        name: item.name,
+        dosage: item.dosage,
+        frequency: item.frequency,
+        startDate: item.startDate,
+        endDate: item.endDate,
+        notes: item.notes,
+      })),
+      symptoms: recentSymptoms.map((item) => ({
+        id: item.id,
+        name: item.name,
+        severity: item.severity,
+        notes: item.notes,
+        loggedAt: item.loggedAt,
+        loggedBy: item.loggedBy,
+      })),
+      appointments: appointments.map((item) => ({
+        id: item.id,
+        startsAt: item.startsAt,
+        endsAt: item.endsAt,
+        status: item.status,
+        location: item.location,
+        notes: item.notes,
+      })),
+      diagnoses: diagnoses.map((item) => ({
+        id: item.id,
+        diagnosisText: item.diagnosisText,
+        diagnosedAt: item.diagnosedAt,
+        status: item.status,
+      })),
+      caregiverNotes: caregiverNotes.map((item) => ({
+        id: item.id,
+        caregiverId: item.caregiverId,
+        note: item.note,
+        createdAt: item.createdAt,
+      })),
+      doctorNotes: doctorNotes.map((item) => ({
+        id: item.id,
+        note: item.note,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+      })),
+      timeline,
+      updates,
+    });
+  } catch (err) {
+    console.error("get-patient-workspace error:", err);
     return res.status(500).json({ message: "Server error." });
   }
 };
