@@ -11,7 +11,6 @@ import {
   getMyDoctors,
   reviewDoctorLinkRequest,
   getDoctorProfile,
-  getPatientWorkspace,
   getPatientOverview,
   getPatientTimeline,
   getPatientActivity,
@@ -50,7 +49,6 @@ router.post("/assignments", requireUser, requireVerified, assignPatientToDoctor)
 
 // Profile & Workspace
 router.get("/me/profile", requireUser, requireVerified, requireDoctorProductAccessIfDoctor, getDoctorProfile);
-router.get("/patients/:patientId/workspace", requireUser, requireVerified, requireDoctorProductAccessIfDoctor, getPatientWorkspace);
 router.get("/patients/:patientId/overview", requireUser, requireVerified, requireDoctorProductAccessIfDoctor, getPatientOverview);
 router.get("/patients/:patientId/timeline", requireUser, requireVerified, requireDoctorProductAccessIfDoctor, getPatientTimeline);
 router.get("/patients/:patientId/activity", requireUser, requireVerified, requireDoctorProductAccessIfDoctor, getPatientActivity);
