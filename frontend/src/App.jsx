@@ -229,6 +229,14 @@ function RoutedApp() {
           }
         />
         <Route
+          path="/doctor-patients/:patientId"
+          element={
+            <DoctorApprovedRoute>
+              <DoctorPatients />
+            </DoctorApprovedRoute>
+          }
+        />
+        <Route
           path="/doctor-clinical-notes"
           element={
             <DoctorApprovedRoute>
