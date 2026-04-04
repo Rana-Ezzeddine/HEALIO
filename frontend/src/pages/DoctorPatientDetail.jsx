@@ -97,6 +97,12 @@ async function fetchPatientNotes(patientId) {
   if (!response.ok) throw new Error(data.message || "Failed to load doctor notes.");
   return data;
 }
+async function fetchPatientAiSummary(patientId) {
+  const response = await fetch(`${apiUrl}/api/doctors/patients/${patientId}/ai-summary`, { headers: { ...authHeaders() } });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || "Failed to load AI summary.");
+  return data;
+}
 
 export default function DoctorPatientDetail() {
   const navigate = useNavigate();
@@ -124,6 +130,9 @@ export default function DoctorPatientDetail() {
   const [sendingCommunication, setSendingCommunication] = useState(false);
   const [communicationContextType, setCommunicationContextType] = useState("");
   const [communicationContextRelatedId, setCommunicationContextRelatedId] = useState("");
+  const [aiSummary, setAiSummary] = useState(null);
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
+  const [aiSummaryError, setAiSummaryError] = useState("");
   const [medicationForm, setMedicationForm] = useState({
     name: "",
     doseAmount: "",
@@ -167,6 +176,20 @@ export default function DoctorPatientDetail() {
         endDate: "",
         notes: "",
       });
+    }
+  }
+
+  async function loadAiSummary(currentPatientId) {
+    try {
+      setAiSummaryLoading(true);
+      setAiSummaryError("");
+      const data = await fetchPatientAiSummary(currentPatientId);
+      setAiSummary(data.summary || null);
+    } catch (err) {
+      setAiSummary(null);
+      setAiSummaryError(err.message || "Failed to load AI summary.");
+    } finally {
+      setAiSummaryLoading(false);
     }
   }
 
@@ -582,6 +605,54 @@ export default function DoctorPatientDetail() {
                   <p className="mt-2 text-xs text-slate-400">{formatDateTime(emergencyReview.reviewedAt)}</p>
                 </div>
               ) : null}
+            </div>
+            <div className="rounded-3xl bg-gradient-to-br from-white to-cyan-50 p-5 shadow-sm xl:col-span-2">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">AI clinical snapshot</h3>
+                  <p className="mt-1 text-sm text-slate-500">Doctor-facing summary generated from a privacy-minimized clinical snapshot. It supports readability only and does not replace clinical judgment.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => loadAiSummary(patientId)}
+                  disabled={aiSummaryLoading}
+                  className="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-700 disabled:bg-cyan-300"
+                >
+                  {aiSummaryLoading ? "Generating..." : aiSummary ? "Refresh summary" : "Generate summary"}
+                </button>
+              </div>
+              {aiSummaryError ? <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{aiSummaryError}</div> : null}
+              {aiSummary ? (
+                <div className="mt-4 grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
+                  <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-cyan-700">Clinical snapshot</p>
+                    <p className="mt-3 text-sm leading-6 text-slate-700">{aiSummary.clinicalSnapshot || "No summary generated."}</p>
+                    <p className="mt-3 text-xs text-slate-400">Generated {formatDateTime(aiSummary.generatedAt)} • {aiSummary.model}</p>
+                  </div>
+                  <div className="grid gap-4">
+                    <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-cyan-700">Care risks</p>
+                      <div className="mt-3 space-y-2">
+                        {aiSummary.careRisks?.length ? aiSummary.careRisks.map((item, index) => (
+                          <div key={`${index}-${item}`} className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">{item}</div>
+                        )) : <p className="text-sm text-slate-500">No flagged risks in summary.</p>}
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-cyan-700">Follow-up focus</p>
+                      <div className="mt-3 space-y-2">
+                        {aiSummary.followUpFocus?.length ? aiSummary.followUpFocus.map((item, index) => (
+                          <div key={`${index}-${item}`} className="rounded-xl bg-sky-50 px-3 py-2 text-sm text-sky-900">{item}</div>
+                        )) : <p className="text-sm text-slate-500">No follow-up focus items generated.</p>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4 rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">
+                  Generate an AI summary to get a concise clinician-facing snapshot of this patient without sending direct identifiers.
+                </div>
+              )}
             </div>
             <div className="rounded-3xl bg-gradient-to-br from-white to-amber-50 p-5 shadow-sm">
               <div className="flex items-start justify-between gap-4">

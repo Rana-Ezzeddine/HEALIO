@@ -5,6 +5,7 @@ import requireDoctorProductAccessIfDoctor from "../middleware/requireDoctorProdu
 import requireReviewer from "../middleware/requireReviewer.js";
 import {
   assignPatientToDoctor,
+  getAiUrgencyPatients,
   getAssignedPatients,
   getDoctorDashboardOverview,
   getDoctorLinkRequests,
@@ -15,6 +16,9 @@ import {
   getPatientTimeline,
   getPatientActivity,
   getPatientUpdates,
+  getPatientAiSummary,
+  overridePatientUrgency,
+  reviewPatientUrgency,
 } from "../controllers/doctor.controller.js";
 import {
   getDoctorApplicationStatus,
@@ -32,6 +36,10 @@ const router = express.Router();
 
 // GET /api/doctors/assigned-patients
 router.get("/assigned-patients", requireUser, requireVerified, requireDoctorProductAccessIfDoctor, getAssignedPatients);
+router.get("/patients/urgency", requireUser, requireVerified, requireDoctorProductAccessIfDoctor, getAiUrgencyPatients);
+router.get("/patients/ai-urgency", requireUser, requireVerified, requireDoctorProductAccessIfDoctor, getAiUrgencyPatients);
+router.post("/patients/:patientId/urgency/review", requireUser, requireVerified, requireDoctorProductAccessIfDoctor, reviewPatientUrgency);
+router.post("/patients/:patientId/urgency/override", requireUser, requireVerified, requireDoctorProductAccessIfDoctor, overridePatientUrgency);
 // GET /api/doctors/dashboard-overview
 router.get("/dashboard-overview", requireUser, requireVerified, requireDoctorProductAccessIfDoctor, getDoctorDashboardOverview);
 
@@ -53,6 +61,7 @@ router.get("/patients/:patientId/overview", requireUser, requireVerified, requir
 router.get("/patients/:patientId/timeline", requireUser, requireVerified, requireDoctorProductAccessIfDoctor, getPatientTimeline);
 router.get("/patients/:patientId/activity", requireUser, requireVerified, requireDoctorProductAccessIfDoctor, getPatientActivity);
 router.get("/patients/:patientId/updates", requireUser, requireVerified, requireDoctorProductAccessIfDoctor, getPatientUpdates);
+router.get("/patients/:patientId/ai-summary", requireUser, requireVerified, requireDoctorProductAccessIfDoctor, getPatientAiSummary);
 
 
 router.get("/application-status", requireUser, requireVerified, getDoctorApplicationStatus);

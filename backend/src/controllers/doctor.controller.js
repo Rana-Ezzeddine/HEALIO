@@ -13,6 +13,8 @@ import {
   buildDoctorApprovalBlockedPayload,
   isApprovedDoctorUser,
 } from "../lib/doctorApproval.js";
+import { calculatePatientUrgency } from "../services/urgencyScoring.service.js";
+import { buildFallbackDoctorSummary, buildPrivacyMinimizedDoctorSummaryInput, summarizeDoctorPatientContext } from "../services/clinicalSummary.service.js";
 
 async function resolveUserByIdOrEmail({ id, email }) {
   if (id) {
@@ -56,6 +58,151 @@ function blockIfDoctorNotApproved(user) {
   }
 
   return buildDoctorApprovalBlockedPayload(user);
+}
+
+function buildUrgencySnapshot(patient) {
+  return {
+    emergencyStatus: !!patient.emergencyStatus,
+    emergencyStatusUpdatedAt: patient.emergencyStatusUpdatedAt,
+    activeMedicationCount: Number(patient.activeMedicationCount || 0),
+    symptomsLast7Days: Number(patient.symptomsLast7Days || 0),
+    latestSymptom: patient.latestSymptomName
+      ? {
+          name: patient.latestSymptomName,
+          severity: patient.latestSymptomSeverity,
+          loggedAt: patient.latestSymptomLoggedAt,
+        }
+      : null,
+    activeDiagnosisCount: Number(patient.activeDiagnosisCount || 0),
+    nextAppointmentAt: patient.nextAppointmentAt,
+  };
+}
+
+async function persistUrgencyScore({ doctorId, patientId, result, snapshot }) {
+  const [rows] = await sequelize.query(
+    `
+    INSERT INTO patient_urgency_scores
+      ("patientId", "doctorId", score, level, "recommendedAction", source, "modelVersion", "patientSnapshot", "calculatedAt", "createdAt", "updatedAt")
+    VALUES
+      (:patientId, :doctorId, :score, :level, :recommendedAction, 'deterministic', :modelVersion, CAST(:patientSnapshot AS jsonb), NOW(), NOW(), NOW())
+    ON CONFLICT ("patientId", "doctorId")
+    DO UPDATE SET
+      score = EXCLUDED.score,
+      level = EXCLUDED.level,
+      "recommendedAction" = EXCLUDED."recommendedAction",
+      source = EXCLUDED.source,
+      "modelVersion" = EXCLUDED."modelVersion",
+      "patientSnapshot" = EXCLUDED."patientSnapshot",
+      "calculatedAt" = EXCLUDED."calculatedAt",
+      "updatedAt" = NOW()
+    RETURNING id, score, level, "recommendedAction", "modelVersion", "calculatedAt"
+    `,
+    {
+      replacements: {
+        patientId,
+        doctorId,
+        score: result.score,
+        level: result.level,
+        recommendedAction: result.recommendedAction,
+        modelVersion: result.modelVersion,
+        patientSnapshot: JSON.stringify(snapshot || {}),
+      },
+    }
+  );
+
+  const urgencyScore = rows[0];
+
+  await sequelize.query(
+    `DELETE FROM patient_urgency_evidence WHERE "urgencyScoreId" = :urgencyScoreId`,
+    { replacements: { urgencyScoreId: urgencyScore.id } }
+  );
+
+  for (const item of result.evidence || []) {
+    await sequelize.query(
+      `
+      INSERT INTO patient_urgency_evidence
+        (id, "urgencyScoreId", code, label, detail, points, severity, "createdAt", "updatedAt")
+      VALUES
+        (gen_random_uuid(), :urgencyScoreId, :code, :label, :detail, :points, :severity, NOW(), NOW())
+      `,
+      {
+        replacements: {
+          urgencyScoreId: urgencyScore.id,
+          code: item.code,
+          label: item.label,
+          detail: item.detail || null,
+          points: Number(item.points || 0),
+          severity: item.severity || "info",
+        },
+      }
+    );
+  }
+
+  return urgencyScore;
+}
+
+async function getUrgencyReviewMap(doctorId) {
+  const [rows] = await sequelize.query(
+    `
+    SELECT DISTINCT ON (pus."patientId")
+      pus."patientId",
+      pur.id,
+      pur.status,
+      pur.note,
+      pur."reviewedAt"
+    FROM patient_urgency_reviews pur
+    JOIN patient_urgency_scores pus ON pus.id = pur."urgencyScoreId"
+    WHERE pur."doctorId" = :doctorId
+    ORDER BY pus."patientId", pur."reviewedAt" DESC
+    `,
+    { replacements: { doctorId } }
+  );
+  return new Map(rows.map((row) => [row.patientId, row]));
+}
+
+async function getUrgencyOverrideMap(doctorId) {
+  const [rows] = await sequelize.query(
+    `
+    SELECT DISTINCT ON (pus."patientId")
+      pus."patientId",
+      puo.id,
+      puo.level,
+      puo.score,
+      puo.reason,
+      puo."overriddenAt",
+      puo.active
+    FROM patient_urgency_overrides puo
+    JOIN patient_urgency_scores pus ON pus.id = puo."urgencyScoreId"
+    WHERE puo."doctorId" = :doctorId
+      AND puo.active = true
+    ORDER BY pus."patientId", puo."overriddenAt" DESC
+    `,
+    { replacements: { doctorId } }
+  );
+  return new Map(rows.map((row) => [row.patientId, row]));
+}
+
+function decorateUrgencyResult(result, override = null) {
+  const effectiveLevel = override?.level || result.level;
+  const effectiveScore = override?.score ?? result.score;
+  return {
+    score: result.score,
+    level: result.level,
+    reasons: result.reasons || [],
+    recommendedAction: result.recommendedAction,
+    modelVersion: result.modelVersion,
+    evidence: result.evidence || [],
+    effectiveScore,
+    effectiveLevel,
+    override: override
+      ? {
+          level: override.level,
+          score: override.score,
+          reason: override.reason,
+          overriddenAt: override.overriddenAt,
+        }
+      : null,
+  };
 }
 
 export const getAssignedPatients = async (req, res) => {
@@ -133,6 +280,268 @@ export const getAssignedPatients = async (req, res) => {
       message: "Server error.",
       debug: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
+  }
+};
+
+export const getAiUrgencyPatients = async (req, res) => {
+  try {
+    if (req.user?.role !== "doctor") {
+      return res.status(403).json({ message: "Only doctors can access this." });
+    }
+
+    const doctorId = req.user.id;
+
+    const [patientsRows] = await sequelize.query(
+      `
+      WITH assigned AS (
+        SELECT
+          dpa."patientId" AS id,
+          dpa.status,
+          dpa."createdAt" AS "assignedAt"
+        FROM doctor_patient_assignments dpa
+        WHERE dpa."doctorId" = :doctorId
+          AND dpa.status = 'active'
+      )
+      SELECT
+        a.id,
+        a.status,
+        a."assignedAt",
+        u.email,
+        pp."firstName",
+        pp."lastName",
+        pp."emergencyStatus",
+        pp."emergencyStatusUpdatedAt",
+        COALESCE(med.active_count, 0) AS "activeMedicationCount",
+        COALESCE(sym.symptoms_7d_count, 0) AS "symptomsLast7Days",
+        sym.latest_symptom_name AS "latestSymptomName",
+        sym.latest_symptom_severity AS "latestSymptomSeverity",
+        sym.latest_symptom_logged_at AS "latestSymptomLoggedAt",
+        COALESCE(diag.active_diagnosis_count, 0) AS "activeDiagnosisCount",
+        appt.next_appointment_at AS "nextAppointmentAt"
+      FROM assigned a
+      JOIN users u ON u.id = a.id
+      LEFT JOIN patient_profiles pp ON pp."userId" = a.id
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS active_count
+        FROM medications m
+        WHERE m."patientId" = a.id
+          AND (m."endDate" IS NULL OR m."endDate" >= CURRENT_DATE)
+      ) med ON true
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(*) FILTER (
+            WHERE s."loggedAt" >= NOW() - INTERVAL '7 days'
+          )::int AS symptoms_7d_count,
+          (
+            SELECT s2.name
+            FROM symptoms s2
+            WHERE s2."patientId" = a.id
+            ORDER BY s2."loggedAt" DESC, s2."createdAt" DESC
+            LIMIT 1
+          ) AS latest_symptom_name,
+          (
+            SELECT s2.severity
+            FROM symptoms s2
+            WHERE s2."patientId" = a.id
+            ORDER BY s2."loggedAt" DESC, s2."createdAt" DESC
+            LIMIT 1
+          ) AS latest_symptom_severity,
+          (
+            SELECT s2."loggedAt"
+            FROM symptoms s2
+            WHERE s2."patientId" = a.id
+            ORDER BY s2."loggedAt" DESC, s2."createdAt" DESC
+            LIMIT 1
+          ) AS latest_symptom_logged_at
+        FROM symptoms s
+        WHERE s."patientId" = a.id
+      ) sym ON true
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS active_diagnosis_count
+        FROM diagnoses d
+        WHERE d."patientId" = a.id
+          AND d.status = 'active'
+      ) diag ON true
+      LEFT JOIN LATERAL (
+        SELECT ap."startsAt" AS next_appointment_at
+        FROM appointments ap
+        WHERE ap."patientId" = a.id
+          AND ap."doctorId" = :doctorId
+          AND ap."startsAt" >= NOW()
+          AND ap.status = 'scheduled'
+        ORDER BY ap."startsAt" ASC
+        LIMIT 1
+      ) appt ON true
+      ORDER BY a."assignedAt" DESC
+      `,
+      { replacements: { doctorId } }
+    );
+
+    const scoredPatients = await Promise.all(
+      patientsRows.map(async (patient) => {
+        const snapshot = buildUrgencySnapshot(patient);
+        const urgency = calculatePatientUrgency(snapshot);
+        const persistedScore = await persistUrgencyScore({
+          doctorId,
+          patientId: patient.id,
+          result: urgency,
+          snapshot,
+        });
+
+        return {
+          id: patient.id,
+          status: patient.status,
+          assignedAt: patient.assignedAt,
+          patient: {
+            id: patient.id,
+            email: patient.email,
+            firstName: patient.firstName,
+            lastName: patient.lastName,
+            displayName: [patient.firstName, patient.lastName].filter(Boolean).join(" ").trim() || patient.email,
+          },
+          snapshot: {
+            ...snapshot,
+          },
+          urgency,
+          urgencyScoreId: persistedScore.id,
+          calculatedAt: persistedScore.calculatedAt,
+        };
+      })
+    );
+
+    const reviewMap = await getUrgencyReviewMap(doctorId);
+    const overrideMap = await getUrgencyOverrideMap(doctorId);
+
+    const normalized = scoredPatients.map((patient) => ({
+      ...patient,
+      urgency: decorateUrgencyResult(patient.urgency, overrideMap.get(patient.id)),
+      review: reviewMap.get(patient.id) || null,
+    }));
+
+    return res.json({
+      doctorId,
+      count: normalized.length,
+      patients: normalized.sort((a, b) => (b.urgency?.effectiveScore || 0) - (a.urgency?.effectiveScore || 0)),
+    });
+  } catch (err) {
+    console.error("doctor urgency error:", err);
+    return res.status(500).json({
+      message: "Server error.",
+      debug: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
+  }
+};
+
+export const reviewPatientUrgency = async (req, res) => {
+  try {
+    if (req.user?.role !== "doctor") {
+      return res.status(403).json({ message: "Only doctors can access this." });
+    }
+
+    const doctorId = req.user.id;
+    const { patientId } = req.params;
+    const status = String(req.body.status || "reviewed").trim();
+    const note = String(req.body.note || "").trim() || null;
+
+    if (!["reviewed", "actioned"].includes(status)) {
+      return res.status(400).json({ message: "Invalid review status." });
+    }
+
+    const [scoreRows] = await sequelize.query(
+      `SELECT id FROM patient_urgency_scores WHERE "patientId" = :patientId AND "doctorId" = :doctorId LIMIT 1`,
+      { replacements: { patientId, doctorId } }
+    );
+
+    if (!scoreRows.length) {
+      return res.status(404).json({ message: "Urgency score not found for this patient." });
+    }
+
+    const urgencyScoreId = scoreRows[0].id;
+    const [rows] = await sequelize.query(
+      `
+      INSERT INTO patient_urgency_reviews
+        (id, "urgencyScoreId", "doctorId", status, note, "reviewedAt", "createdAt", "updatedAt")
+      VALUES
+        (gen_random_uuid(), :urgencyScoreId, :doctorId, :status, :note, NOW(), NOW(), NOW())
+      RETURNING id, status, note, "reviewedAt"
+      `,
+      {
+        replacements: {
+          urgencyScoreId,
+          doctorId,
+          status,
+          note,
+        },
+      }
+    );
+
+    return res.status(201).json({ review: rows[0] });
+  } catch (err) {
+    console.error("review patient urgency error:", err);
+    return res.status(500).json({ message: "Server error." });
+  }
+};
+
+export const overridePatientUrgency = async (req, res) => {
+  try {
+    if (req.user?.role !== "doctor") {
+      return res.status(403).json({ message: "Only doctors can access this." });
+    }
+
+    const doctorId = req.user.id;
+    const { patientId } = req.params;
+    const level = String(req.body.level || "").trim();
+    const score = Number(req.body.score);
+    const reason = String(req.body.reason || "").trim();
+
+    if (!["stable", "needs_review", "critical"].includes(level)) {
+      return res.status(400).json({ message: "Invalid override level." });
+    }
+    if (!Number.isFinite(score) || score < 0 || score > 100) {
+      return res.status(400).json({ message: "Override score must be between 0 and 100." });
+    }
+    if (!reason) {
+      return res.status(400).json({ message: "Override reason is required." });
+    }
+
+    const [scoreRows] = await sequelize.query(
+      `SELECT id FROM patient_urgency_scores WHERE "patientId" = :patientId AND "doctorId" = :doctorId LIMIT 1`,
+      { replacements: { patientId, doctorId } }
+    );
+
+    if (!scoreRows.length) {
+      return res.status(404).json({ message: "Urgency score not found for this patient." });
+    }
+
+    const urgencyScoreId = scoreRows[0].id;
+    await sequelize.query(
+      `UPDATE patient_urgency_overrides SET active = false, "updatedAt" = NOW() WHERE "urgencyScoreId" = :urgencyScoreId AND "doctorId" = :doctorId AND active = true`,
+      { replacements: { urgencyScoreId, doctorId } }
+    );
+
+    const [rows] = await sequelize.query(
+      `
+      INSERT INTO patient_urgency_overrides
+        (id, "urgencyScoreId", "doctorId", level, score, reason, "overriddenAt", active, "createdAt", "updatedAt")
+      VALUES
+        (gen_random_uuid(), :urgencyScoreId, :doctorId, :level, :score, :reason, NOW(), true, NOW(), NOW())
+      RETURNING id, level, score, reason, "overriddenAt", active
+      `,
+      {
+        replacements: {
+          urgencyScoreId,
+          doctorId,
+          level,
+          score: Math.round(score),
+          reason,
+        },
+      }
+    );
+
+    return res.status(201).json({ override: rows[0] });
+  } catch (err) {
+    console.error("override patient urgency error:", err);
+    return res.status(500).json({ message: "Server error." });
   }
 };
 
@@ -1012,6 +1421,103 @@ export const getPatientUpdates = async (req, res) => {
     return res.json({ patientId, updates });
   } catch (err) {
     console.error("get-patient-updates error:", err);
+    return res.status(500).json({ message: "Server error." });
+  }
+};
+
+export const getPatientAiSummary = async (req, res) => {
+  try {
+    const doctorId = req.user.id;
+    const { patientId } = req.params;
+
+    const assignment = await DoctorPatientAssignment.findOne({
+      where: { doctorId, patientId, status: "active" }
+    });
+    if (!assignment) return res.status(403).json({ message: "Access denied or patient not assigned." });
+
+    const patient = await User.findByPk(patientId, {
+      attributes: ["id", "email", "role"],
+      include: [
+        { model: PatientProfile, as: "patientProfile" },
+        {
+          model: Medication,
+          as: "medications",
+          where: { [Op.or]: [{ endDate: null }, { endDate: { [Op.gte]: new Date() } }] },
+          required: false
+        },
+        { model: Diagnosis, as: "diagnoses", where: { status: "active" }, required: false },
+        { model: Appointment, as: "appointmentsAsPatient", where: { doctorId, startsAt: { [Op.gte]: new Date(Date.now() - 1000 * 60 * 60 * 24 * 14) } }, limit: 8, required: false }
+      ]
+    });
+
+    const caregiverLinks = await CaregiverPatientPermission.findAll({
+      where: { patientId, status: "active" },
+      order: [["createdAt", "DESC"]],
+    });
+
+    const caregiverIds = caregiverLinks.map((link) => link.caregiverId);
+    const caregiverNotes = await CaregiverNote.findAll({
+      where: { patientId },
+      order: [["updatedAt", "DESC"]],
+      limit: 8,
+    });
+
+    const payload = patient.toJSON();
+    payload.caregivers = caregiverLinks.map((link) => ({
+      caregiverId: link.caregiverId,
+      permissions: {
+        canViewMedications: link.canViewMedications,
+        canViewSymptoms: link.canViewSymptoms,
+        canViewAppointments: link.canViewAppointments,
+        canMessageDoctor: link.canMessageDoctor,
+        canReceiveReminders: link.canReceiveReminders,
+      },
+    }));
+    payload.caregiverNotes = caregiverNotes.map((note) => ({
+      note: note.note,
+      createdAt: note.createdAt,
+      updatedAt: note.updatedAt,
+    }));
+
+    const [timelineRows] = await sequelize.query(`
+      SELECT 'symptom' as type, id, name as title, severity::text as detail, "loggedAt" as "timestamp"
+      FROM symptoms WHERE "patientId" = :patientId
+      UNION ALL
+      SELECT 'note' as type, id, 'Medical Note' as title, LEFT(note, 100) as detail, "createdAt" as "timestamp"
+      FROM medical_notes WHERE "patientId" = :patientId AND "doctorId" = :doctorId
+      UNION ALL
+      SELECT 'appointment' as type, id, 'Appointment' as title, status::text as detail, "startsAt" as "timestamp"
+      FROM appointments WHERE "patientId" = :patientId AND "doctorId" = :doctorId
+      UNION ALL
+      SELECT 'diagnosis' as type, id, 'Diagnosis' as title, "diagnosisText" as detail, "diagnosedAt" as "timestamp"
+      FROM diagnoses WHERE "patientId" = :patientId
+      ORDER BY "timestamp" DESC
+      LIMIT 20
+    `, { replacements: { patientId, doctorId } });
+
+    const summaryInput = buildPrivacyMinimizedDoctorSummaryInput({
+      overview: payload,
+      timeline: timelineRows,
+    });
+    let summary;
+    let source = "openrouter";
+    try {
+      summary = await summarizeDoctorPatientContext(summaryInput);
+    } catch (err) {
+      console.warn("get-patient-ai-summary fallback:", err.message);
+      summary = buildFallbackDoctorSummary(summaryInput);
+      source = "fallback";
+    }
+
+    return res.json({
+      patientId,
+      summary,
+      inputPreview: summaryInput,
+      source,
+      note: "AI summary uses a privacy-minimized clinical snapshot and does not replace clinical judgment.",
+    });
+  } catch (err) {
+    console.error("get-patient-ai-summary error:", err);
     return res.status(500).json({ message: "Server error." });
   }
 };
