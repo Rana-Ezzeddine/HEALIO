@@ -4,6 +4,7 @@ import Navbar from "../components/Navbar";
 import { apiUrl, authHeaders, getUser } from "../api/http";
 import { getMyAppointments } from "../api/appointments";
 import { getConversations } from "../api/messaging";
+import { getCaregiverReminders, getCaregiverPatientSymptoms, getCareNotes } from "../api/caregiver";
 import {
   formatDoseTime,
   getNextMedicationDose,
@@ -123,6 +124,9 @@ export default function DashboardCaregiver() {
   const [appointments, setAppointments] = useState([]);
   const [medications, setMedications] = useState([]);
   const [symptoms, setSymptoms] = useState([]);
+  const [reminders, setReminders] = useState([]);
+  const [caregiverSymptoms, setCaregiverSymptoms] = useState([]);
+  const [caregiverNotes, setCaregiverNotes] = useState([]);
   const [conversationCount, setConversationCount] = useState(0);
 
   const activePatientRecord = useMemo(
@@ -243,6 +247,9 @@ export default function DashboardCaregiver() {
         setAppointments([]);
         setMedications([]);
         setSymptoms([]);
+        setReminders([]);
+        setCaregiverSymptoms([]);
+        setCaregiverNotes([]);
         setConversationCount(0);
       }
     }
@@ -272,6 +279,45 @@ export default function DashboardCaregiver() {
     }
 
     refreshConversationCount();
+    return () => {
+      cancelled = true;
+    };
+  }, [activePatientId]);
+
+  useEffect(() => {
+    if (!activePatientId) {
+      setReminders([]);
+      setCaregiverSymptoms([]);
+      setCaregiverNotes([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadPatientSpecificData() {
+      try {
+        const [remindersData, symptomsData, notesData] = await Promise.all([
+          getCaregiverReminders(activePatientId).catch(() => ({ reminders: [] })),
+          getCaregiverPatientSymptoms(activePatientId).catch(() => ([])),
+          getCareNotes(activePatientId).catch(() => ([])),
+        ]);
+
+        if (cancelled) return;
+
+        setReminders(remindersData.reminders || remindersData || []);
+        setCaregiverSymptoms(Array.isArray(symptomsData) ? symptomsData : []);
+        setCaregiverNotes(Array.isArray(notesData) ? notesData : []);
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Failed to load patient-specific data:", error);
+          setReminders([]);
+          setCaregiverSymptoms([]);
+          setCaregiverNotes([]);
+        }
+      }
+    }
+
+    loadPatientSpecificData();
     return () => {
       cancelled = true;
     };
@@ -694,6 +740,124 @@ export default function DashboardCaregiver() {
                       Status: {nextAppointment.status || "scheduled"}
                     </p>
                   </>
+                )}
+              </div>
+              <div className="rounded-2xl border border-slate-200 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-semibold text-slate-900">Pending reminders</p>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/profileCaregiver")}
+                    disabled={!activePatientId}
+                    className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
+                      activePatientId
+                        ? "bg-purple-100 text-purple-700 hover:bg-purple-200"
+                        : "cursor-not-allowed bg-slate-100 text-slate-400"
+                    }`}
+                  >
+                    View all
+                  </button>
+                </div>
+
+                {!activePatientId ? (
+                  <p className="mt-1 text-sm text-slate-600">Select an active patient to view reminders.</p>
+                ) : reminders.length === 0 ? (
+                  <p className="mt-1 text-sm text-slate-600">No pending reminders.</p>
+                ) : (
+                  <ul className="mt-3 space-y-2">
+                    {reminders.slice(0, 5).map((reminder) => (
+                      <li key={reminder.id} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm">
+                        <div className="flex-1">
+                          <p className="font-medium text-slate-700">{reminder.type || "Reminder"}</p>
+                          {reminder.scheduledAt && (
+                            <p className="text-xs text-slate-500">
+                              {new Date(reminder.scheduledAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                            </p>
+                          )}
+                        </div>
+                        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${reminder.status === "pending" ? "bg-amber-100 text-amber-700" : "bg-slate-200 text-slate-600"}`}>
+                          {reminder.status || "pending"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="rounded-2xl border border-slate-200 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-semibold text-slate-900">Recent symptoms</p>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/symptoms")}
+                    disabled={!canViewSymptoms}
+                    className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
+                      canViewSymptoms
+                        ? "bg-rose-100 text-rose-700 hover:bg-rose-200"
+                        : "cursor-not-allowed bg-slate-100 text-slate-400"
+                    }`}
+                  >
+                    View all
+                  </button>
+                </div>
+
+                {!canViewSymptoms ? (
+                  <p className="mt-1 text-sm text-slate-600">Not visible in current permissions.</p>
+                ) : caregiverSymptoms.length === 0 ? (
+                  <p className="mt-1 text-sm text-slate-600">No symptoms logged yet.</p>
+                ) : (
+                  <ul className="mt-3 space-y-2">
+                    {caregiverSymptoms.slice(0, 4).map((symptom) => (
+                      <li key={symptom.id} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm">
+                        <div className="flex-1">
+                          <p className="font-medium text-slate-700">{symptom.name || "Symptom"}</p>
+                          <p className="text-xs text-slate-500">
+                            Severity: <span className="font-semibold">{symptom.severity || 0}/10</span>
+                          </p>
+                        </div>
+                        {symptom.loggedAt && (
+                          <span className="text-xs text-slate-500">
+                            {new Date(symptom.loggedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="rounded-2xl border border-slate-200 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-semibold text-slate-900">Care notes</p>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/caregiverNotes")}
+                    disabled={!activePatientId}
+                    className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
+                      activePatientId
+                        ? "bg-teal-100 text-teal-700 hover:bg-teal-200"
+                        : "cursor-not-allowed bg-slate-100 text-slate-400"
+                    }`}
+                  >
+                    Manage
+                  </button>
+                </div>
+
+                {!activePatientId ? (
+                  <p className="mt-1 text-sm text-slate-600">Select an active patient to view care notes.</p>
+                ) : caregiverNotes.length === 0 ? (
+                  <p className="mt-1 text-sm text-slate-600">No care notes yet.</p>
+                ) : (
+                  <ul className="mt-3 space-y-2">
+                    {caregiverNotes.slice(0, 3).map((note) => (
+                      <li key={note.id} className="rounded-xl bg-slate-50 px-3 py-2 text-sm">
+                        <p className="font-medium text-slate-700 line-clamp-2">{note.note || "Note"}</p>
+                        {note.createdAt && (
+                          <p className="mt-1 text-xs text-slate-500">
+                            {new Date(note.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                          </p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
               {linkedPatients.length === 0 ? (
