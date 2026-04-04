@@ -17,13 +17,13 @@ import { apiUrl, authHeaders } from "../api/http";
 const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const durationOptions = [15, 30, 45, 60];
 const plannerDays = [1, 2, 3, 4, 5, 6];
-const plannerStartHour = 7;
-const plannerEndHour = 20;
+const plannerStartHour = 0;
+const plannerEndHour = 24;
 const availabilityPresets = [
-  { label: "Morning clinic", startTime: "09:00", endTime: "12:00" },
+  { label: "Morning clinic", startTime: "08:00", endTime: "12:00" },
   { label: "Afternoon clinic", startTime: "13:00", endTime: "17:00" },
-  { label: "Full day", startTime: "09:00", endTime: "17:00" },
-  { label: "Evening clinic", startTime: "17:00", endTime: "20:00" },
+  { label: "Full day", startTime: "08:00", endTime: "17:00" },
+  { label: "Evening clinic", startTime: "17:00", endTime: "22:00" },
 ];
 
 function buildPlannerSlots(slotMinutes) {
@@ -66,6 +66,13 @@ function formatDateLabel(dateKey) {
   });
 }
 
+function formatShortDateLabel(dateKey) {
+  return new Date(`${dateKey}T00:00:00`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
 function statusClass(status) {
   if (status === "requested") return "bg-amber-100 text-amber-700";
   if (status === "scheduled") return "bg-emerald-100 text-emerald-700";
@@ -86,6 +93,35 @@ function statusLabel(status) {
 
 function patientLabel(patientRecord) {
   return patientRecord.profile?.displayName || patientRecord.patient?.displayName || patientRecord.patient?.email || patientRecord.email || "Patient";
+}
+function MetricCard({ label, value, hint, tone = "sky" }) {
+  const tones = {
+    sky: "from-sky-500 to-cyan-400",
+    emerald: "from-emerald-500 to-teal-400",
+    amber: "from-amber-500 to-orange-400",
+    rose: "from-rose-500 to-pink-400",
+  };
+  return (
+    <div className="rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70">{label}</p>
+      <p className="mt-2 text-3xl font-black text-white">{value}</p>
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/15">
+        <div className={`h-full rounded-full bg-gradient-to-r ${tones[tone] || tones.sky}`} style={{ width: "100%" }} />
+      </div>
+      <p className="mt-2 text-xs text-white/70">{hint}</p>
+    </div>
+  );
+}
+function SoftPill({ label, value, tone = "slate" }) {
+  const tones = {
+    slate: "bg-slate-100 text-slate-700",
+    sky: "bg-sky-100 text-sky-700",
+    emerald: "bg-emerald-100 text-emerald-700",
+    amber: "bg-amber-100 text-amber-700",
+    rose: "bg-rose-100 text-rose-700",
+    violet: "bg-violet-100 text-violet-700",
+  };
+  return <span className={`rounded-full px-3 py-1 text-xs font-semibold ${tones[tone] || tones.slate}`}>{label}: {value}</span>;
 }
 
 function availabilityTypeLabel(type) {
@@ -421,6 +457,7 @@ export default function DoctorAppointments() {
       return accumulator;
     }, {});
   }, [appointments]);
+  const selectedDayAppointmentCount = appointmentCountsByDate[selectedDateKey] || 0;
 
   const availabilityByType = useMemo(() => ({
     workHours: availabilityEntries.filter((entry) => entry.type === "workHours"),
@@ -753,32 +790,23 @@ export default function DoctorAppointments() {
       <Navbar />
 
       <main className="mx-auto max-w-6xl px-6 pb-8 pt-28">
-        <div className="mb-6 flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-3xl text-slate-800 font-bold">Appointments</h1>
-            <p className="text-slate-500 mt-1">
-              Review patient appointment requests, schedule visits, and manage appointment status updates.
-            </p>
-          </div>
-          <div className="flex gap-3">
-            <div className="rounded-2xl bg-white border border-slate-200 px-4 py-3 text-right">
-              <p className="text-xs text-slate-500">Requests</p>
-              <p className="text-2xl font-bold text-slate-800">{requestedAppointments.length}</p>
+        <section className="mb-6 rounded-[2rem] bg-gradient-to-r from-slate-900 via-sky-800 to-cyan-600 p-8 text-white shadow-xl">
+          <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.25em] text-white/75">Doctor Appointments</p>
+              <h1 className="mt-3 text-4xl font-black">Scheduling and Requests</h1>
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-white/85">
+                Review patient requests, suggest better slots, manage schedule status, and shape availability from one workflow page.
+              </p>
             </div>
-            <div className="rounded-2xl bg-white border border-slate-200 px-4 py-3 text-right">
-              <p className="text-xs text-slate-500">Scheduled</p>
-              <p className="text-2xl font-bold text-slate-800">{scheduledCount}</p>
-            </div>
-            <div className="rounded-2xl bg-white border border-slate-200 px-4 py-3 text-right">
-              <p className="text-xs text-slate-500">Completed</p>
-              <p className="text-2xl font-bold text-slate-800">{completedCount}</p>
-            </div>
-            <div className="rounded-2xl bg-white border border-slate-200 px-4 py-3 text-right">
-              <p className="text-xs text-slate-500">Cancelled</p>
-              <p className="text-2xl font-bold text-slate-800">{cancelledCount}</p>
+            <div className="grid gap-3 sm:grid-cols-2 xl:w-[420px]">
+              <MetricCard label="Requests" value={requestedAppointments.length} hint="Awaiting review" tone="amber" />
+              <MetricCard label="Scheduled" value={scheduledCount} hint="Confirmed visits" tone="emerald" />
+              <MetricCard label="Completed" value={completedCount} hint="Closed visits" tone="sky" />
+              <MetricCard label="Cancelled" value={cancelledCount} hint="Dropped or denied" tone="rose" />
             </div>
           </div>
-        </div>
+        </section>
 
         {error && (
           <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -786,12 +814,20 @@ export default function DoctorAppointments() {
           </div>
         )}
 
-        <section className="bg-white rounded-3xl shadow p-6 mb-6">
+        <section className="mb-6 rounded-3xl bg-gradient-to-br from-white to-amber-50 p-6 shadow">
           <div className="mb-4">
-            <h2 className="text-xl font-semibold text-slate-800">Patient Requests</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Review the requested slot, patient note, location, and your internal review note before approving, denying, or suggesting another time.
-            </p>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-800">Patient Requests</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Review the requested slot, patient note, location, and your internal review note before approving, denying, or suggesting another time.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <SoftPill label="Pending" value={requestedAppointments.length} tone="amber" />
+                <SoftPill label="Patients" value={assignedPatients.length} tone="sky" />
+              </div>
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -809,7 +845,7 @@ export default function DoctorAppointments() {
                 const isSuggesting = suggestOpenId === appointment.id;
 
                 return (
-                  <div key={appointment.id} className="rounded-3xl border border-slate-200 p-5">
+                  <div key={appointment.id} className="rounded-3xl border border-slate-200 bg-white/90 p-5 shadow-sm">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -820,8 +856,12 @@ export default function DoctorAppointments() {
                           Requested slot: {formatDateLabel(toDateKey(appointment.startsAt))} at {formatTime(appointment.startsAt)}
                           {appointment.endsAt ? ` for ${requestedDuration} minutes` : ""}
                         </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <SoftPill label="Duration" value={`${requestedDuration} min`} tone="sky" />
+                          <SoftPill label="Day" value={formatDateLabel(toDateKey(appointment.startsAt))} tone="slate" />
+                        </div>
                       </div>
-                      <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                      <div className="rounded-2xl bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
                         <p><span className="font-semibold text-slate-900">Location:</span> {appointment.location || "Not specified"}</p>
                         <p className="mt-1"><span className="font-semibold text-slate-900">Appointment ID:</span> {appointment.id.slice(0, 8)}</p>
                       </div>
@@ -962,7 +1002,7 @@ export default function DoctorAppointments() {
           </div>
         </section>
 
-        <section className="bg-white rounded-3xl shadow p-6 mb-6">
+        <section className="mb-6 rounded-3xl bg-gradient-to-br from-white to-sky-50 p-6 shadow">
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
               <h2 className="text-xl font-semibold text-slate-800 mb-1">Availability Management</h2>
@@ -988,6 +1028,36 @@ export default function DoctorAppointments() {
                 <p className="mt-1 text-sm text-slate-500">
                   Paint only the exact booking windows you want open. The grid follows your appointment duration rule.
                 </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <SoftPill label="Weekly blocks" value={availabilityByType.workHours.length} tone="sky" />
+                <SoftPill label="Breaks" value={availabilityByType.breaks.length} tone="amber" />
+                <SoftPill label="Blocked" value={availabilityByType.blocked.length} tone="rose" />
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <div className="rounded-2xl bg-white/90 p-4 shadow-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Planner</p>
+                <p className="mt-2 text-2xl font-black text-slate-900">{availabilityByType.workHours.length}</p>
+                <p className="mt-2 text-sm text-slate-500">Saved weekly bookable ranges</p>
+              </div>
+              <div className="rounded-2xl bg-white/90 p-4 shadow-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Slot size</p>
+                <p className="mt-2 text-2xl font-black text-slate-900">{plannerSlotMinutes} min</p>
+                <p className="mt-2 text-sm text-slate-500">Driven by duration rule</p>
+              </div>
+              <div className="rounded-2xl bg-white/90 p-4 shadow-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Exceptions</p>
+                <p className="mt-2 text-2xl font-black text-slate-900">{availabilityByType.breaks.length + availabilityByType.blocked.length}</p>
+                <p className="mt-2 text-sm text-slate-500">Breaks and blocked dates</p>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Quick fill presets</p>
+                <p className="mt-1 text-xs text-slate-500">Use these to paint the grid faster, then refine manually.</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 {availabilityPresets.map((preset) => (
@@ -1027,9 +1097,22 @@ export default function DoctorAppointments() {
               </div>
             </div>
 
-            <div className="mt-5 overflow-x-auto">
-              <div className="min-w-[980px]">
-                <div className="grid gap-2" style={{ gridTemplateColumns: `120px repeat(${plannerSlots.length}, minmax(28px, 1fr))` }}>
+            <div className="mt-5 overflow-x-auto rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-inner shadow-slate-100/70">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">24-hour availability canvas</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    The planner spans the full day, so you can open only the exact windows you want bookable.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <SoftPill label="Starts" value={`${String(plannerStartHour).padStart(2, "0")}:00`} tone="slate" />
+                  <SoftPill label="Ends" value={`${String(plannerEndHour).padStart(2, "0")}:00`} tone="violet" />
+                </div>
+              </div>
+
+              <div className="min-w-[1320px]">
+                <div className="grid gap-2" style={{ gridTemplateColumns: `120px repeat(${plannerSlots.length}, minmax(24px, 1fr))` }}>
                   <div />
                   {plannerSlots.map((slot, index) => (
                     <div key={slot} className="text-center text-[10px] font-semibold text-slate-400">
@@ -1043,9 +1126,9 @@ export default function DoctorAppointments() {
                     <div
                       key={day}
                       className="grid gap-2 items-center"
-                      style={{ gridTemplateColumns: `120px repeat(${plannerSlots.length}, minmax(28px, 1fr))` }}
+                      style={{ gridTemplateColumns: `120px repeat(${plannerSlots.length}, minmax(24px, 1fr))` }}
                     >
-                      <div className="rounded-2xl bg-white px-3 py-3 text-sm font-semibold text-slate-800">
+                      <div className="rounded-2xl bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-800">
                         {weekDays[day]}
                       </div>
                       {plannerSlots.map((slot) => {
@@ -1061,9 +1144,9 @@ export default function DoctorAppointments() {
                                 [key]: !current[key],
                               }))
                             }
-                            className={`h-9 rounded-xl border transition ${
+                            className={`h-8 rounded-xl border transition ${
                               active
-                                ? "border-sky-300 bg-sky-400 shadow-sm"
+                                ? "border-sky-400 bg-gradient-to-br from-sky-400 to-cyan-400 shadow-sm shadow-sky-200/80"
                                 : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
                             }`}
                             title={`${weekDays[day]} ${slot}`}
@@ -1252,11 +1335,19 @@ export default function DoctorAppointments() {
           </div>
         </section>
 
-        <section className="bg-white rounded-3xl shadow p-6 mb-6">
-          <h2 className="text-xl font-semibold text-slate-800 mb-1">Schedule For Assigned Patient</h2>
-          <p className="text-sm text-slate-500 mb-4">
-            Available time slots come from the backend availability endpoint for the selected day.
-          </p>
+        <section className="mb-6 rounded-3xl bg-gradient-to-br from-white to-cyan-50 p-6 shadow">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-800 mb-1">Schedule For Assigned Patient</h2>
+              <p className="text-sm text-slate-500 mb-4">
+                Available time slots come from the backend availability endpoint for the selected day.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <SoftPill label="Selected day" value={form.date || "Not set"} tone="sky" />
+              <SoftPill label="Slots" value={availableSlots.length} tone="emerald" />
+            </div>
+          </div>
 
           <form onSubmit={handleScheduleAppointment} className="grid grid-cols-1 md:grid-cols-6 gap-3">
             <select
@@ -1369,18 +1460,22 @@ export default function DoctorAppointments() {
         </section>
 
         <section className="bg-white rounded-3xl shadow p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-xl font-semibold text-slate-800 mb-1">Appointments For {formatDateLabel(selectedDateKey)}</h2>
               <p className="text-sm text-slate-500">Select a date in the calendar to review and update statuses.</p>
             </div>
-            <button
-              type="button"
-              onClick={loadPageData}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
-            >
-              Refresh
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <SoftPill label="Selected" value={formatShortDateLabel(selectedDateKey)} tone="sky" />
+              <SoftPill label="Appointments" value={selectedDayAppointmentCount} tone="emerald" />
+              <button
+                type="button"
+                onClick={loadPageData}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
+              >
+                Refresh
+              </button>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -1457,65 +1552,137 @@ export default function DoctorAppointments() {
           </div>
         </section>
 
-        <section className="bg-white rounded-3xl shadow p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-slate-800">
-              {visibleMonth.toLocaleString("en-US", { month: "long", year: "numeric" })}
-            </h2>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => changeMonth(-1)}
-                className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
-              >
-                Prev
-              </button>
-              <button
-                type="button"
-                onClick={() => changeMonth(1)}
-                className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
-              >
-                Next
-              </button>
+        <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-white via-cyan-50/60 to-sky-100/70 shadow">
+          <div className="border-b border-white/70 bg-gradient-to-r from-slate-900 via-sky-800 to-cyan-600 p-6 text-white">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-white/70">Schedule Calendar</p>
+                <h2 className="mt-2 text-2xl font-black">
+                  {visibleMonth.toLocaleString("en-US", { month: "long", year: "numeric" })}
+                </h2>
+                <p className="mt-2 text-sm text-white/80">
+                  Scan the month, spot busy days instantly, and jump into the daily schedule from the calendar.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 rounded-2xl bg-white/10 p-1 backdrop-blur-sm">
+                <button
+                  type="button"
+                  onClick={() => changeMonth(-1)}
+                  className="rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold text-white transition hover:bg-white/20"
+                >
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const today = new Date();
+                    setSelectedDateKey(toDateKey(today));
+                    setVisibleMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+                  }}
+                  className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  onClick={() => changeMonth(1)}
+                  className="rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold text-white transition hover:bg-white/20"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-7 gap-2 mb-2">
-            {weekDays.map((day) => (
-              <p key={day} className="text-xs font-semibold text-slate-500 px-2 py-1">
-                {day}
-              </p>
-            ))}
-          </div>
+          <div className="p-6">
+            <div className="mb-4 grid gap-3 md:grid-cols-3">
+              <div className="rounded-2xl border border-white/80 bg-white/80 p-4 shadow-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Selected day</p>
+                <p className="mt-2 text-xl font-black text-slate-900">{formatShortDateLabel(selectedDateKey)}</p>
+                <p className="mt-1 text-sm text-slate-500">Current schedule focus</p>
+              </div>
+              <div className="rounded-2xl border border-white/80 bg-white/80 p-4 shadow-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">This day</p>
+                <p className="mt-2 text-xl font-black text-slate-900">{selectedDayAppointmentCount}</p>
+                <p className="mt-1 text-sm text-slate-500">Appointments on the selected date</p>
+              </div>
+              <div className="rounded-2xl border border-white/80 bg-white/80 p-4 shadow-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Busy days</p>
+                <p className="mt-2 text-xl font-black text-slate-900">
+                  {monthDays.filter((day) => (appointmentCountsByDate[day.dateKey] || 0) > 0 && day.inCurrentMonth).length}
+                </p>
+                <p className="mt-1 text-sm text-slate-500">Days with at least one appointment</p>
+              </div>
+            </div>
 
-          <div className="grid grid-cols-7 gap-2">
-            {monthDays.map((day) => {
-              const isSelected = day.dateKey === selectedDateKey;
-              const appointmentCount = appointmentCountsByDate[day.dateKey] || 0;
+            <div className="mb-3 grid grid-cols-7 gap-3">
+              {weekDays.map((day) => (
+                <p key={day} className="px-2 py-1 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                  {day}
+                </p>
+              ))}
+            </div>
 
-              return (
-                <button
-                  key={day.dateKey}
-                  type="button"
-                  onClick={() => {
-                    setSelectedDateKey(day.dateKey);
-                    setVisibleMonth(new Date(day.date.getFullYear(), day.date.getMonth(), 1));
-                  }}
-                  className={`rounded-xl border p-2 text-left min-h-[72px] transition ${
-                    isSelected
-                      ? "border-sky-400 bg-sky-50"
-                      : "border-slate-200 bg-white hover:bg-slate-50"
-                  } ${!day.inCurrentMonth ? "opacity-50" : "opacity-100"}`}
-                >
-                  <p className="text-sm font-medium text-slate-700">{day.date.getDate()}</p>
-                  {appointmentCount > 0 && (
-                    <p className="text-[11px] mt-2 text-sky-700 font-medium">
-                      {appointmentCount} appt{appointmentCount === 1 ? "" : "s"}
-                    </p>
-                  )}
-                </button>
-              );
-            })}
+            <div className="grid grid-cols-7 gap-3">
+              {monthDays.map((day) => {
+                const isSelected = day.dateKey === selectedDateKey;
+                const isToday = day.dateKey === toDateKey(new Date());
+                const appointmentCount = appointmentCountsByDate[day.dateKey] || 0;
+                const intensityClass =
+                  appointmentCount >= 4
+                    ? "bg-rose-500"
+                    : appointmentCount >= 2
+                    ? "bg-amber-400"
+                    : appointmentCount === 1
+                    ? "bg-emerald-400"
+                    : "bg-transparent";
+
+                return (
+                  <button
+                    key={day.dateKey}
+                    type="button"
+                    onClick={() => {
+                      setSelectedDateKey(day.dateKey);
+                      setVisibleMonth(new Date(day.date.getFullYear(), day.date.getMonth(), 1));
+                    }}
+                    className={`group min-h-[108px] rounded-2xl border p-3 text-left transition ${
+                      isSelected
+                        ? "border-sky-400 bg-gradient-to-br from-sky-50 to-cyan-50 shadow-lg shadow-sky-100"
+                        : "border-white/80 bg-white/85 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-md"
+                    } ${!day.inCurrentMonth ? "opacity-45" : "opacity-100"}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span
+                        className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold ${
+                          isSelected
+                            ? "bg-sky-500 text-white"
+                            : isToday
+                            ? "bg-slate-900 text-white"
+                            : "bg-slate-100 text-slate-700 group-hover:bg-slate-200"
+                        }`}
+                      >
+                        {day.date.getDate()}
+                      </span>
+                      {appointmentCount > 0 ? (
+                        <span className={`h-3 w-3 rounded-full ${intensityClass}`} />
+                      ) : null}
+                    </div>
+
+                    <div className="mt-6">
+                      {appointmentCount > 0 ? (
+                        <>
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Booked</p>
+                          <p className="mt-1 text-lg font-black text-slate-900">{appointmentCount}</p>
+                          <p className="text-xs text-slate-500">appointment{appointmentCount === 1 ? "" : "s"}</p>
+                        </>
+                      ) : (
+                        <p className="text-xs font-medium text-slate-400">No appointments</p>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </section>
       </main>

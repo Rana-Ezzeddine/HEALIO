@@ -35,6 +35,7 @@ export default function DoctorTreatmentPlans() {
   const [saveMessage, setSaveMessage] = useState("");
   const [savedPlans, setSavedPlans] = useState([]);
   const [patientOverview, setPatientOverview] = useState(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [form, setForm] = useState({
     planTitle: "",
     targetConditions: "",
@@ -273,13 +274,16 @@ export default function DoctorTreatmentPlans() {
                     <div>
                       <h2 className="text-xl font-semibold text-slate-900">Treatment plans shell</h2>
                       <p className="mt-1 text-sm text-slate-500">
-                        Create comprehensive treatment plans with goals, medications, monitoring, escalation criteria, and a patient-safe summary.
+                        Start with the essential plan items, then expand advanced details only when they are needed.
                       </p>
                     </div>
                   </div>
 
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button type="button" onClick={() => fillFromPatient("medications")} className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-200">Import medications</button>
+                    <button type="button" onClick={() => setShowAdvanced((current) => !current)} className="rounded-full bg-violet-100 px-3 py-1.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-200">
+                      {showAdvanced ? "Hide advanced details" : "Add more detail"}
+                    </button>
                   </div>
 
                   <form onSubmit={handleSavePlan} className="mt-5 space-y-5">
@@ -308,17 +312,6 @@ export default function DoctorTreatmentPlans() {
                         <textarea value={form.diagnosisSummary} onChange={(event) => updateField("diagnosisSummary", event.target.value)} rows={4} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
                       </label>
                       <label className="space-y-2">
-                        <span className="text-sm font-semibold text-slate-700">Severity / stage / clinical status</span>
-                        <input value={form.severityStage} onChange={(event) => updateField("severityStage", event.target.value)} placeholder="Stage, severity, stability..." className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-                      </label>
-                      <label className="space-y-2">
-                        <span className="text-sm font-semibold text-slate-700">Review cadence</span>
-                        <input value={form.reviewCadence} onChange={(event) => updateField("reviewCadence", event.target.value)} placeholder="Every 2 weeks, monthly, after labs..." className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-                      </label>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <label className="space-y-2">
                         <span className="text-sm font-semibold text-slate-700">Treatment goals</span>
                         <textarea value={form.treatmentGoals} onChange={(event) => updateField("treatmentGoals", event.target.value)} rows={4} placeholder="One goal per line" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
                       </label>
@@ -326,50 +319,63 @@ export default function DoctorTreatmentPlans() {
                         <span className="text-sm font-semibold text-slate-700">Medication strategy</span>
                         <textarea value={form.medications} onChange={(event) => updateField("medications", event.target.value)} rows={4} placeholder="One medication or change per line" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
                       </label>
-                      <label className="space-y-2">
-                        <span className="text-sm font-semibold text-slate-700">Lifestyle / rehabilitation actions</span>
-                        <textarea value={form.lifestyleActions} onChange={(event) => updateField("lifestyleActions", event.target.value)} rows={4} placeholder="Diet, exercise, sleep, wound care, PT..." className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-                      </label>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
                       <label className="space-y-2">
                         <span className="text-sm font-semibold text-slate-700">Monitoring plan</span>
                         <textarea value={form.monitoringPlan} onChange={(event) => updateField("monitoringPlan", event.target.value)} rows={4} placeholder="BP logs, glucose checks, symptom monitoring..." className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-                      </label>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <label className="space-y-2">
-                        <span className="text-sm font-semibold text-slate-700">Tests and follow-up tasks</span>
-                        <textarea value={form.testsAndFollowUp} onChange={(event) => updateField("testsAndFollowUp", event.target.value)} rows={4} placeholder="One item per line" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-                      </label>
-                      <label className="space-y-2">
-                        <span className="text-sm font-semibold text-slate-700">Referrals / consultations</span>
-                        <textarea value={form.referrals} onChange={(event) => updateField("referrals", event.target.value)} rows={4} placeholder="One item per line" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-                      </label>
-                      <label className="space-y-2">
-                        <span className="text-sm font-semibold text-slate-700">Contraindications / precautions</span>
-                        <textarea value={form.contraindications} onChange={(event) => updateField("contraindications", event.target.value)} rows={4} placeholder="One item per line" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-                      </label>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <label className="space-y-2">
-                        <span className="text-sm font-semibold text-slate-700">Escalation criteria / red flags</span>
-                        <textarea value={form.escalationCriteria} onChange={(event) => updateField("escalationCriteria", event.target.value)} rows={4} placeholder="One trigger per line" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-                      </label>
-                      <label className="space-y-2">
-                        <span className="text-sm font-semibold text-slate-700">Caregiver guidance</span>
-                        <textarea value={form.caregiverGuidance} onChange={(event) => updateField("caregiverGuidance", event.target.value)} rows={4} placeholder="One item per line" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
                       </label>
                       <label className="space-y-2">
                         <span className="text-sm font-semibold text-slate-700">Patient instructions</span>
                         <textarea value={form.patientInstructions} onChange={(event) => updateField("patientInstructions", event.target.value)} rows={4} placeholder="One instruction per line" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
                       </label>
+                      <label className="space-y-2">
+                        <span className="text-sm font-semibold text-slate-700">Review cadence</span>
+                        <input value={form.reviewCadence} onChange={(event) => updateField("reviewCadence", event.target.value)} placeholder="Every 2 weeks, monthly, after labs..." className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+                      </label>
+                      <label className="space-y-2">
+                        <span className="text-sm font-semibold text-slate-700">Patient-safe summary</span>
+                        <textarea value={form.patientSafeSummary} onChange={(event) => updateField("patientSafeSummary", event.target.value)} rows={3} placeholder="Concise readable plan summary safe to show in the patient view." className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+                      </label>
                     </div>
 
-                    <label className="space-y-2">
-                      <span className="text-sm font-semibold text-slate-700">Patient-safe summary</span>
-                      <textarea value={form.patientSafeSummary} onChange={(event) => updateField("patientSafeSummary", event.target.value)} rows={3} placeholder="Concise readable plan summary safe to show in the patient view." className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-                    </label>
+                    {showAdvanced ? (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-sm font-semibold text-slate-900">Advanced details</p>
+                        <p className="mt-1 text-xs text-slate-500">Use these sections when the plan needs more clinical detail or coordination.</p>
+                        <div className="mt-4 grid gap-4 md:grid-cols-2">
+                          <label className="space-y-2">
+                            <span className="text-sm font-semibold text-slate-700">Severity / stage / clinical status</span>
+                            <input value={form.severityStage} onChange={(event) => updateField("severityStage", event.target.value)} placeholder="Stage, severity, stability..." className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+                          </label>
+                          <label className="space-y-2">
+                            <span className="text-sm font-semibold text-slate-700">Lifestyle / rehabilitation actions</span>
+                            <textarea value={form.lifestyleActions} onChange={(event) => updateField("lifestyleActions", event.target.value)} rows={4} placeholder="Diet, exercise, sleep, wound care, PT..." className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+                          </label>
+                          <label className="space-y-2">
+                            <span className="text-sm font-semibold text-slate-700">Tests and follow-up tasks</span>
+                            <textarea value={form.testsAndFollowUp} onChange={(event) => updateField("testsAndFollowUp", event.target.value)} rows={4} placeholder="One item per line" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+                          </label>
+                          <label className="space-y-2">
+                            <span className="text-sm font-semibold text-slate-700">Referrals / consultations</span>
+                            <textarea value={form.referrals} onChange={(event) => updateField("referrals", event.target.value)} rows={4} placeholder="One item per line" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+                          </label>
+                          <label className="space-y-2">
+                            <span className="text-sm font-semibold text-slate-700">Contraindications / precautions</span>
+                            <textarea value={form.contraindications} onChange={(event) => updateField("contraindications", event.target.value)} rows={4} placeholder="One item per line" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+                          </label>
+                          <label className="space-y-2">
+                            <span className="text-sm font-semibold text-slate-700">Escalation criteria / red flags</span>
+                            <textarea value={form.escalationCriteria} onChange={(event) => updateField("escalationCriteria", event.target.value)} rows={4} placeholder="One trigger per line" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+                          </label>
+                          <label className="space-y-2 md:col-span-2">
+                            <span className="text-sm font-semibold text-slate-700">Caregiver guidance</span>
+                            <textarea value={form.caregiverGuidance} onChange={(event) => updateField("caregiverGuidance", event.target.value)} rows={4} placeholder="One item per line" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+                          </label>
+                        </div>
+                      </div>
+                    ) : null}
 
                     {saveMessage ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{saveMessage}</div> : null}
 

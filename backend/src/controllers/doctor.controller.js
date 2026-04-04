@@ -6,6 +6,8 @@ import PatientProfile from "../models/PatientProfile.js";
 import Medication from "../models/Medication.js";
 import Diagnosis from "../models/Diagnosis.js";
 import Appointment from "../models/Appointment.js";
+import CaregiverPatientPermission from "../models/CaregiverPatientPermission.js";
+import CaregiverNote from "../models/CaregiverNote.js";
 import {
   DOCTOR_APPROVAL_STATUS,
   buildDoctorApprovalBlockedPayload,
@@ -860,7 +862,90 @@ export const getPatientOverview = async (req, res) => {
       ]
     });
 
-    return res.json(patient);
+    const caregiverLinks = await CaregiverPatientPermission.findAll({
+      where: { patientId, status: "active" },
+      order: [["createdAt", "DESC"]],
+    });
+
+    const caregiverIds = caregiverLinks.map((link) => link.caregiverId);
+    const caregivers = caregiverIds.length
+      ? await User.findAll({
+          where: { id: { [Op.in]: caregiverIds } },
+          attributes: ["id", "email", "role"],
+        })
+      : [];
+    const caregiverProfiles = caregiverIds.length
+      ? await PatientProfile.findAll({
+          where: { userId: { [Op.in]: caregiverIds } },
+          attributes: ["userId", "firstName", "lastName"],
+        })
+      : [];
+    const caregiverNotes = await CaregiverNote.findAll({
+      where: { patientId },
+      order: [["updatedAt", "DESC"]],
+      limit: 8,
+    });
+
+    const caregiverMap = new Map(caregivers.map((caregiver) => [caregiver.id, caregiver]));
+    const caregiverProfileMap = new Map(caregiverProfiles.map((profile) => [profile.userId, profile]));
+
+    const caregiverNotesWithAuthors = caregiverNotes.map((note) => {
+      const caregiver = caregiverMap.get(note.caregiverId) || null;
+      const profile = caregiverProfileMap.get(note.caregiverId) || null;
+      return {
+        id: note.id,
+        note: note.note,
+        createdAt: note.createdAt,
+        updatedAt: note.updatedAt,
+        caregiverId: note.caregiverId,
+        caregiver: caregiver
+          ? {
+              id: caregiver.id,
+              email: caregiver.email,
+              role: caregiver.role,
+              firstName: profile?.firstName || null,
+              lastName: profile?.lastName || null,
+              displayName:
+                [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim() ||
+                caregiver.email,
+            }
+          : null,
+      };
+    });
+
+    const payload = patient.toJSON();
+    payload.caregivers = caregiverLinks.map((link) => {
+      const caregiver = caregiverMap.get(link.caregiverId) || null;
+      const profile = caregiverProfileMap.get(link.caregiverId) || null;
+      return {
+        caregiverId: link.caregiverId,
+        patientId: link.patientId,
+        status: link.status,
+        createdAt: link.createdAt,
+        caregiver: caregiver
+          ? {
+              id: caregiver.id,
+              email: caregiver.email,
+              role: caregiver.role,
+              firstName: profile?.firstName || null,
+              lastName: profile?.lastName || null,
+              displayName:
+                [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim() ||
+                caregiver.email,
+            }
+          : null,
+        permissions: {
+          canViewMedications: link.canViewMedications,
+          canViewSymptoms: link.canViewSymptoms,
+          canViewAppointments: link.canViewAppointments,
+          canMessageDoctor: link.canMessageDoctor,
+          canReceiveReminders: link.canReceiveReminders,
+        },
+      };
+    });
+    payload.caregiverNotes = caregiverNotesWithAuthors;
+
+    return res.json(payload);
   } catch (err) {
     console.error("get-patient-overview error:", err);
     return res.status(500).json({ message: "Server error." });

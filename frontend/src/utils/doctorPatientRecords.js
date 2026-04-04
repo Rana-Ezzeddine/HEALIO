@@ -1,5 +1,6 @@
 const NOTES_KEY = "healio:doctor-structured-notes";
 const PLANS_KEY = "healio:doctor-structured-plans";
+const DOCTOR_TO_CAREGIVER_NOTES_KEY = "healio:doctor-caregiver-notes";
 
 function readMap(storageKey) {
   try {
@@ -53,6 +54,22 @@ export function savePatientTreatmentPlan(patientId, plan) {
 
   map[patientId] = next;
   writeMap(PLANS_KEY, map);
+  return next;
+}
+
+export function getDoctorCaregiverNotes(patientId) {
+  if (!patientId) return [];
+  const map = readMap(DOCTOR_TO_CAREGIVER_NOTES_KEY);
+  return Array.isArray(map[patientId]) ? map[patientId] : [];
+}
+
+export function saveDoctorCaregiverNote(patientId, note) {
+  if (!patientId || !note) return [];
+  const map = readMap(DOCTOR_TO_CAREGIVER_NOTES_KEY);
+  const current = Array.isArray(map[patientId]) ? map[patientId] : [];
+  const next = [{ ...note }, ...current];
+  map[patientId] = next;
+  writeMap(DOCTOR_TO_CAREGIVER_NOTES_KEY, map);
   return next;
 }
 

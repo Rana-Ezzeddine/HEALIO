@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import { apiUrl, authHeaders } from "../api/http";
 import { rememberDoctorPatientTab } from "../utils/doctorPatientTabs";
-import { formatListOutput, getPatientClinicalNotes, getPatientTreatmentPlans } from "../utils/doctorPatientRecords";
+import { formatListOutput, getDoctorCaregiverNotes, getPatientClinicalNotes, getPatientTreatmentPlans, saveDoctorCaregiverNote } from "../utils/doctorPatientRecords";
 import { formatDoseTime, getNextMedicationDose, getScheduleTimes, isActiveMedication } from "../utils/medicationSchedule";
 
 function patientDisplayName(record) {
@@ -41,6 +41,35 @@ function formatScheduleInput(scheduleJson, frequency) {
 function getMedicationStatus(medication) {
   return isActiveMedication(medication) ? "Active" : "Inactive";
 }
+function InfoPill({ label, value, tone = "sky" }) {
+  const tones = {
+    sky: "bg-sky-100 text-sky-700",
+    violet: "bg-violet-100 text-violet-700",
+    emerald: "bg-emerald-100 text-emerald-700",
+    amber: "bg-amber-100 text-amber-700",
+    rose: "bg-rose-100 text-rose-700",
+    slate: "bg-slate-100 text-slate-700",
+  };
+  return <span className={`rounded-full px-3 py-1 text-xs font-semibold ${tones[tone] || tones.sky}`}>{label}: {value}</span>;
+}
+function SummaryMetric({ label, value, hint, tone = "sky" }) {
+  const tones = {
+    sky: "from-sky-500 to-cyan-400",
+    violet: "from-violet-500 to-fuchsia-400",
+    emerald: "from-emerald-500 to-teal-400",
+    amber: "from-amber-500 to-orange-400",
+  };
+  return (
+    <div className="rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70">{label}</p>
+      <p className="mt-2 text-3xl font-black text-white">{value}</p>
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/15">
+        <div className={`h-full rounded-full bg-gradient-to-r ${tones[tone] || tones.sky}`} style={{ width: "100%" }} />
+      </div>
+      <p className="mt-2 text-xs text-white/70">{hint}</p>
+    </div>
+  );
+}
 async function fetchPatientOverview(patientId) {
   const response = await fetch(`${apiUrl}/api/doctors/patients/${patientId}/overview`, { headers: { ...authHeaders() } });
   const data = await response.json().catch(() => ({}));
@@ -72,6 +101,9 @@ export default function DoctorPatientDetail() {
   const [savingMedication, setSavingMedication] = useState(false);
   const [editingMedicationId, setEditingMedicationId] = useState(null);
   const [medicationError, setMedicationError] = useState("");
+  const [doctorCaregiverNotes, setDoctorCaregiverNotes] = useState([]);
+  const [doctorCaregiverNoteForm, setDoctorCaregiverNoteForm] = useState({ caregiverId: "", note: "" });
+  const [doctorCaregiverNoteMessage, setDoctorCaregiverNoteMessage] = useState("");
   const [medicationForm, setMedicationForm] = useState({
     name: "",
     doseAmount: "",
@@ -93,6 +125,7 @@ export default function DoctorPatientDetail() {
     rememberDoctorPatientTab({ id: currentPatientId, name: patientDisplayName(overview) });
     setLocalNotes(getPatientClinicalNotes(currentPatientId));
     setLocalPlans(getPatientTreatmentPlans(currentPatientId));
+    setDoctorCaregiverNotes(getDoctorCaregiverNotes(currentPatientId));
     if (!preserveMedicationForm) {
       setMedicationFormOpen(false);
       setEditingMedicationId(null);
@@ -135,8 +168,11 @@ export default function DoctorPatientDetail() {
   const medications = overview?.medications || [];
   const diagnoses = overview?.diagnoses || [];
   const appointments = overview?.appointmentsAsPatient || [];
+  const caregivers = overview?.caregivers || [];
+  const caregiverNotes = overview?.caregiverNotes || [];
   const activeMedications = medications.filter((item) => isActiveMedication(item));
   const nextMedicationDose = getNextMedicationDose(activeMedications);
+  const activeDiagnosisCount = diagnoses.filter((item) => item.status === "active").length;
 
   function openMedicationForm(medication = null) {
     if (medication) {
@@ -258,6 +294,27 @@ export default function DoctorPatientDetail() {
     });
   }
 
+  function handleSaveDoctorCaregiverNote(event) {
+    event.preventDefault();
+    const caregiverId = doctorCaregiverNoteForm.caregiverId;
+    const note = doctorCaregiverNoteForm.note.trim();
+    if (!caregiverId || !note) {
+      setDoctorCaregiverNoteMessage("Choose a caregiver and add a note.");
+      return;
+    }
+    const caregiverEntry = caregivers.find((entry) => entry.caregiverId === caregiverId);
+    const next = saveDoctorCaregiverNote(patientId, {
+      id: crypto.randomUUID(),
+      caregiverId,
+      caregiverName: caregiverEntry?.caregiver?.displayName || caregiverEntry?.caregiver?.email || "Caregiver",
+      createdAt: new Date().toISOString(),
+      note,
+    });
+    setDoctorCaregiverNotes(next);
+    setDoctorCaregiverNoteForm({ caregiverId: "", note: "" });
+    setDoctorCaregiverNoteMessage("Doctor-to-caregiver note saved.");
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
@@ -268,32 +325,54 @@ export default function DoctorPatientDetail() {
           <p className="mt-3 max-w-3xl text-sm leading-6 text-white/85">Clinical context, notes, appointments, and treatment summary for this patient.</p>
           <div className="mt-5 flex flex-wrap gap-3">
             <button type="button" onClick={() => navigate('/doctor-patients')} className="rounded-xl bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25">Back to patients</button>
-            <button type="button" onClick={() => navigate(`/doctor-clinical-notes?patientId=${patientId}`)} className="rounded-xl bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25">Open clinical notes</button>
-            <button type="button" onClick={() => navigate(`/doctor-treatment-plans?patientId=${patientId}`)} className="rounded-xl bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25">Open treatment plans</button>
+          </div>
+          <div className="mt-6 grid gap-4 md:grid-cols-4">
+            <SummaryMetric label="Caregivers" value={caregivers.length} hint="Active support links" tone="emerald" />
+            <SummaryMetric label="Medications" value={activeMedications.length} hint={nextMedicationDose ? `Next at ${formatDoseTime(nextMedicationDose.at)}` : "No dose queued"} tone="sky" />
+            <SummaryMetric label="Diagnoses" value={activeDiagnosisCount} hint="Active conditions tracked" tone="violet" />
+            <SummaryMetric label="Activity" value={workspace?.timeline?.length || 0} hint="Recent patient events" tone="amber" />
           </div>
         </section>
         {error ? <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
         {loading ? <div className="mt-6 rounded-2xl border border-dashed border-slate-200 px-6 py-8 text-center text-sm text-slate-500">Loading patient detail...</div> : overview ? (
           <div className="mt-6">
             <div className="grid gap-5 xl:grid-cols-2">
-            <div className="rounded-3xl bg-white p-5 shadow-sm">
-              <h3 className="text-lg font-semibold text-slate-900">Profile and emergency</h3>
-              <div className="mt-4 space-y-2 text-sm text-slate-600">
-                <p><span className="font-semibold text-slate-900">Email:</span> {formatField(overview.email)}</p>
-                <p><span className="font-semibold text-slate-900">Date of birth:</span> {formatField(profile?.dateOfBirth)}</p>
-                <p><span className="font-semibold text-slate-900">Sex:</span> {formatField(profile?.sex)}</p>
-                <p><span className="font-semibold text-slate-900">Blood type:</span> {formatField(profile?.bloodType)}</p>
-                <p><span className="font-semibold text-slate-900">Allergies:</span> {formatField(profile?.allergies)}</p>
-                <p><span className="font-semibold text-slate-900">Medical conditions:</span> {formatField(profile?.medicalConditions)}</p>
-                <p><span className="font-semibold text-slate-900">Emergency contact:</span> {formatField(profile?.emergencyContact)}</p>
-                <p><span className="font-semibold text-slate-900">Emergency status:</span> {profile?.emergencyStatus ? 'Active' : 'Normal'}</p>
+            <div className="rounded-3xl bg-gradient-to-br from-white to-slate-50 p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">Profile and emergency</h3>
+                  <p className="mt-1 text-sm text-slate-500">Core patient identity, medical context, and emergency contacts.</p>
+                </div>
+                <InfoPill label="Emergency" value={profile?.emergencyStatus ? "Active" : "Normal"} tone={profile?.emergencyStatus ? "rose" : "emerald"} />
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {[
+                  ["Email", formatField(overview.email)],
+                  ["Date of birth", formatField(profile?.dateOfBirth)],
+                  ["Sex", formatField(profile?.sex)],
+                  ["Blood type", formatField(profile?.bloodType)],
+                  ["Allergies", formatField(profile?.allergies)],
+                  ["Medical conditions", formatField(profile?.medicalConditions)],
+                  ["Emergency contact", formatField(profile?.emergencyContact)],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-2xl border border-slate-200 bg-white/80 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">{label}</p>
+                    <p className="mt-2 text-sm text-slate-700">{value}</p>
+                  </div>
+                ))}
               </div>
             </div>
-            <div className="rounded-3xl bg-white p-5 shadow-sm">
-              <h3 className="text-lg font-semibold text-slate-900">Appointments</h3>
+            <div className="rounded-3xl bg-gradient-to-br from-white to-amber-50 p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">Appointments</h3>
+                  <p className="mt-1 text-sm text-slate-500">Upcoming patient visits with this doctor.</p>
+                </div>
+                <InfoPill label="Upcoming" value={appointments.length} tone="amber" />
+              </div>
               <div className="mt-4 space-y-3">
                 {appointments.length ? appointments.slice(0,5).map((appointment) => (
-                  <div key={appointment.id} className="rounded-2xl border border-slate-200 p-3">
+                  <div key={appointment.id} className="rounded-2xl border border-slate-200 bg-white/90 p-4">
                     <div className="flex items-center justify-between gap-3"><p className="font-semibold text-slate-900">{formatDateTime(appointment.startsAt)}</p><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">{appointment.status}</span></div>
                     <p className="mt-1 text-sm text-slate-500">{appointment.location || 'Location pending'}</p>
                     <p className="mt-1 text-sm text-slate-500">{appointment.notes || 'No notes.'}</p>
@@ -301,7 +380,114 @@ export default function DoctorPatientDetail() {
                 )) : <p className="text-sm text-slate-500">No appointment history with this patient yet.</p>}
               </div>
             </div>
-            <div className="rounded-3xl bg-white p-5 shadow-sm">
+            <div className="rounded-3xl bg-gradient-to-br from-white to-emerald-50 p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">Care team and caregiver access</h3>
+                  <p className="mt-1 text-sm text-slate-500">Linked caregivers and their current permission envelope.</p>
+                </div>
+                <InfoPill label="Linked" value={caregivers.length} tone="emerald" />
+              </div>
+              <div className="mt-4 space-y-3">
+                {caregivers.length ? caregivers.map((entry) => (
+                  <div key={`${entry.caregiverId}-${entry.createdAt}`} className="rounded-2xl border border-slate-200 bg-white/90 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-slate-900">{entry.caregiver?.displayName || entry.caregiver?.email || "Caregiver"}</p>
+                        <p className="mt-1 text-sm text-slate-500">{entry.caregiver?.email || "Email not recorded"}</p>
+                      </div>
+                      <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">{entry.status || "active"}</span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {Object.entries(entry.permissions || {}).map(([key, allowed]) => (
+                        <span key={key} className={`rounded-full px-3 py-1 text-xs font-semibold ${allowed ? "bg-sky-100 text-sky-700" : "bg-slate-100 text-slate-500"}`}>
+                          {key === "canViewMedications" ? "Medications" : key === "canViewSymptoms" ? "Symptoms" : key === "canViewAppointments" ? "Appointments" : key === "canMessageDoctor" ? "Doctor communication" : key === "canReceiveReminders" ? "Reminders" : key}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )) : <p className="text-sm text-slate-500">No active caregiver linked to this patient.</p>}
+              </div>
+            </div>
+            <div className="rounded-3xl bg-gradient-to-br from-white to-amber-50 p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">Caregiver notes</h3>
+                  <p className="mt-1 text-sm text-slate-500">Support observations written by caregivers for this patient.</p>
+                </div>
+                <InfoPill label="Notes" value={caregiverNotes.length} tone="amber" />
+              </div>
+              <div className="mt-4 space-y-3">
+                {caregiverNotes.length ? caregiverNotes.map((note) => (
+                  <div key={note.id} className="rounded-2xl border border-slate-200 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-slate-900">{note.caregiver?.displayName || "Caregiver"}</p>
+                        <p className="mt-1 text-xs text-slate-400">{formatDateTime(note.updatedAt || note.createdAt)}</p>
+                      </div>
+                      <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">Caregiver note</span>
+                    </div>
+                    <p className="mt-3 text-sm text-slate-700">{note.note}</p>
+                  </div>
+                )) : <p className="text-sm text-slate-500">No caregiver notes recorded yet.</p>}
+              </div>
+            </div>
+            <div className="rounded-3xl bg-gradient-to-br from-white to-cyan-50 p-5 shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-900">Doctor notes for caregivers</h3>
+              <p className="mt-1 text-sm text-slate-500">Share practical guidance with the linked caregiver in this patient's context.</p>
+              {caregivers.length ? (
+                <>
+                  <form onSubmit={handleSaveDoctorCaregiverNote} className="mt-4 space-y-3">
+                    <label className="block text-sm font-medium text-slate-700">
+                      Caregiver
+                      <select
+                        value={doctorCaregiverNoteForm.caregiverId}
+                        onChange={(event) => setDoctorCaregiverNoteForm((current) => ({ ...current, caregiverId: event.target.value }))}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                      >
+                        <option value="">Select caregiver</option>
+                        {caregivers.map((entry) => (
+                          <option key={entry.caregiverId} value={entry.caregiverId}>
+                            {entry.caregiver?.displayName || entry.caregiver?.email || "Caregiver"}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block text-sm font-medium text-slate-700">
+                      Note
+                      <textarea
+                        value={doctorCaregiverNoteForm.note}
+                        onChange={(event) => setDoctorCaregiverNoteForm((current) => ({ ...current, note: event.target.value }))}
+                        rows={3}
+                        placeholder="Example: Please reinforce evening glucose checks and remind the patient to bring their BP log to the next visit."
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                      />
+                    </label>
+                    {doctorCaregiverNoteMessage ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{doctorCaregiverNoteMessage}</div> : null}
+                    <button type="submit" className="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-700">
+                      Save caregiver note
+                    </button>
+                  </form>
+                  <div className="mt-4 space-y-3">
+                    {doctorCaregiverNotes.length ? doctorCaregiverNotes.map((note) => (
+                      <div key={note.id} className="rounded-2xl border border-slate-200 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-semibold text-slate-900">{note.caregiverName}</p>
+                            <p className="mt-1 text-xs text-slate-400">{formatDateTime(note.createdAt)}</p>
+                          </div>
+                          <span className="rounded-full bg-cyan-100 px-3 py-1 text-xs font-semibold text-cyan-700">Doctor to caregiver</span>
+                        </div>
+                        <p className="mt-3 text-sm text-slate-700">{note.note}</p>
+                      </div>
+                    )) : <p className="text-sm text-slate-500">No doctor-to-caregiver notes yet.</p>}
+                  </div>
+                </>
+              ) : (
+                <p className="mt-4 text-sm text-slate-500">Link a caregiver to this patient before adding caregiver-directed notes.</p>
+              )}
+            </div>
+            <div className="rounded-3xl bg-gradient-to-br from-white to-sky-50 p-5 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-slate-900">Medication plan</h3>
@@ -413,7 +599,7 @@ export default function DoctorPatientDetail() {
               ) : null}
               <div className="mt-4 space-y-3">
                 {medications.length ? medications.map((medication) => (
-                  <div key={medication.id} className="rounded-2xl border border-slate-200 p-4">
+                  <div key={medication.id} className="rounded-2xl border border-slate-200 bg-white/90 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="text-base font-semibold text-slate-900">{medication.name}</p>
@@ -435,14 +621,14 @@ export default function DoctorPatientDetail() {
                 )) : <p className="text-sm text-slate-500">No medications assigned yet.</p>}
               </div>
             </div>
-            <div className="rounded-3xl bg-white p-5 shadow-sm">
+            <div className="rounded-3xl bg-gradient-to-br from-white to-indigo-50 p-5 shadow-sm xl:col-span-2">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-lg font-semibold text-slate-900">Clinical notes</h3>
                 <button type="button" onClick={() => navigate(`/doctor-clinical-notes?patientId=${patientId}`)} className="rounded-lg bg-indigo-100 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-200">Open notes</button>
               </div>
               <div className="mt-4 space-y-3">
                 {localNotes.length ? localNotes.slice(0,4).map((note) => (
-                  <div key={note.id} className="rounded-2xl border border-slate-200 p-3">
+                  <div key={note.id} className="rounded-2xl border border-slate-200 bg-white/90 p-4">
                     <div className="flex items-start justify-between gap-3">
                       <p className="font-semibold text-slate-900">{note.noteTitle}</p>
                       <span className="text-xs text-slate-400">{formatDateTime(note.createdAt)}</span>
@@ -451,21 +637,21 @@ export default function DoctorPatientDetail() {
                     <p className="mt-2 text-xs text-slate-500">Assessment: {note.diagnosticSummary || "Not recorded"}</p>
                   </div>
                 )) : workspace.notes.length ? workspace.notes.slice(0,6).map((note) => (
-                  <div key={note.id} className="rounded-2xl border border-slate-200 p-3">
+                  <div key={note.id} className="rounded-2xl border border-slate-200 bg-white/90 p-4">
                     <p className="text-sm text-slate-700">{note.content}</p>
                     <p className="mt-2 text-xs text-slate-400">{formatDateTime(note.date)}</p>
                   </div>
                 )) : <p className="text-sm text-slate-500">No clinical notes recorded yet.</p>}
               </div>
             </div>
-            <div className="rounded-3xl bg-white p-5 shadow-sm">
+            <div className="rounded-3xl bg-gradient-to-br from-white to-violet-50 p-5 shadow-sm xl:col-span-2">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-lg font-semibold text-slate-900">Treatment summary</h3>
                 <button type="button" onClick={() => navigate(`/doctor-treatment-plans?patientId=${patientId}`)} className="rounded-lg bg-violet-100 px-3 py-1.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-200">Open plans</button>
               </div>
               <div className="mt-4 space-y-3">
                 {localPlans.length ? localPlans.slice(0,4).map((plan) => (
-                  <div key={plan.id} className="rounded-2xl border border-slate-200 p-3">
+                  <div key={plan.id} className="rounded-2xl border border-slate-200 bg-white/90 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <p className="font-semibold text-slate-900">{plan.title}</p>
                       <span className={`rounded-full px-3 py-1 text-xs font-semibold ${plan.status === 'active' ? 'bg-emerald-100 text-emerald-700' : plan.status === 'draft' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>{plan.status}</span>
@@ -474,20 +660,32 @@ export default function DoctorPatientDetail() {
                     <p className="mt-2 text-xs text-slate-500">Conditions: {formatListOutput(plan.targetConditions) || "Not recorded"}</p>
                   </div>
                 )) : diagnoses.length ? diagnoses.slice(0,6).map((diagnosis) => (
-                  <div key={diagnosis.id} className="rounded-2xl border border-slate-200 p-3">
+                  <div key={diagnosis.id} className="rounded-2xl border border-slate-200 bg-white/90 p-4">
                     <div className="flex items-center justify-between gap-3"><p className="font-semibold text-slate-900">{diagnosis.diagnosisText}</p><span className={`rounded-full px-3 py-1 text-xs font-semibold ${diagnosis.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'}`}>{diagnosis.status}</span></div>
                     <p className="mt-2 text-xs text-slate-400">Diagnosed {formatDate(diagnosis.diagnosedAt)}</p>
                   </div>
                 )) : <p className="text-sm text-slate-500">No diagnoses or treatment items recorded yet.</p>}
               </div>
             </div>
-            <div className="rounded-3xl bg-white p-5 shadow-sm xl:col-span-2">
-              <h3 className="text-lg font-semibold text-slate-900">Activity timeline</h3>
+            <div className="rounded-3xl bg-gradient-to-br from-white to-slate-100 p-5 shadow-sm xl:col-span-2">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">Activity timeline</h3>
+                  <p className="mt-1 text-sm text-slate-500">Recent patient events arranged as a readable clinical timeline.</p>
+                </div>
+                <InfoPill label="Events" value={workspace.timeline.length} tone="slate" />
+              </div>
               <div className="mt-4 space-y-3">
                 {workspace.timeline.length ? workspace.timeline.slice(0,8).map((item) => (
-                  <div key={`${item.type}-${item.id}`} className="rounded-2xl border border-slate-200 p-3">
-                    <div className="flex items-center justify-between gap-3"><p className="font-semibold text-slate-900">{item.title}</p><span className="text-xs text-slate-400">{formatDateTime(item.timestamp)}</span></div>
-                    <p className="mt-1 text-sm text-slate-500">{item.detail}</p>
+                  <div key={`${item.type}-${item.id}`} className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white/90 p-4">
+                    <div className="absolute left-5 top-0 h-full w-px bg-slate-200" />
+                    <div className="relative flex gap-4">
+                      <div className={`mt-1 h-3 w-3 rounded-full ${item.type === "symptom" ? "bg-amber-500" : item.type === "appointment" ? "bg-sky-500" : item.type === "diagnosis" ? "bg-violet-500" : "bg-emerald-500"}`} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-3"><p className="font-semibold text-slate-900">{item.title}</p><span className="text-xs text-slate-400">{formatDateTime(item.timestamp)}</span></div>
+                        <p className="mt-2 text-sm text-slate-500">{item.detail}</p>
+                      </div>
+                    </div>
                   </div>
                 )) : <p className="text-sm text-slate-500">No recent activity for this patient yet.</p>}
               </div>
