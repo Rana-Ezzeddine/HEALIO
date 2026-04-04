@@ -56,6 +56,9 @@ import patientmedHistoryRoutes from './src/routes/patientmedHistory.routes.js';
 import searchRoutes from './src/routes/search.routes.js';
 import caregiverInviteRoutes from './src/routes/caregiverInvite.routes.js';
 import caregiverActionsRoutes from './src/routes/caregiverActions.routes.js';
+import historyRoutes from './src/routes/history.js';
+import externalRoutes from './src/routes/external.routes.js';
+import ReminderService from './src/services/reminderService.js';
 
 
 /////////////////////////////////////////////////
@@ -134,6 +137,8 @@ app.use('/api/search', searchRoutes);
 app.use('/api/patient-med-history', patientmedHistoryRoutes);
 app.use('/api/caregiver-invites', caregiverInviteRoutes);
 app.use('/api/caregiver-actions', caregiverActionsRoutes);
+app.use('/api/history', historyRoutes);
+app.use('/api/v1/external', externalRoutes);
 /////////////////////////////////////////////////
 // 404 Handler
 /////////////////////////////////////////////////
@@ -181,6 +186,7 @@ const startServer = async () => {
     }
 
     pendingRegistrationCleanupInterval = startPendingRegistrationCleanupJob();
+    ReminderService.startPoller();
 
     app.listen(PORT, () => {
       console.log(`
