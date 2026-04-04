@@ -91,6 +91,22 @@ export default function DoctorPatients() {
           <p className="mt-3 max-w-3xl text-sm leading-6 text-white/85">
             Review incoming link requests and manage your active patient roster from one place.
           </p>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => navigate("/doctor-clinical-notes")}
+              className="rounded-xl bg-white/20 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/30"
+            >
+              Open clinical notes
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/doctorAppointments")}
+              className="rounded-xl bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25"
+            >
+              Open appointments
+            </button>
+          </div>
         </section>
 
         {/* Summary row */}
@@ -263,6 +279,13 @@ export default function DoctorPatients() {
                           <p className="mt-0.5 text-xs text-slate-400">Linked {assignedAt}</p>
                         ) : null}
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/doctor-clinical-notes?patientId=${record.patient?.id}`)}
+                        className="shrink-0 rounded-xl bg-indigo-100 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-200"
+                      >
+                        Clinical notes
+                      </button>
                       <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${statusBadge(record.status)}`}>
                         {record.status}
                       </span>

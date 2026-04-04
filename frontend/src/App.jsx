@@ -36,6 +36,7 @@ import DoctorApprovedRoute from "./components/DoctorApprovedRoute";
 import DoctorApprovalStatusPage from "./pages/DoctorApprovalStatusPage";
 import DoctorReviewPage from "./pages/DoctorReviewPage";
 import DoctorPatients from "./pages/DoctorPatients";
+import DoctorClinicalNotes from "./pages/DoctorClinicalNotes";
 import CaregiverPatients from "./pages/CaregiverPatients";
 import { getPostAuthRoute } from "./utils/authRouting";
 import CaregiverOnboarding from "./pages/CaregiverOnboarding";
@@ -223,6 +224,14 @@ function RoutedApp() {
           element={
             <DoctorApprovedRoute>
               <DoctorPatients />
+            </DoctorApprovedRoute>
+          }
+        />
+        <Route
+          path="/doctor-clinical-notes"
+          element={
+            <DoctorApprovedRoute>
+              <DoctorClinicalNotes />
             </DoctorApprovedRoute>
           }
         />
