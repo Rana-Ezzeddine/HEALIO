@@ -18,6 +18,7 @@ import PatientMessages from "./pages/PatientMessages";
 import PatientNotificationCenter from "./pages/PatientNotificationCenter";
 import CaregiverMessages from "./pages/CaregiverMessages";
 import DoctorAppointments from "./pages/DoctorAppointments";
+import DoctorCalendar from "./pages/DoctorCalendar";
 import PatientAppointments from "./pages/PatientAppointments";
 import CaregiverAppointments from "./pages/CaregiverAppointments";
 import CaregiverCareNotes from "./pages/CaregiverCareNotes";
@@ -267,6 +268,14 @@ function RoutedApp() {
           element={
             <DoctorApprovedRoute>
               <DoctorAppointments />
+            </DoctorApprovedRoute>
+          }
+        />
+        <Route
+          path="/doctor-calendar"
+          element={
+            <DoctorApprovedRoute>
+              <DoctorCalendar />
             </DoctorApprovedRoute>
           }
         />
