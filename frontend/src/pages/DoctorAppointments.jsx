@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import {
   createAppointment,
@@ -220,6 +220,7 @@ async function fetchAssignedPatients() {
 }
 
 export default function DoctorAppointments() {
+  const location = useLocation();
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -321,6 +322,15 @@ export default function DoctorAppointments() {
   useEffect(() => {
     loadPageData();
   }, []);
+
+  useEffect(() => {
+    if (location.hash !== "#schedule-patient") return;
+    const scheduleSection = document.getElementById("schedule-patient");
+    if (!scheduleSection) return;
+    window.requestAnimationFrame(() => {
+      scheduleSection.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [location.hash, loading]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1011,6 +1021,130 @@ export default function DoctorAppointments() {
           </div>
         </section>
 
+        <section id="schedule-patient" className="mb-6 rounded-3xl bg-gradient-to-br from-white to-cyan-50 p-6 shadow">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-800 mb-1">Schedule For Assigned Patient</h2>
+              <p className="text-sm text-slate-500 mb-4">
+                Create a scheduled appointment directly for an assigned patient using your live availability.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <SoftPill label="Selected day" value={form.date || "Not set"} tone="sky" />
+              <SoftPill label="Slots" value={availableSlots.length} tone="emerald" />
+            </div>
+          </div>
+
+          <form onSubmit={handleScheduleAppointment} className="grid grid-cols-1 md:grid-cols-6 gap-3">
+            <select
+              value={form.patientId}
+              onChange={(event) => setForm((current) => ({ ...current, patientId: event.target.value }))}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              required
+            >
+              <option value="">Select patient</option>
+              {assignedPatients.map((record) => {
+                const patient = record.patient || record;
+                return (
+                  <option key={patient.id} value={patient.id}>
+                    {patientLabel(record)}
+                  </option>
+                );
+              })}
+            </select>
+
+            <input
+              type="date"
+              value={form.date}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  date: event.target.value,
+                  timeSlot: "",
+                }))
+              }
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              required
+            />
+
+            <select
+              value={form.duration}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  duration: event.target.value,
+                  timeSlot: "",
+                }))
+              }
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              required
+            >
+              {durationOptions.map((minutes) => (
+                <option key={minutes} value={String(minutes)}>{minutes} minutes</option>
+              ))}
+            </select>
+
+            <select
+              value={form.timeSlot}
+              onChange={(event) => setForm((current) => ({ ...current, timeSlot: event.target.value }))}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              required
+              disabled={!form.date || slotsLoading}
+            >
+              <option value="">
+                {!form.date
+                  ? "Select date first"
+                  : slotsLoading
+                  ? "Loading slots..."
+                  : availableSlots.length === 0
+                  ? "No available slots"
+                  : "Select slot"}
+              </option>
+              {availableSlots.map((slot) => (
+                <option key={slot.startsAt} value={slot.startsAt}>
+                  {formatTime(slot.startsAt)} - {formatTime(slot.endsAt)}
+                </option>
+              ))}
+            </select>
+
+            <input
+              type="text"
+              placeholder="Location"
+              value={form.location}
+              onChange={(event) => setForm((current) => ({ ...current, location: event.target.value }))}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+            />
+
+            <button
+              type="submit"
+              disabled={createLoading || assignedPatients.length === 0}
+              className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 transition disabled:opacity-70"
+            >
+              {createLoading ? "Scheduling..." : "Schedule"}
+            </button>
+
+            <textarea
+              value={form.notes}
+              onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
+              className="md:col-span-6 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              rows={3}
+              placeholder="Notes for the visit"
+            />
+          </form>
+
+          {assignedPatients.length === 0 && (
+            <p className="mt-3 text-sm text-amber-700">
+              No active patient assignments were found for this doctor account.
+            </p>
+          )}
+
+          {createError && (
+            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {createError}
+            </div>
+          )}
+        </section>
+
         <section className="mb-6 rounded-3xl bg-gradient-to-br from-white to-sky-50 p-6 shadow">
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
@@ -1342,130 +1476,6 @@ export default function DoctorAppointments() {
               </div>
             ))}
           </div>
-        </section>
-
-        <section className="mb-6 rounded-3xl bg-gradient-to-br from-white to-cyan-50 p-6 shadow">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold text-slate-800 mb-1">Schedule For Assigned Patient</h2>
-              <p className="text-sm text-slate-500 mb-4">
-                Available time slots come from the backend availability endpoint for the selected day.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <SoftPill label="Selected day" value={form.date || "Not set"} tone="sky" />
-              <SoftPill label="Slots" value={availableSlots.length} tone="emerald" />
-            </div>
-          </div>
-
-          <form onSubmit={handleScheduleAppointment} className="grid grid-cols-1 md:grid-cols-6 gap-3">
-            <select
-              value={form.patientId}
-              onChange={(event) => setForm((current) => ({ ...current, patientId: event.target.value }))}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-              required
-            >
-              <option value="">Select patient</option>
-              {assignedPatients.map((record) => {
-                const patient = record.patient || record;
-                return (
-                  <option key={patient.id} value={patient.id}>
-                    {patientLabel(record)}
-                  </option>
-                );
-              })}
-            </select>
-
-            <input
-              type="date"
-              value={form.date}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  date: event.target.value,
-                  timeSlot: "",
-                }))
-              }
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-              required
-            />
-
-            <select
-              value={form.duration}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  duration: event.target.value,
-                  timeSlot: "",
-                }))
-              }
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-              required
-            >
-              {durationOptions.map((minutes) => (
-                <option key={minutes} value={String(minutes)}>{minutes} minutes</option>
-              ))}
-            </select>
-
-            <select
-              value={form.timeSlot}
-              onChange={(event) => setForm((current) => ({ ...current, timeSlot: event.target.value }))}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-              required
-              disabled={!form.date || slotsLoading}
-            >
-              <option value="">
-                {!form.date
-                  ? "Select date first"
-                  : slotsLoading
-                  ? "Loading slots..."
-                  : availableSlots.length === 0
-                  ? "No available slots"
-                  : "Select slot"}
-              </option>
-              {availableSlots.map((slot) => (
-                <option key={slot.startsAt} value={slot.startsAt}>
-                  {formatTime(slot.startsAt)} - {formatTime(slot.endsAt)}
-                </option>
-              ))}
-            </select>
-
-            <input
-              type="text"
-              placeholder="Location"
-              value={form.location}
-              onChange={(event) => setForm((current) => ({ ...current, location: event.target.value }))}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-            />
-
-            <button
-              type="submit"
-              disabled={createLoading || assignedPatients.length === 0}
-              className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 transition disabled:opacity-70"
-            >
-              {createLoading ? "Scheduling..." : "Schedule"}
-            </button>
-
-            <textarea
-              value={form.notes}
-              onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
-              className="md:col-span-6 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-              rows={3}
-              placeholder="Notes for the visit"
-            />
-          </form>
-
-          {assignedPatients.length === 0 && (
-            <p className="mt-3 text-sm text-amber-700">
-              No active patient assignments were found for this doctor account.
-            </p>
-          )}
-
-          {createError && (
-            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {createError}
-            </div>
-          )}
         </section>
 
       </main>

@@ -2,11 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import { apiUrl, authHeaders, getUser } from "../api/http";
-import {
-  createAppointment,
-  getDoctorAvailability,
-  getDoctorSchedule,
-} from "../api/appointments";
+import { getDoctorSchedule } from "../api/appointments";
 
 function DashboardCard({ title, mainText, subText, navPage }) {
   const navigate = useNavigate();
@@ -15,17 +11,34 @@ function DashboardCard({ title, mainText, subText, navPage }) {
     <button
       type="button"
       onClick={() => navigate(navPage)}
-      className="group rounded-3xl bg-white p-5 text-left shadow-sm transition hover:-translate-y-1 hover:bg-slate-50 hover:shadow-md"
+      className="group overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-sky-50/70 p-5 text-left shadow-sm transition hover:-translate-y-1 hover:border-sky-200 hover:shadow-md"
     >
+      <div className="mb-4 h-1.5 w-20 rounded-full bg-gradient-to-r from-sky-500 via-cyan-400 to-emerald-400" />
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm text-slate-500">{title}</h3>
+          <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{title}</h3>
           <p className="mt-1 text-2xl font-bold text-slate-900">{mainText}</p>
           {subText ? <p className="mt-2 text-sm font-medium text-sky-700">{subText}</p> : null}
         </div>
-        <span className="text-xs text-slate-400 transition group-hover:text-slate-600">Open</span>
+        <span className="rounded-full bg-white/80 px-3 py-1 text-[11px] font-semibold text-slate-500 transition group-hover:text-slate-700">Open</span>
       </div>
     </button>
+  );
+}
+
+function SummaryPill({ label, value, tone = "sky" }) {
+  const tones = {
+    sky: "bg-sky-100 text-sky-700",
+    emerald: "bg-emerald-100 text-emerald-700",
+    amber: "bg-amber-100 text-amber-700",
+    violet: "bg-violet-100 text-violet-700",
+    slate: "bg-slate-100 text-slate-700",
+  };
+
+  return (
+    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${tones[tone] || tones.sky}`}>
+      {label}: {value}
+    </span>
   );
 }
 
@@ -85,19 +98,6 @@ export default function DashboardDoctor() {
   const [scheduleError, setScheduleError] = useState("");
   const [schedule, setSchedule] = useState([]);
   const [assignedPatients, setAssignedPatients] = useState([]);
-  const [showScheduleForm, setShowScheduleForm] = useState(false);
-  const [createLoading, setCreateLoading] = useState(false);
-  const [createError, setCreateError] = useState("");
-  const [slotsLoading, setSlotsLoading] = useState(false);
-  const [availableSlots, setAvailableSlots] = useState([]);
-  const [form, setForm] = useState({
-    patientId: "",
-    date: "",
-    timeSlot: "",
-    duration: "30",
-    location: "",
-    notes: "",
-  });
 
   const patientNameById = useMemo(() => {
     const map = new Map();
@@ -193,126 +193,42 @@ export default function DashboardDoctor() {
     loadDashboard();
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadAvailability() {
-      if (!showScheduleForm || !form.date) {
-        setAvailableSlots([]);
-        return;
-      }
-
-      const durationMinutes = Number(form.duration || "30");
-      if (!Number.isInteger(durationMinutes) || durationMinutes <= 0) {
-        setAvailableSlots([]);
-        return;
-      }
-
-      try {
-        setSlotsLoading(true);
-        setCreateError("");
-
-        const dayStart = new Date(`${form.date}T00:00:00`);
-        const dayEnd = new Date(dayStart);
-        dayEnd.setDate(dayEnd.getDate() + 1);
-
-        const data = await getDoctorAvailability({
-          from: dayStart.toISOString(),
-          to: dayEnd.toISOString(),
-          slotMinutes: durationMinutes,
-        });
-
-        if (!cancelled) {
-          const now = Date.now();
-          const slots = (data.slots || []).filter((slot) => new Date(slot.startsAt).getTime() > now);
-          setAvailableSlots(slots);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setCreateError(err.message || "Failed to load available slots.");
-          setAvailableSlots([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setSlotsLoading(false);
-        }
-      }
-    }
-
-    loadAvailability();
-    return () => {
-      cancelled = true;
-    };
-  }, [form.date, form.duration, showScheduleForm]);
-
-  async function submitSchedule(event) {
-    event.preventDefault();
-    setCreateError("");
-
-    if (!form.patientId || !form.timeSlot) {
-      setCreateError("Please select patient and an available time slot.");
-      return;
-    }
-
-    const startsAt = new Date(form.timeSlot);
-    const durationMinutes = Number(form.duration || "30");
-    const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
-
-    const isAvailable = availableSlots.some((slot) => {
-      return (
-        new Date(slot.startsAt).getTime() === startsAt.getTime() &&
-        new Date(slot.endsAt).getTime() === endsAt.getTime()
-      );
-    });
-
-    if (!isAvailable) {
-      setCreateError("Selected slot is no longer available.");
-      return;
-    }
-
-    try {
-      setCreateLoading(true);
-
-      await createAppointment({
-        patientId: form.patientId,
-        startsAt: startsAt.toISOString(),
-        endsAt: endsAt.toISOString(),
-        location: form.location,
-        notes: form.notes,
-      });
-
-      setForm({
-        patientId: "",
-        date: "",
-        timeSlot: "",
-        duration: "30",
-        location: "",
-        notes: "",
-      });
-      setShowScheduleForm(false);
-      await loadDashboard();
-    } catch (err) {
-      setCreateError(err.message || "Failed to create appointment.");
-    } finally {
-      setCreateLoading(false);
-    }
-  }
-
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
 
       <main className="mx-auto max-w-6xl px-6 pb-10 pt-28">
         <section className="rounded-[2rem] bg-gradient-to-r from-slate-900 via-sky-800 to-cyan-600 p-8 text-white shadow-xl">
-          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-white/75">Doctor Dashboard</p>
-          <h1 className="mt-3 text-4xl font-black">Welcome back, Dr. {greetingName}</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-white/85">
-            Review your day, manage appointments, and stay connected with your assigned patients from one view.
-          </p>
+          <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.25em] text-white/75">Doctor Dashboard</p>
+              <h1 className="mt-3 text-4xl font-black">Welcome back, Dr. {greetingName}</h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-white/85">
+                Review your day, manage appointments, and stay connected with your assigned patients from one view.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3 xl:w-[420px]">
+              <div className="rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Today</p>
+                <p className="mt-2 text-3xl font-black text-white">{todayAppointments.length}</p>
+                <p className="mt-2 text-xs text-white/75">Appointments on your board</p>
+              </div>
+              <div className="rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Patients</p>
+                <p className="mt-2 text-3xl font-black text-white">{assignedPatients.length}</p>
+                <p className="mt-2 text-xs text-white/75">Currently assigned</p>
+              </div>
+              <div className="rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Completed</p>
+                <p className="mt-2 text-3xl font-black text-white">{completedTodayCount}</p>
+                <p className="mt-2 text-xs text-white/75">Visits closed today</p>
+              </div>
+            </div>
+          </div>
         </section>
 
         {doctorChecklist.incomplete ? (
-          <section className="mt-6 rounded-3xl border border-sky-100 bg-white p-6 shadow-sm">
+          <section className="mt-6 overflow-hidden rounded-3xl border border-sky-100 bg-gradient-to-br from-white via-sky-50/60 to-cyan-50/70 p-6 shadow-sm">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-wide text-sky-700">Doctor setup checklist</p>
@@ -322,6 +238,12 @@ export default function DashboardDoctor() {
                 <p className="mt-2 text-sm text-slate-600">
                   Finish these essentials to unlock smoother patient intake and scheduling.
                 </p>
+                <div className="mt-4 h-2.5 w-full max-w-md overflow-hidden rounded-full bg-sky-100">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-sky-500 to-cyan-400"
+                    style={{ width: `${(doctorChecklist.doneCount / doctorChecklist.totalCount) * 100}%` }}
+                  />
+                </div>
               </div>
               <button
                 type="button"
@@ -340,8 +262,8 @@ export default function DashboardDoctor() {
                   onClick={() => navigate(task.href)}
                   className={`rounded-2xl border p-4 text-left transition ${
                     task.done
-                      ? "border-emerald-200 bg-emerald-50"
-                      : "border-slate-200 bg-slate-50 hover:border-sky-200 hover:bg-sky-50"
+                      ? "border-emerald-200 bg-gradient-to-br from-emerald-50 to-white"
+                      : "border-slate-200 bg-white/90 hover:border-sky-200 hover:bg-sky-50"
                   }`}
                 >
                   <div className="flex items-center justify-between gap-3">
@@ -371,21 +293,21 @@ export default function DashboardDoctor() {
             navPage="/doctor-patients"
           />
           <DashboardCard
-            title="Treatment Plans"
-            mainText="Workspace"
-            subText="Open care plan shell"
-            navPage="/doctor-treatment-plans"
-          />
-          <DashboardCard
             title="Completed Today"
             mainText={`${completedTodayCount}`}
             subText="Visits closed"
             navPage="/doctorAppointments"
           />
+          <DashboardCard
+            title="Calendar"
+            mainText="Month view"
+            subText="Open your schedule calendar"
+            navPage="/doctor-calendar"
+          />
         </section>
 
         <section className="mt-6 grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
-          <div className="rounded-3xl bg-white p-6 shadow-sm">
+          <div className="rounded-3xl bg-gradient-to-br from-white via-white to-sky-50/60 p-6 shadow-sm">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-semibold text-slate-900">Today's schedule</h2>
@@ -413,7 +335,7 @@ export default function DashboardDoctor() {
                 </div>
               ) : upcomingAppointments.length > 0 ? (
                 upcomingAppointments.slice(0, 5).map((appointment) => (
-                  <div key={appointment.id} className="rounded-2xl border border-slate-200 p-4">
+                  <div key={appointment.id} className="rounded-2xl border border-slate-200 bg-gradient-to-r from-white to-sky-50/70 p-4 shadow-sm">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <p className="font-semibold text-slate-900">
@@ -422,14 +344,18 @@ export default function DashboardDoctor() {
                         <p className="mt-1 text-sm text-slate-500">
                           {formatTime(appointment.startsAt)} - {formatTime(appointment.endsAt)}
                         </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <SummaryPill label="Time" value={formatTime(appointment.startsAt)} tone="sky" />
+                          <SummaryPill label="Location" value={appointment.location || "Pending"} tone="slate" />
+                        </div>
                       </div>
                       <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClasses(appointment.status)}`}>
                         {statusLabel(appointment.status)}
                       </span>
                     </div>
-                    <p className="mt-2 text-sm text-slate-600">
+                    <div className="mt-3 rounded-2xl bg-white/80 px-3 py-2 text-sm text-slate-600">
                       {appointment.location || "Location pending"} | {appointment.notes || "No notes"}
-                    </p>
+                    </div>
                   </div>
                 ))
               ) : (
@@ -438,10 +364,7 @@ export default function DashboardDoctor() {
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => {
-                        setCreateError("");
-                        setShowScheduleForm(true);
-                      }}
+                      onClick={() => navigate("/doctorAppointments#schedule-patient")}
                       className="rounded-xl bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-200 transition"
                     >
                       Create appointment
@@ -460,30 +383,26 @@ export default function DashboardDoctor() {
           </div>
 
           <div className="space-y-6">
-            <section className="rounded-3xl bg-white p-6 shadow-sm">
+            <section className="rounded-3xl bg-gradient-to-br from-white via-slate-50 to-violet-50/60 p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-slate-900">Quick actions</h2>
 
               <div className="mt-4 grid gap-3">
                 {[
                   {
-                    label: showScheduleForm ? "Hide schedule form" : "Schedule appointment",
-                    onClick: () => {
-                      setCreateError("");
-                      setShowScheduleForm((current) => !current);
-                    },
+                    label: "Schedule appointment",
+                    onClick: () => navigate("/doctorAppointments#schedule-patient"),
                     style: "bg-emerald-100 text-emerald-700",
                   },
                   { label: "Open appointments", onClick: () => navigate("/doctorAppointments"), style: "bg-sky-100 text-sky-700" },
+                  { label: "Open calendar", onClick: () => navigate("/doctor-calendar"), style: "bg-violet-100 text-violet-700" },
                   { label: "Doctor patients", onClick: () => navigate("/doctor-patients"), style: "bg-cyan-100 text-cyan-700" },
-                  { label: "Clinical notes", onClick: () => navigate("/doctor-clinical-notes"), style: "bg-indigo-100 text-indigo-700" },
-                  { label: "Treatment plans", onClick: () => navigate("/doctor-treatment-plans"), style: "bg-violet-100 text-violet-700" },
                   { label: "Doctor profile", onClick: () => navigate("/profileDoctor"), style: "bg-indigo-100 text-indigo-700" },
                 ].map((action) => (
                   <button
                     key={action.label}
                     type="button"
                     onClick={action.onClick}
-                    className={`rounded-2xl px-4 py-3 text-left text-sm font-semibold transition hover:opacity-85 ${action.style}`}
+                    className={`rounded-2xl border border-white/70 px-4 py-3 text-left text-sm font-semibold shadow-sm transition hover:-translate-y-0.5 hover:opacity-90 ${action.style}`}
                   >
                     {action.label}
                   </button>
@@ -491,113 +410,27 @@ export default function DashboardDoctor() {
               </div>
             </section>
 
-            <section className="rounded-3xl bg-white p-6 shadow-sm">
+            <section className="rounded-3xl bg-gradient-to-br from-white via-slate-50 to-cyan-50/60 p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-slate-900">Doctor summary</h2>
-              <div className="mt-4 space-y-3 text-sm text-slate-600">
-                <p>Assigned patients: <span className="font-semibold text-slate-900">{assignedPatients.length}</span></p>
-                <p>Appointments today: <span className="font-semibold text-slate-900">{todayAppointments.length}</span></p>
-                <p>Completed today: <span className="font-semibold text-slate-900">{completedTodayCount}</span></p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Assigned patients</p>
+                  <p className="mt-2 text-2xl font-black text-slate-900">{assignedPatients.length}</p>
+                  <p className="mt-1 text-sm text-slate-500">Active doctor-patient relationships</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Appointments today</p>
+                  <p className="mt-2 text-2xl font-black text-slate-900">{todayAppointments.length}</p>
+                  <p className="mt-1 text-sm text-slate-500">Including requested and scheduled visits</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Completed today</p>
+                  <p className="mt-2 text-2xl font-black text-slate-900">{completedTodayCount}</p>
+                  <p className="mt-1 text-sm text-slate-500">Visits already closed before the end of the day</p>
+                </div>
               </div>
             </section>
 
-            {showScheduleForm && (
-              <section className="rounded-3xl bg-white p-6 shadow-sm">
-                <form onSubmit={submitSchedule} className="space-y-3">
-                  <h3 className="text-lg font-semibold text-slate-900">Create appointment</h3>
-
-                <select
-                  value={form.patientId}
-                  onChange={(event) => setForm((current) => ({ ...current, patientId: event.target.value }))}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  required
-                >
-                  <option value="">Select patient</option>
-                  {assignedPatients.map((patient) => (
-                    <option key={patient.id} value={patient.id}>
-                      {patientDisplayName(patient)}
-                    </option>
-                  ))}
-                </select>
-
-                <input
-                  type="date"
-                  value={form.date}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, date: event.target.value, timeSlot: "" }))
-                  }
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  required
-                />
-
-                <select
-                  value={form.duration}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, duration: event.target.value, timeSlot: "" }))
-                  }
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  required
-                >
-                  <option value="15">15 minutes</option>
-                  <option value="30">30 minutes</option>
-                  <option value="45">45 minutes</option>
-                  <option value="60">60 minutes</option>
-                </select>
-
-                <select
-                  value={form.timeSlot}
-                  onChange={(event) => setForm((current) => ({ ...current, timeSlot: event.target.value }))}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  required
-                  disabled={!form.date || slotsLoading}
-                >
-                  <option value="">
-                    {!form.date
-                      ? "Select date first"
-                      : slotsLoading
-                      ? "Loading available slots..."
-                      : availableSlots.length === 0
-                      ? "No available slots"
-                      : "Select available time"}
-                  </option>
-                  {availableSlots.map((slot) => (
-                    <option key={slot.startsAt} value={slot.startsAt}>
-                      {formatTime(slot.startsAt)} - {formatTime(slot.endsAt)}
-                    </option>
-                  ))}
-                </select>
-
-                <input
-                  type="text"
-                  value={form.location}
-                  onChange={(event) => setForm((current) => ({ ...current, location: event.target.value }))}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  placeholder="Clinic/location"
-                />
-
-                <textarea
-                  value={form.notes}
-                  onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  placeholder="Notes"
-                  rows={3}
-                />
-
-                {createError && (
-                  <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                    {createError}
-                  </p>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={createLoading || assignedPatients.length === 0}
-                  className="w-full rounded-xl bg-emerald-600 px-4 py-2 text-white font-medium transition hover:bg-emerald-700 disabled:opacity-70"
-                >
-                  {createLoading ? "Creating..." : "Create Appointment"}
-                </button>
-                </form>
-              </section>
-            )}
           </div>
         </section>
       </main>
