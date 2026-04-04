@@ -36,6 +36,8 @@ import DoctorApprovedRoute from "./components/DoctorApprovedRoute";
 import DoctorApprovalStatusPage from "./pages/DoctorApprovalStatusPage";
 import DoctorReviewPage from "./pages/DoctorReviewPage";
 import DoctorPatients from "./pages/DoctorPatients";
+import DoctorLinkRequests from "./pages/DoctorLinkRequests";
+import DoctorPatientDetail from "./pages/DoctorPatientDetail";
 import DoctorClinicalNotes from "./pages/DoctorClinicalNotes";
 import DoctorTreatmentPlans from "./pages/DoctorTreatmentPlans";
 import CaregiverPatients from "./pages/CaregiverPatients";
@@ -229,10 +231,18 @@ function RoutedApp() {
           }
         />
         <Route
+          path="/doctor-patients/requests"
+          element={
+            <DoctorApprovedRoute>
+              <DoctorLinkRequests />
+            </DoctorApprovedRoute>
+          }
+        />
+        <Route
           path="/doctor-patients/:patientId"
           element={
             <DoctorApprovedRoute>
-              <DoctorPatients />
+              <DoctorPatientDetail />
             </DoctorApprovedRoute>
           }
         />
