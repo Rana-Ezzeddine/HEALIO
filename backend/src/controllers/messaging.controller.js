@@ -2,12 +2,48 @@ import { QueryTypes } from "sequelize";
 import sequelize from "../../database.js";
 import {
     User,
+    PatientProfile,
     Conversation,
     ConversationParticipant,
     Message,
+    CommunicationContext,
     DoctorPatientAssignment,
     CaregiverPatientPermission,
 } from "../models/index.js";
+
+function buildDisplayName(email, firstName, lastName) {
+    return [firstName, lastName].filter(Boolean).join(" ").trim() || email;
+}
+
+async function getUserProfileMap(userIds = []) {
+    const uniqueIds = Array.from(new Set((userIds || []).filter(Boolean)));
+    if (!uniqueIds.length) return new Map();
+
+    const profiles = await PatientProfile.findAll({
+        where: { userId: uniqueIds },
+        attributes: ["userId", "firstName", "lastName"],
+    });
+
+    return new Map(profiles.map((profile) => [profile.userId, profile]));
+}
+
+function toUserWithDisplayName(user, profileMap) {
+    if (!user) return null;
+
+    const profile = profileMap.get(user.id);
+    const firstName = profile?.firstName || null;
+    const lastName = profile?.lastName || null;
+
+    return {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        isVerified: user.isVerified,
+        firstName,
+        lastName,
+        displayName: buildDisplayName(user.email, firstName, lastName),
+    };
+}
 
 function cleanBody(value) {
     if (typeof value !== "string") return null;
@@ -199,7 +235,7 @@ export const getConversations = async (req, res) => {
 
         const fullConversations = await Promise.all(
             conversations.map(async (conversation) => {
-                const participants = await conversation.getParticipants({
+                const participantsRaw = await conversation.getParticipants({
                     attributes: ["id", "email", "role", "isVerified"],
                     joinTableAttributes: [],
                 });
@@ -216,12 +252,28 @@ export const getConversations = async (req, res) => {
                     ],
                 });
 
+                const profileMap = await getUserProfileMap([
+                    ...participantsRaw.map((participant) => participant.id),
+                    lastMessage?.sender?.id,
+                ]);
+
+                const participants = participantsRaw.map((participant) =>
+                    toUserWithDisplayName(participant, profileMap)
+                );
+
+                const normalizedLastMessage = lastMessage
+                    ? {
+                        ...lastMessage.toJSON(),
+                        sender: toUserWithDisplayName(lastMessage.sender, profileMap),
+                    }
+                    : null;
+
                 return {
                     id: conversation.id,
                     createdAt: conversation.createdAt,
                     updatedAt: conversation.updatedAt,
                     participants,
-                    lastMessage,
+                    lastMessage: normalizedLastMessage,
                 };
             })
         );
@@ -269,9 +321,22 @@ export const createConversation = async (req, res) => {
                 ],
             });
 
+            const participants = existingConversation
+                ? existingConversation.participants || []
+                : [];
+            const profileMap = await getUserProfileMap(participants.map((participant) => participant.id));
+            const normalizedConversation = existingConversation
+                ? {
+                    ...existingConversation.toJSON(),
+                    participants: participants.map((participant) =>
+                        toUserWithDisplayName(participant, profileMap)
+                    ),
+                }
+                : null;
+
             return res.status(200).json({
                 message: "Conversation already exists.",
-                conversation: existingConversation,
+                conversation: normalizedConversation,
             });
         }
 
@@ -298,9 +363,22 @@ export const createConversation = async (req, res) => {
             ],
         });
 
+        const createdParticipants = createdConversation
+            ? createdConversation.participants || []
+            : [];
+        const createdProfileMap = await getUserProfileMap(createdParticipants.map((participant) => participant.id));
+        const normalizedCreatedConversation = createdConversation
+            ? {
+                ...createdConversation.toJSON(),
+                participants: createdParticipants.map((participant) =>
+                    toUserWithDisplayName(participant, createdProfileMap)
+                ),
+            }
+            : null;
+
         return res.status(201).json({
             message: "Conversation created successfully.",
-            conversation: createdConversation,
+            conversation: normalizedCreatedConversation,
         });
     } catch (err) {
         await transaction.rollback();
@@ -331,7 +409,13 @@ export const getConversationMessages = async (req, res) => {
             order: [["sentAt", "ASC"]],
         });
 
-        return res.json({ conversationId, messages });
+        const profileMap = await getUserProfileMap(messages.map((message) => message.sender?.id));
+        const normalizedMessages = messages.map((message) => ({
+            ...message.toJSON(),
+            sender: toUserWithDisplayName(message.sender, profileMap),
+        }));
+
+        return res.json({ conversationId, messages: normalizedMessages });
     } catch (err) {
         console.error("getConversationMessages error:", err);
         return res.status(500).json({ message: "Server error." });
@@ -343,9 +427,41 @@ export const sendMessage = async (req, res) => {
         const { id: conversationId } = req.params;
         const userId = req.user.id;
         const body = cleanBody(req.body.body);
+        const providedContextId = cleanBody(req.body.contextId);
+        const contextType = cleanBody(req.body.contextType);
+        const contextRelatedId = cleanBody(req.body.contextRelatedId);
+        const contextMetadata =
+            req.body.contextMetadata && typeof req.body.contextMetadata === "object"
+                ? req.body.contextMetadata
+                : {};
+        const allowedContextTypes = new Set([
+            "appointment",
+            "symptom",
+            "medication",
+            "caregiver_invite",
+            "care_concern",
+            "diagnosis",
+            "medical_note",
+        ]);
 
         if (!body) {
             return res.status(400).json({ message: "Message body is required." });
+        }
+
+        if (contextType && !allowedContextTypes.has(contextType)) {
+            return res.status(400).json({ message: "Invalid contextType." });
+        }
+
+        let contextId = null;
+        if (providedContextId) {
+            contextId = providedContextId;
+        } else if (contextType && contextRelatedId) {
+            const context = await CommunicationContext.create({
+                type: contextType,
+                relatedId: contextRelatedId,
+                metadata: contextMetadata,
+            });
+            contextId = context.id;
         }
 
         const isMember = await ensureConversationMember(conversationId, userId);
@@ -363,6 +479,7 @@ export const sendMessage = async (req, res) => {
             senderId: userId,
             body,
             sentAt: new Date(),
+            contextId,
         });
 
         await conversation.update({ updatedAt: new Date() });
@@ -377,9 +494,17 @@ export const sendMessage = async (req, res) => {
             ],
         });
 
+        const profileMap = await getUserProfileMap([fullMessage?.sender?.id]);
+        const normalizedMessage = fullMessage
+            ? {
+                ...fullMessage.toJSON(),
+                sender: toUserWithDisplayName(fullMessage.sender, profileMap),
+            }
+            : null;
+
         return res.status(201).json({
             message: "Message sent successfully.",
-            data: fullMessage,
+            data: normalizedMessage,
         });
     } catch (err) {
         console.error("sendMessage error:", err);

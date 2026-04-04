@@ -1,4 +1,5 @@
 import Symptom from "../models/Symptom.js";
+import ContextService from "../services/ContextService.js";
 
 export function getUserKey(req) {
     if (req.user && (req.user.sub || req.user.id)) {
@@ -15,13 +16,15 @@ export async function createSymptom(req, res) {
     }
 
     const { symptom, name, severity, date, loggedAt, notes } = req.body;
+    const preFill = await ContextService.getPreFillData(patientId, 'symptom');
 
     const text = String(symptom ?? name ?? "").trim();
     if (!text) {
       return res.status(400).json({ message: "symptom is required" });
     }
 
-    const sev = Number(severity);
+    const sevInput = severity ?? preFill.defaultSeverity;
+    const sev = Number(sevInput);
     if (!Number.isInteger(sev) || sev < 1 || sev > 10) {
       return res.status(400).json({
         message: "severity must be an integer between 1 and 10",

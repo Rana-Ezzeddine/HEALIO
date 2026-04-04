@@ -5,6 +5,9 @@ import User from "../models/User.js";
 import DoctorPatientAssignment from "../models/DoctorPatientAssignment.js";
 import PatientProfile from "../models/PatientProfile.js";
 import { DOCTOR_APPROVAL_STATUS } from "../lib/doctorApproval.js";
+import NotificationService from "../services/notificationService.js";
+import ContextService from "../services/ContextService.js";
+import ReminderSchedulerService from "../services/reminderSchedulerService.js";
 
 function parseISODate(value, fieldName) {
   const d = new Date(value);
@@ -258,6 +261,8 @@ export async function createAppointment(req, res) {
     await ensurePatientUser(patientId);
     await validateDoctorPatientLink(doctorId, patientId);
 
+    const preFill = await ContextService.getPreFillData(patientId, 'appointment');
+
     const conflict = await hasDoctorConflict(doctorId, start, end);
     if (conflict) {
       return res.status(409).json({
@@ -270,10 +275,16 @@ export async function createAppointment(req, res) {
       patientId,
       startsAt: start,
       endsAt: end,
-      location: typeof location === "string" ? location.trim() || null : null,
+      location:
+        typeof location === "string"
+          ? location.trim() || preFill.defaultLocation || null
+          : preFill.defaultLocation || null,
       notes: typeof notes === "string" ? notes.trim() || null : null,
       status: "scheduled",
     });
+
+    await ReminderSchedulerService.scheduleAppointmentReminder(created);
+    await NotificationService.notifyAppointmentUpdate(patientId, created.id, "A new appointment has been scheduled by your doctor.");
 
     return res.status(201).json(created);
   } catch (err) {
@@ -306,6 +317,8 @@ export async function createAppointmentRequest(req, res) {
 
     await ensureDoctorUser(doctorId);
     await validateDoctorPatientLink(doctorId, patientId);
+
+    const preFill = await ContextService.getPreFillData(patientId, 'appointment');
 
     // Task 25.d: Only allow slots that exist in the doctor's generated slot list
     const slotFrom = new Date(start);
@@ -342,10 +355,24 @@ export async function createAppointmentRequest(req, res) {
       patientId,
       startsAt: start,
       endsAt: end,
-      location: typeof location === "string" ? location.trim() || null : null,
+      location:
+        typeof location === "string"
+          ? location.trim() || preFill.defaultLocation || null
+          : preFill.defaultLocation || null,
       notes: typeof notes === "string" ? notes.trim() || null : null,
       status: "requested",
     });
+
+    await NotificationService.createWithContext(
+      { type: 'appointment', relatedId: created.id },
+      {
+        userId: doctorId,
+        category: 'appointment_request',
+        title: 'New Appointment Request',
+        message: `A patient has requested an appointment on ${start.toLocaleString()}`,
+        type: 'info',
+      }
+    );
 
     return res.status(201).json(created);
   } catch (err) {
@@ -428,6 +455,9 @@ export async function updateAppointment(req, res) {
       notes: typeof notes === "string" ? notes.trim() || null : appt.notes,
     });
 
+    await ReminderSchedulerService.scheduleAppointmentReminder(appt);
+    await NotificationService.notifyAppointmentUpdate(appt.patientId, appt.id, "Your appointment details (time or location) have been updated.");
+
     return res.json(appt);
   } catch (err) {
     const status = err.message?.includes("startsAt") ? 400 : 500;
@@ -482,6 +512,21 @@ export async function updateAppointmentStatus(req, res) {
       status,
       notes: typeof notes === "string" ? notes.trim() || appt.notes : appt.notes,
     });
+
+    if (status === 'scheduled') {
+      await ReminderSchedulerService.scheduleAppointmentReminder(appt);
+    }
+
+    if (status === 'cancelled' || status === 'completed' || status === 'denied') {
+      await ReminderSchedulerService.clearPendingReminders({
+        userId: appt.patientId,
+        type: 'appointment',
+        relatedId: appt.id,
+      });
+    }
+
+    await NotificationService.notifyAppointmentUpdate(appt.patientId, appt.id, `Your appointment status has been updated to ${status}.`);
+
     return res.json(appt);
   } catch (err) {
     return res.status(500).json({ message: err.message || "Failed to update appointment status." });

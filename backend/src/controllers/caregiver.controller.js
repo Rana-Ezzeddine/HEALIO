@@ -1,10 +1,20 @@
 import { Op } from "sequelize";
 import User from "../models/User.js";
+import PatientProfile from "../models/PatientProfile.js";
 import Medication from "../models/Medication.js";
 import Symptom from "../models/Symptom.js";
 import Appointment from "../models/Appointment.js";
 import CaregiverPatientPermission from "../models/CaregiverPatientPermission.js";
 import CaregiverNote from '../models/CaregiverNote.js';
+
+async function getPatientDisplayProfiles(patientIds) {
+  if (!patientIds.length) return new Map();
+  const profiles = await PatientProfile.findAll({
+    where: { userId: patientIds },
+    attributes: ["userId", "firstName", "lastName"],
+  });
+  return new Map(profiles.map((p) => [p.userId, p]));
+}
 
 const PERMISSION_KEYS = [
   "canViewMedications",
@@ -294,22 +304,38 @@ export async function listCaregiverRequests(req, res) {
           })
         : [];
       const patientMap = new Map(patients.map((patient) => [patient.id, patient]));
+      const profileMap = await getPatientDisplayProfiles(patientIds);
 
       return res.json({
-        requests: links.map((link) => ({
-          caregiverId: link.caregiverId,
-          patientId: link.patientId,
-          status: link.status,
-          createdAt: link.createdAt,
-          patient: patientMap.get(link.patientId) || null,
-          permissions: {
-            canViewMedications: link.canViewMedications,
-            canViewSymptoms: link.canViewSymptoms,
-            canViewAppointments: link.canViewAppointments,
-            canMessageDoctor: link.canMessageDoctor,
-            canReceiveReminders: link.canReceiveReminders,
-          },
-        })),
+        requests: links.map((link) => {
+          const patient = patientMap.get(link.patientId);
+          const profile = profileMap.get(link.patientId);
+          return {
+            caregiverId: link.caregiverId,
+            patientId: link.patientId,
+            status: link.status,
+            createdAt: link.createdAt,
+            patient: patient
+              ? {
+                  id: patient.id,
+                  email: patient.email,
+                  role: patient.role,
+                  firstName: profile?.firstName || null,
+                  lastName: profile?.lastName || null,
+                  displayName:
+                    [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim() ||
+                    patient.email,
+                }
+              : null,
+            permissions: {
+              canViewMedications: link.canViewMedications,
+              canViewSymptoms: link.canViewSymptoms,
+              canViewAppointments: link.canViewAppointments,
+              canMessageDoctor: link.canMessageDoctor,
+              canReceiveReminders: link.canReceiveReminders,
+            },
+          };
+        }),
       });
     }
 

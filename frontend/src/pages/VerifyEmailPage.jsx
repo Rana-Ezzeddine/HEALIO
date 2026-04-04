@@ -4,6 +4,8 @@ import { resendVerification, verifyEmail } from "../api/auth";
 import { clearSession, setSession } from "../api/http";
 import { getPostAuthRoute } from "../utils/authRouting";
 
+const NEW_PATIENT_WELCOME_FLAG = "healio:new-patient-signup";
+
 function getInitialView(searchParams) {
   const rawToken = searchParams.get("token");
   const token = rawToken ? rawToken.trim() : "";
@@ -55,6 +57,9 @@ export default function VerifyEmailPage() {
         if (cancelled) return;
 
         setSession({ token: accessToken, user });
+        if (user?.role === "patient") {
+          localStorage.setItem(NEW_PATIENT_WELCOME_FLAG, "true");
+        }
         localStorage.setItem("healio:auth-sync", String(Date.now()));
         setStatus("success");
         setMessage(

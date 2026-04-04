@@ -19,6 +19,9 @@ export const isDoctorRole = (role) => role === 'doctor';
 
 export const getDoctorApprovalStatusForNewUser = ({ role, isVerified = false }) => {
   if (!isDoctorRole(role)) return DOCTOR_APPROVAL_STATUS.NOT_APPLICABLE;
+  if (/^true$/i.test(process.env.DEMO_AUTO_APPROVE_DOCTORS || '')) {
+    return DOCTOR_APPROVAL_STATUS.APPROVED;
+  }
   return isVerified ? DOCTOR_APPROVAL_STATUS.PENDING : DOCTOR_APPROVAL_STATUS.UNVERIFIED;
 };
 

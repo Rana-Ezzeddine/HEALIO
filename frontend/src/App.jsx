@@ -7,6 +7,7 @@ import SignupPage from "./pages/SignupPage";
 import DashboardPatient from "./pages/DashboardPatient";
 import DashboardDoctor from "./pages/DashboardDoctor";
 import DashboardCaregiver from "./pages/DashboardCaregiver";
+import HealthSummaryPatient from "./pages/HealthSummaryPatient";
 import ProfilePatient from "./pages/ProfilePatient";
 import ProfileDoctor from "./pages/ProfileDoctor";
 import ProfileCaregiver from "./pages/ProfileCaregiver";
@@ -14,9 +15,12 @@ import Medication from "./pages/medication";
 import LandingPage from "./pages/LandingPage";
 import Symptoms from "./pages/Symptoms";
 import PatientMessages from "./pages/PatientMessages";
+import PatientNotificationCenter from "./pages/PatientNotificationCenter";
 import CaregiverMessages from "./pages/CaregiverMessages";
 import DoctorAppointments from "./pages/DoctorAppointments";
 import PatientAppointments from "./pages/PatientAppointments";
+import CaregiverAppointments from "./pages/CaregiverAppointments";
+import CaregiverCareNotes from "./pages/CaregiverCareNotes";
 import CareTeamPatient from "./pages/CareTeamPatient";
 import PatientEmergency from "./pages/PatientEmergency";
 import VerifyEmailPage from "./pages/VerifyEmailPage";
@@ -31,11 +35,14 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import DoctorApprovedRoute from "./components/DoctorApprovedRoute";
 import DoctorApprovalStatusPage from "./pages/DoctorApprovalStatusPage";
 import DoctorReviewPage from "./pages/DoctorReviewPage";
+import DoctorPatients from "./pages/DoctorPatients";
+import DoctorClinicalNotes from "./pages/DoctorClinicalNotes";
+import DoctorTreatmentPlans from "./pages/DoctorTreatmentPlans";
+import CaregiverPatients from "./pages/CaregiverPatients";
 import { getPostAuthRoute } from "./utils/authRouting";
 import CaregiverOnboarding from "./pages/CaregiverOnboarding";
 import CareTeam from "./pages/CareTeam";
 import CaregiverMyPatients from "./pages/CaregiverMyPatients";
-import CaregiverAppointments from "./pages/CaregiverAppointments";
 import CareNotes from "./pages/CareNotes";
 import CaregiverAcceptInvite from "./pages/CaregiverAcceptInvite";
 import CaregiverMedications from "./pages/CaregiverMedications";
@@ -150,6 +157,14 @@ function RoutedApp() {
           }
         />
         <Route
+          path="/healthSummary"
+          element={
+            <ProtectedRoute allowedRoles={["patient"]}>
+              <HealthSummaryPatient />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/dashboardDoctor"
           element={
             <DoctorApprovedRoute>
@@ -206,6 +221,30 @@ function RoutedApp() {
           }
         />
         <Route
+          path="/doctor-patients"
+          element={
+            <DoctorApprovedRoute>
+              <DoctorPatients />
+            </DoctorApprovedRoute>
+          }
+        />
+        <Route
+          path="/doctor-clinical-notes"
+          element={
+            <DoctorApprovedRoute>
+              <DoctorClinicalNotes />
+            </DoctorApprovedRoute>
+          }
+        />
+        <Route
+          path="/doctor-treatment-plans"
+          element={
+            <DoctorApprovedRoute>
+              <DoctorTreatmentPlans />
+            </DoctorApprovedRoute>
+          }
+        />
+        <Route
           path="/doctorAppointments"
           element={
             <DoctorApprovedRoute>
@@ -218,6 +257,22 @@ function RoutedApp() {
           element={
             <ProtectedRoute allowedRoles={["patient"]}>
               <PatientAppointments />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/caregiverAppointments"
+          element={
+            <ProtectedRoute allowedRoles={["caregiver"]}>
+              <CaregiverAppointments />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/caregiverNotes"
+          element={
+            <ProtectedRoute allowedRoles={["caregiver"]}>
+              <CaregiverCareNotes />
             </ProtectedRoute>
           }
         />
@@ -251,9 +306,16 @@ function RoutedApp() {
         
         <Route path="/careTeam" element={<ProtectedRoute allowedRoles={["patient"]}><CareTeam /></ProtectedRoute>} />
         <Route path="/caregiverMyPatients" element={<ProtectedRoute allowedRoles={["caregiver"]}><CaregiverMyPatients /></ProtectedRoute>} />
-        <Route path="/caregiverAppointments" element={<ProtectedRoute allowedRoles={["caregiver"]}><CaregiverAppointments /></ProtectedRoute>} />
         <Route path="/careNotes" element={<ProtectedRoute allowedRoles={["caregiver"]}><CareNotes /></ProtectedRoute>} />
 
+        <Route
+          path="/patient-notifications"
+          element={
+            <ProtectedRoute allowedRoles={["patient"]}>
+              <PatientNotificationCenter />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/caregiverMessages"
           element={
@@ -262,11 +324,18 @@ function RoutedApp() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/caregiver-patients"
+          element={
+            <ProtectedRoute allowedRoles={["caregiver"]}>
+              <CaregiverPatients />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/caregiverAcceptInvite" element={<CaregiverAcceptInvite />} />
         <Route path="/caregiverMedications" element={<ProtectedRoute allowedRoles={["caregiver"]}><CaregiverMedications /></ProtectedRoute>} />
         <Route path="/caregiverSymptoms" element={<ProtectedRoute allowedRoles={["caregiver"]}><CaregiverSymptoms /></ProtectedRoute>} />
         <Route path="/caregiverCareConcern" element={<ProtectedRoute allowedRoles={["caregiver"]}><CaregiverCareConcern /></ProtectedRoute>} />
-
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>

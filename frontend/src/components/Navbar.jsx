@@ -6,7 +6,6 @@ import logo from "../assets/logo.png";
 
 const PUBLIC_PATHS = new Set(["/", "/support", "/privacy", "/terms"]);
 
-
 function PublicNavLink({ to, children }) {
   const isAnchor = to.startsWith("#");
 
@@ -29,13 +28,14 @@ export default function Navbar({ onLogin, onSignup }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const logoutConfirmRef = useRef(null);
+  const moreMenuRef = useRef(null);
 
   const user = getUser();
   const userRole = user?.role?.toLowerCase() || null;
   const isDoctor = userRole === "doctor";
   const isPatient = userRole === "patient";
-  const isCaregiver = userRole === "caregiver";
   const doctorApprovalHeld = needsDoctorApprovalHold(user);
   const dashboardPathByRole = {
     doctor: "/dashboardDoctor",
@@ -61,17 +61,29 @@ export default function Navbar({ onLogin, onSignup }) {
   const isEmergency = path.toLowerCase().startsWith("/emergency");
   const isDoctorAppointments = path.toLowerCase().startsWith("/doctorappointments");
   const isPatientAppointments = path.toLowerCase().startsWith("/patientappointments");
+  const isCaregiverAppointments = path.toLowerCase().startsWith("/caregiverappointments");
+  const isCaregiverNotes = path.toLowerCase().startsWith("/caregivernotes");
+  const isDoctorPatients = path.toLowerCase().startsWith("/doctor-patients");
+  const isDoctorClinicalNotes = path.toLowerCase().startsWith("/doctor-clinical-notes");
+  const isDoctorTreatmentPlans = path.toLowerCase().startsWith("/doctor-treatment-plans");
+  const isHealthSummary = path.toLowerCase().startsWith("/healthsummary");
   const isPatientMessages = path.toLowerCase().startsWith("/patientmessages");
+  const isPatientNotifications = path.toLowerCase().startsWith("/patient-notifications");
   const isCaregiverMessages = path.toLowerCase().startsWith("/caregivermessages");
   const isLanding = path === "/";
   const isPublicPage = PUBLIC_PATHS.has(path.toLowerCase());
-  const isCaregiverMyPatients = path.toLowerCase().startsWith("/caregivermypatients");
-  const isCaregiverAppointments = path.toLowerCase().startsWith("/caregiverappointments");
-  const isCareNotes = path.toLowerCase().startsWith("/carenotes");
-  const isCaregiverMedications = path.toLowerCase().startsWith("/caregivermedications");
-  const isCaregiverSymptoms = path.toLowerCase().startsWith("/caregiverSymptoms");
-  const isCaregiverCareConcern = path.toLowerCase().startsWith("/caregivercareconcern");
-
+  const patientMoreNavItems = isPatient
+    ? [
+      { label: "Health Summary", href: "/healthSummary", active: isHealthSummary, isDanger: false },
+      { label: "Notifications", href: "/patient-notifications", active: isPatientNotifications, isDanger: false },
+      { label: "Medications", href: "/medication", active: isMedication, isDanger: false },
+      { label: "Symptoms", href: "/symptoms", active: isSymptoms, isDanger: false },
+      { label: "Care Team", href: "/care-team", active: isCareTeam, isDanger: false },
+      { label: "Profile", href: profilePath, active: isProfile, isDanger: false },
+      { label: "Emergency", href: "/emergency", active: isEmergency, isDanger: true },
+    ]
+    : [];
+  const isMoreActive = patientMoreNavItems.some((item) => item.active);
 
   useEffect(() => {
     if (!showLogoutConfirm) return;
@@ -96,6 +108,34 @@ export default function Navbar({ onLogin, onSignup }) {
       document.removeEventListener("keydown", handleEscape);
     };
   }, [showLogoutConfirm]);
+
+  useEffect(() => {
+    if (!showMoreMenu) return;
+
+    function handleOutsideClick(event) {
+      if (!moreMenuRef.current?.contains(event.target)) {
+        setShowMoreMenu(false);
+      }
+    }
+
+    function handleEscape(event) {
+      if (event.key === "Escape") {
+        setShowMoreMenu(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [showMoreMenu]);
+
+  useEffect(() => {
+    setShowMoreMenu(false);
+  }, [path]);
 
   function handleLogout() {
     clearSession();
@@ -163,45 +203,6 @@ export default function Navbar({ onLogin, onSignup }) {
                 >
                   {isDoctor && doctorApprovalHeld ? "Application Status" : "Dashboard"}
                 </button>
-                {isPatient && (
-                  <button
-                    onClick={() => navigate("/medication")}
-                    className={`text-sm font-medium transition ${isMedication ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
-                      }`}
-                  >
-                    Medications
-                  </button>
-                )}
-                {isPatient && (
-                  <button
-                    onClick={() => navigate("/symptoms")}
-                    className={`text-sm font-medium transition ${
-                      isSymptoms ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
-                    }`}
-                  >
-                    Symptoms
-                  </button>
-                )}
-                {isPatient && (
-                  <button
-                    onClick={() => navigate("/care-team")}
-                    className={`text-sm font-medium transition ${
-                      isCareTeam ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
-                    }`}
-                  >
-                    Care Team
-                  </button>
-                )}
-                {isPatient && (
-                  <button
-                    onClick={() => navigate("/emergency")}
-                    className={`text-sm font-medium transition ${
-                      isEmergency ? "text-rose-700 font-semibold" : "text-rose-600 hover:text-rose-700"
-                    }`}
-                  >
-                    Emergency
-                  </button>
-                )}
 
                 {isDoctor && !doctorApprovalHeld && (
                   <button
@@ -211,6 +212,36 @@ export default function Navbar({ onLogin, onSignup }) {
                     }`}
                   >
                     Appointments
+                  </button>
+                )}
+                {isDoctor && !doctorApprovalHeld && (
+                  <button
+                    onClick={() => navigate("/doctor-patients")}
+                    className={`text-sm font-medium transition ${
+                      isDoctorPatients ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Patients
+                  </button>
+                )}
+                {isDoctor && !doctorApprovalHeld && (
+                  <button
+                    onClick={() => navigate("/doctor-clinical-notes")}
+                    className={`text-sm font-medium transition ${
+                      isDoctorClinicalNotes ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Clinical Notes
+                  </button>
+                )}
+                {isDoctor && !doctorApprovalHeld && (
+                  <button
+                    onClick={() => navigate("/doctor-treatment-plans")}
+                    className={`text-sm font-medium transition ${
+                      isDoctorTreatmentPlans ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Treatment Plans
                   </button>
                 )}
                 {isPatient && (
@@ -223,52 +254,52 @@ export default function Navbar({ onLogin, onSignup }) {
                     Appointments
                   </button>
                 )}
+                {userRole === "caregiver" && (
+                  <button
+                    onClick={() => navigate("/caregiverAppointments")}
+                    className={`text-sm font-medium transition ${
+                      isCaregiverAppointments ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Appointments
+                  </button>
+                )}
+                {userRole === "caregiver" && (
+                  <button
+                    onClick={() => navigate("/caregiverNotes")}
+                    className={`text-sm font-medium transition ${
+                      isCaregiverNotes ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Care Notes
+                  </button>
+                )}
+                {isPatient && (
+                  <button
+                    onClick={() => navigate("/patient-notifications")}
+                    className={`group inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
+                      isPatientNotifications
+                        ? "border-indigo-300 bg-indigo-50 text-indigo-800 shadow-sm"
+                        : "border-slate-200 text-slate-600 hover:border-indigo-200 hover:bg-indigo-50/70 hover:text-indigo-700"
+                    }`}
+                  >
+                    <span className={`h-2 w-2 rounded-full transition ${isPatientNotifications ? "bg-indigo-500" : "bg-slate-300 group-hover:bg-indigo-400"}`} />
+                    Notifications
+                  </button>
+                )}
                 {isPatient && (
                   <button
                     onClick={() => navigate("/patientMessages")}
-                    className={`text-sm font-medium transition ${
-                      isPatientMessages ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                    className={`group inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
+                      isPatientMessages
+                        ? "border-cyan-300 bg-cyan-50 text-cyan-800 shadow-sm"
+                        : "border-slate-200 text-slate-600 hover:border-cyan-200 hover:bg-cyan-50/70 hover:text-cyan-700"
                     }`}
                   >
-                    Messages
+                    <span className={`h-2 w-2 rounded-full transition ${isPatientMessages ? "bg-cyan-500" : "bg-slate-300 group-hover:bg-cyan-400"}`} />
+                    Updates & Communication
                   </button>
                 )}
-
-                {isCaregiver && (
-                  <>
-                    <button onClick={() => navigate("/caregiverMyPatients")}
-                      className={`text-sm font-medium transition ${isCaregiverMyPatients ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"}`}>
-                      My Patients
-                    </button>
-                    <button
-                      onClick={() => navigate("/caregiverMedications")}
-                      className={`text-sm font-medium transition ${isCaregiverMedications ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"}`}
-                    >
-                      Medications
-                    </button>
-                    <button onClick={() => navigate("/caregiverAppointments")}
-                      className={`text-sm font-medium transition ${isCaregiverAppointments ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"}`}>
-                      Appointments
-                    </button>
-                    <button onClick={() => navigate("/careNotes")}
-                      className={`text-sm font-medium transition ${isCareNotes ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"}`}>
-                      Care Notes
-                    </button>
-                    <button
-                      onClick={() => navigate("/caregiverCareConcern")}
-                      className={`text-sm font-medium transition ${isCaregiverCareConcern ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"}`}
-                    >
-                      Care Concerns
-                    </button>
-                  </>
-                )}
-{isPatient && (
-  <button onClick={() => navigate("/careTeam")}
-    className={`text-sm font-medium transition ${path === "/careTeam" ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"}`}>
-    Care Team
-  </button>
-)}
-
                 {userRole === "caregiver" && (
                   <button
                     onClick={() => navigate("/caregiverMessages")}
@@ -279,15 +310,62 @@ export default function Navbar({ onLogin, onSignup }) {
                     Messages
                   </button>
                 )}
+                {isPatient && patientMoreNavItems.length > 0 && (
+                  <div ref={moreMenuRef} className="relative">
+                    <button
+                      onClick={() => setShowMoreMenu((current) => !current)}
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
+                        isMoreActive
+                          ? "border-sky-300 bg-sky-50 text-sky-800"
+                          : "border-slate-200 text-slate-600 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+                      }`}
+                    >
+                      More
+                      <svg
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        className={`h-4 w-4 transition ${showMoreMenu ? "rotate-180" : "rotate-0"}`}
+                        aria-hidden="true"
+                      >
+                        <path d="M5.25 7.5a.75.75 0 011.06 0L10 11.19l3.69-3.69a.75.75 0 111.06 1.06l-4.22 4.22a.75.75 0 01-1.06 0L5.25 8.56a.75.75 0 010-1.06z" />
+                      </svg>
+                    </button>
 
+                    {showMoreMenu ? (
+                      <div className="absolute right-0 top-full z-50 mt-2 w-52 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                        {patientMoreNavItems.map((item) => (
+                          <button
+                            key={item.href}
+                            type="button"
+                            onClick={() => navigate(item.href)}
+                            className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
+                              item.active
+                                ? item.isDanger
+                                  ? "bg-rose-50 text-rose-700"
+                                  : "bg-sky-50 text-sky-700"
+                                : item.isDanger
+                                  ? "text-rose-600 hover:bg-rose-50"
+                                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            }`}
+                          >
+                            <span>{item.label}</span>
+                            {item.active ? <span className="text-xs font-semibold">Open</span> : null}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
 
-                <button
-                  onClick={() => navigate(profilePath)}
-                  className={`text-sm font-medium transition ${isProfile ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
-                    }`}
-                >
-                  Profile
-                </button>
+                {!isPatient && (
+                  <button
+                    onClick={() => navigate(profilePath)}
+                    className={`text-sm font-medium transition ${isProfile ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                      }`}
+                  >
+                    Profile
+                  </button>
+                )}
 
                 <div ref={logoutConfirmRef} className="relative">
                   <button

@@ -35,6 +35,16 @@ const Message = sequelize.define('Message', {
     type: DataTypes.DATE,
     allowNull: false,
     defaultValue: DataTypes.NOW
+  },
+  contextId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'communication_contexts',
+      key: 'id'
+    },
+    onDelete: 'SET NULL',
+    onUpdate: 'CASCADE'
   }
 }, {
   tableName: 'messages',
