@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import { apiUrl, authHeaders, getUser } from "../api/http";
 import { getMyAppointments } from "../api/appointments";
-import { getConversations } from "../api/messaging";
 import { getCaregiverReminders, getCaregiverPatientSymptoms, getCareNotes } from "../api/caregiver";
 import {
   formatDoseTime,
@@ -68,7 +67,7 @@ function getDoseDateForToday(timeString, now = new Date()) {
 const CAREGIVER_SCOPE_ALLOWED = [
   "Support patient routines (medications, symptoms, appointments) only when patient grants access.",
   "Work within one active patient context at a time to avoid cross-patient mistakes.",
-  "Use secure messaging only when messaging permission is enabled.",
+  "Use shared care contacts when contact visibility is enabled.",
 ];
 
 const CAREGIVER_SCOPE_RESTRICTED = [
@@ -115,7 +114,6 @@ export default function DashboardCaregiver() {
   const [caregiverNotes, setCaregiverNotes] = useState([]);
   const [doctorClinicalNotes, setDoctorClinicalNotes] = useState([]);
   const [doctorTreatmentPlans, setDoctorTreatmentPlans] = useState([]);
-  const [conversationCount, setConversationCount] = useState(0);
   const [isScopeModalOpen, setIsScopeModalOpen] = useState(false);
 
   const activePatientRecord = useMemo(
@@ -152,29 +150,7 @@ export default function DashboardCaregiver() {
     });
   }, [activePatientId, medications]);
 
-  const scopedSymptoms = useMemo(() => {
-    if (!activePatientId) return [];
-    return symptoms.filter((item) => {
-      const ownerId = getOwnerId(item);
-      return ownerId ? ownerId === activePatientId : true;
-    });
-  }, [activePatientId, symptoms]);
-
   const nextAppointment = upcomingAppointments[0] || null;
-  const doctorContacts = useMemo(() => {
-    const map = new Map();
-    for (const appointment of scopedAppointments) {
-      const doctor = appointment?.doctor;
-      if (!doctor) continue;
-      const key = doctor.id || doctor.email || doctor.displayName;
-      if (!key || map.has(key)) continue;
-      map.set(key, {
-        displayName: doctor.displayName || "Doctor",
-        email: doctor.email || "Not shared",
-      });
-    }
-    return Array.from(map.values());
-  }, [scopedAppointments]);
   const medicationDosesToday = useMemo(() => {
     const now = new Date();
     const doses = [];
@@ -205,7 +181,7 @@ export default function DashboardCaregiver() {
 
     async function loadCaregiverDashboard() {
       try {
-        const [patientsRes, appointmentsData, conversationsData, medicationsRes, symptomsRes] = await Promise.all([
+        const [patientsRes, appointmentsData, medicationsRes, symptomsRes] = await Promise.all([
           fetch(`${apiUrl}/api/caregivers/patients`, {
             headers: { "Content-Type": "application/json", ...authHeaders() },
           }).then(async (res) => {
@@ -214,7 +190,6 @@ export default function DashboardCaregiver() {
             return data;
           }),
           getMyAppointments().catch(() => ({ appointments: [] })),
-          getConversations().catch(() => ({ conversations: [] })),
           fetch(`${apiUrl}/api/medications`, {
             headers: { "Content-Type": "application/json", ...authHeaders() },
           }).then((res) => (res.ok ? res.json() : [])),
@@ -233,12 +208,6 @@ export default function DashboardCaregiver() {
         setAppointments(appointmentsData.appointments || []);
         setMedications(Array.isArray(medicationsRes) ? medicationsRes : []);
         setSymptoms(Array.isArray(symptomsRes) ? symptomsRes : []);
-
-        const filteredConversationCount = (conversationsData.conversations || []).filter((conversation) => {
-          if (!resolvedId) return false;
-          return (conversation.participants || []).some((participant) => participant?.id === resolvedId);
-        }).length;
-        setConversationCount(filteredConversationCount);
       } catch (error) {
         if (cancelled) return;
         console.error(error);
@@ -250,7 +219,6 @@ export default function DashboardCaregiver() {
         setReminders([]);
         setCaregiverSymptoms([]);
         setCaregiverNotes([]);
-        setConversationCount(0);
       }
     }
 
@@ -259,30 +227,6 @@ export default function DashboardCaregiver() {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (!activePatientId) return;
-
-    let cancelled = false;
-
-    async function refreshConversationCount() {
-      try {
-        const data = await getConversations();
-        if (cancelled) return;
-        const count = (data.conversations || []).filter((conversation) =>
-          (conversation.participants || []).some((participant) => participant?.id === activePatientId)
-        ).length;
-        setConversationCount(count);
-      } catch {
-        if (!cancelled) setConversationCount(0);
-      }
-    }
-
-    refreshConversationCount();
-    return () => {
-      cancelled = true;
-    };
-  }, [activePatientId]);
 
   useEffect(() => {
     if (!activePatientId) {
@@ -332,41 +276,6 @@ export default function DashboardCaregiver() {
   const canViewMedications = canUsePermission(activePermissions, "canViewMedications");
   const canViewSymptoms = canUsePermission(activePermissions, "canViewSymptoms");
   const canViewAppointments = canUsePermission(activePermissions, "canViewAppointments");
-  const canMessagePatient = canUsePermission(activePermissions, "canMessageDoctor");
-  const caregiverSetupChecklist = useMemo(() => {
-    const tasks = [
-      {
-        key: "profile",
-        label: "Complete caregiver profile",
-        description: "Add relationship and contact details for trust and context.",
-        href: "/profileCaregiver",
-        done: Boolean(user?.firstName && user?.lastName),
-      },
-      {
-        key: "link",
-        label: "Accept first patient invitation",
-        description: "Join at least one patient care context.",
-        href: "/profileCaregiver",
-        done: linkedPatients.length > 0,
-      },
-      {
-        key: "context",
-        label: "Select active patient",
-        description: "Choose the patient context to scope medications and symptoms.",
-        href: "/profileCaregiver",
-        done: Boolean(activePatientId),
-      },
-    ];
-
-    const doneCount = tasks.filter((task) => task.done).length;
-    return {
-      tasks,
-      doneCount,
-      totalCount: tasks.length,
-      incomplete: doneCount < tasks.length,
-      nextTask: tasks.find((task) => !task.done) || null,
-    };
-  }, [activePatientId, linkedPatients.length, user?.firstName, user?.lastName]);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -374,103 +283,37 @@ export default function DashboardCaregiver() {
 
       <main className="mx-auto max-w-6xl px-6 pb-10 pt-28">
         {linkedPatients.length === 0 ? (
-          <>
-            <section className="rounded-[2rem] bg-gradient-to-r from-slate-900 via-emerald-800 to-teal-600 p-12 text-white shadow-xl">
-              <p className="text-sm font-semibold uppercase tracking-[0.25em] text-white/75">Caregiver Dashboard</p>
-              <h1 className="mt-3 text-4xl font-black">Welcome, {greetingName}</h1>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-white/85">
-                You're all set. Now let's connect you with a patient. Once you're linked, you'll be able to support their medications, symptoms, appointments, and communication—within the permissions they grant.
-              </p>
-            </section>
+          <section className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-slate-500">Caregiver Dashboard</p>
+            <h1 className="mt-3 text-3xl font-black text-slate-900">Welcome, {greetingName}</h1>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+              You are not linked to a patient yet. Accept an invitation to unlock medications, symptoms, appointments, and care notes in patient scope.
+            </p>
 
-            <section className="mt-10 grid gap-6 lg:grid-cols-2">
-              <div className="order-2 flex flex-col justify-between lg:order-1">
-                <div>
-                  <h2 className="text-2xl font-bold text-slate-900">Caregiver Responsibilities</h2>
-                  <p className="mt-2 text-sm text-slate-600">
-                    Understand your role so you can support patients confidently and appropriately.
-                  </p>
-
-                  <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <p className="text-sm text-slate-600">
-                      Need a refresher on role boundaries before linking with a patient?
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setIsScopeModalOpen(true)}
-                      className="mt-3 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                    >
-                      View caregiver role boundaries
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="order-1 lg:order-2">
-                <div className="rounded-3xl bg-gradient-to-br from-emerald-50 to-teal-50 border-2 border-emerald-200 p-8 text-center shadow-sm">
-                  <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
-                    <span className="text-3xl">👥</span>
-                  </div>
-
-                  <h3 className="text-2xl font-bold text-slate-900">Ready to get linked?</h3>
-                  <p className="mt-2 text-sm text-slate-600">
-                    A patient will send you an invitation link when they want to add you as a caregiver. Check your pending invitations below.
-                  </p>
-
-                  <button
-                    type="button"
-                    onClick={() => navigate("/profileCaregiver")}
-                    className="mt-6 w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 px-6 py-4 text-base font-bold text-white shadow-md hover:shadow-lg hover:from-emerald-600 hover:to-teal-600 transition"
-                  >
-                    Check pending invitations
-                  </button>
-
-                  <p className="mt-4 text-xs text-slate-500">
-                    No invitations yet? Share your email with the patient or ask them to find you by email in their Care Team section.
-                  </p>
-
-                  <div className="mt-6 border-t border-emerald-200 pt-6">
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-600">In the meantime</p>
-                    <div className="space-y-2">
-                      <button
-                        type="button"
-                        onClick={() => navigate("/profileCaregiver")}
-                        className="w-full rounded-2xl bg-white border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
-                      >
-                        Complete your profile
-                      </button>
-                      <p className="text-xs text-slate-500 text-center">
-                        Adding your details helps patients feel confident linking with you.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section className="mt-10 rounded-3xl bg-white border border-slate-200 p-8 shadow-sm">
-              <h2 className="text-xl font-bold text-slate-900">How it works</h2>
-              <div className="mt-6 grid gap-6 md:grid-cols-3">
-                <div className="text-center">
-                  <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-lg font-bold text-sky-700">1</div>
-                  <h3 className="mt-3 font-semibold text-slate-900">Patient invites you</h3>
-                  <p className="mt-2 text-sm text-slate-600">A patient sends you a caregiver invitation link via email.</p>
-                </div>
-
-                <div className="text-center">
-                  <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-lg font-bold text-sky-700">2</div>
-                  <h3 className="mt-3 font-semibold text-slate-900">You accept and set permissions</h3>
-                  <p className="mt-2 text-sm text-slate-600">Review what the patient is allowing you to see and do.</p>
-                </div>
-
-                <div className="text-center">
-                  <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-lg font-bold text-sky-700">3</div>
-                  <h3 className="mt-3 font-semibold text-slate-900">Start supporting</h3>
-                  <p className="mt-2 text-sm text-slate-600">Access their care team dashboard and help monitor their health journey.</p>
-                </div>
-              </div>
-            </section>
-          </>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => navigate("/caregiver-patients")}
+                className="rounded-2xl bg-cyan-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-600"
+              >
+                Open patient invitations
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/profileCaregiver")}
+                className="rounded-2xl border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Complete profile
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsScopeModalOpen(true)}
+                className="rounded-2xl border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Role boundaries
+              </button>
+            </div>
+          </section>
         ) : (
           <>
             <section className="rounded-[2rem] bg-gradient-to-r from-slate-900 via-sky-800 to-cyan-600 p-8 text-white shadow-xl">
@@ -509,52 +352,6 @@ export default function DashboardCaregiver() {
               </div>
             </section>
 
-            {caregiverSetupChecklist.incomplete ? (
-              <section className="mt-6 rounded-3xl border border-cyan-100 bg-white p-6 shadow-sm">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-wide text-cyan-700">Caregiver setup checklist</p>
-                <h2 className="mt-2 text-2xl font-semibold text-slate-900">
-                  {caregiverSetupChecklist.doneCount} of {caregiverSetupChecklist.totalCount} setup steps complete
-                </h2>
-                <p className="mt-2 text-sm text-slate-600">
-                  Complete these steps so your dashboard can show real patient-scoped activity.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => navigate(caregiverSetupChecklist.nextTask?.href || "/profileCaregiver")}
-                className="rounded-2xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-600 transition"
-              >
-                Continue setup
-              </button>
-            </div>
-
-            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {caregiverSetupChecklist.tasks.map((task) => (
-                <button
-                  key={task.key}
-                  type="button"
-                  onClick={() => navigate(task.href)}
-                  className={`rounded-2xl border p-4 text-left transition ${
-                    task.done
-                      ? "border-emerald-200 bg-emerald-50"
-                      : "border-slate-200 bg-slate-50 hover:border-cyan-200 hover:bg-cyan-50"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="font-semibold text-slate-900">{task.label}</p>
-                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${task.done ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
-                      {task.done ? "Done" : "Next"}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-sm text-slate-600">{task.description}</p>
-                </button>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
         <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-slate-600">
@@ -570,7 +367,7 @@ export default function DashboardCaregiver() {
           </div>
         </section>
 
-        <section className="mt-6 grid gap-6 xl:grid-cols-2">
+        <section className="mt-6">
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
@@ -616,37 +413,6 @@ export default function DashboardCaregiver() {
               ) : null}
             </div>
           </div>
-
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-semibold text-slate-900">Care contacts</h2>
-                <p className="mt-1 text-sm text-slate-500">Contact details only. Direct doctor-caregiver messaging is not available in the app.</p>
-              </div>
-              <MiniPill label="Doctors" value={doctorContacts.length} tone="emerald" />
-            </div>
-            <div className="mt-4 space-y-3">
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Patient contact</p>
-                <p className="mt-2 text-sm text-slate-800">{activePatientRecord?.patient?.displayName || "Patient"}</p>
-                <p className="mt-1 text-sm text-slate-600">{activePatientRecord?.patient?.email || "No patient email shared"}</p>
-                <p className="mt-1 text-sm text-slate-600">{activePatientRecord?.patient?.phoneNumber || "No patient phone shared"}</p>
-              </div>
-
-              {doctorContacts.length ? doctorContacts.map((doctor) => (
-                <div key={`${doctor.displayName}-${doctor.email}`} className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-emerald-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Doctor contact</p>
-                  <p className="mt-2 text-sm text-slate-800">{doctor.displayName}</p>
-                  <p className="mt-1 text-sm text-slate-600">{doctor.email}</p>
-                  <p className="mt-1 text-sm text-slate-600">{doctor.phoneNumber || "No doctor phone shared"}</p>
-                </div>
-              )) : (
-                <div className="rounded-2xl border border-dashed border-slate-200 px-5 py-6 text-sm text-slate-500">
-                  No doctor contact has been shared for this patient yet.
-                </div>
-              )}
-            </div>
-          </div>
         </section>
 
         <section className="mt-6 grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
@@ -661,33 +427,9 @@ export default function DashboardCaregiver() {
                   </span>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => navigate("/profileCaregiver")}
-                className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
-              >
-                Open profile
-              </button>
             </div>
 
             <div className="mt-5">
-              <div className="mb-4 rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-50 to-sky-50 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Current Context</p>
-                    <p className="mt-1 font-semibold text-slate-900">{activePatientLabel}</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                      Symptoms: {canViewSymptoms ? scopedSymptoms.length : "Hidden"}
-                    </span>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                      Appointments: {canViewAppointments ? scopedAppointments.length : "Hidden"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
               <div className="relative pl-6">
                 <div className="absolute left-2.5 top-1 h-[calc(100%-10px)] w-px bg-slate-200" />
 
@@ -891,10 +633,10 @@ export default function DashboardCaregiver() {
                     enabled: linkedPatients.length > 0,
                   },
                   {
-                    label: "Open patient chat",
-                    href: "/caregiverMessages",
-                    style: "bg-cyan-100 text-cyan-700",
-                    enabled: canMessagePatient,
+                    label: "Care contacts",
+                    href: "/caregiverCareConcern",
+                    style: "bg-emerald-100 text-emerald-700",
+                    enabled: linkedPatients.length > 0,
                   },
                   {
                     label: "Manage caregiver profile",

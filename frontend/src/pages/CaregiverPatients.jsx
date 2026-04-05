@@ -30,7 +30,7 @@ function permissionLabel(key) {
     canViewMedications: "Medications",
     canViewSymptoms: "Symptoms",
     canViewAppointments: "Appointments",
-    canMessageDoctor: "Messaging",
+    canMessageDoctor: "Doctor contact",
     canReceiveReminders: "Reminders",
   };
   return labels[key] || key;
@@ -111,23 +111,9 @@ export default function CaregiverPatients() {
           <p className="text-sm font-semibold uppercase tracking-[0.25em] text-white/75">Caregiver Workspace</p>
           <h1 className="mt-3 text-4xl font-black">My Patients</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-white/85">
-            Accept invitations, review permissions, and manage all your patient relationships in one place. Your dashboard updates instantly when you switch patients.
+            Accept invitations and switch patient context from one place.
           </p>
         </section>
-
-        {/* Summary row */}
-        <div className="mt-6 grid gap-4 sm:grid-cols-2">
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pending invitations</p>
-            <p className="mt-2 text-3xl font-black text-slate-900">{pendingInvitations.length}</p>
-            <p className="mt-1 text-sm text-slate-500">Waiting for your response</p>
-          </div>
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Active patients</p>
-            <p className="mt-2 text-3xl font-black text-slate-900">{activePatients.length}</p>
-            <p className="mt-1 text-sm text-slate-500">Currently linked</p>
-          </div>
-        </div>
 
         {/* Global error */}
         {error ? (
@@ -305,16 +291,6 @@ export default function CaregiverPatients() {
             </div>
           </section>
         </div>
-
-        {/* Quick tips */}
-        {activePatients.length > 0 ? (
-          <section className="mt-8 rounded-3xl border border-cyan-100 bg-cyan-50 p-6">
-            <h3 className="font-semibold text-cyan-900">💡 Tip: Switching patients</h3>
-            <p className="mt-2 text-sm text-cyan-800">
-              Click on any patient above to make them your active context. Your dashboard, appointments, medications, and symptoms will instantly update to show only their information. You can always switch back here to change patients.
-            </p>
-          </section>
-        ) : null}
 
         {/* Back link */}
         <div className="mt-8">
