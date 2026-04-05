@@ -128,11 +128,9 @@ export default function Navbar({ onLogin, onSignup }) {
   const caregiverMoreNavItems = userRole === "caregiver"
     ? [
       { label: "Appointments", href: "/caregiverAppointments", active: isCaregiverAppointments, isDanger: false },
-      { label: "Updates & Communication", href: "/caregiverMessages", active: isCaregiverMessages, isDanger: false },
       { label: "Care Notes", href: "/caregiverNotes", active: isCaregiverNotes, isDanger: false },
       { label: "Medications", href: "/medication", active: isCaregiverMedications, isDanger: false },
       { label: "Symptoms", href: "/caregiverSymptoms", active: isCaregiverSymptoms, isDanger: false },
-      { label: "My Patients", href: "/caregiver-patients", active: isCaregiverPatients, isDanger: false },
       { label: "Care Concern", href: "/caregiverCareConcern", active: isCaregiverCareConcern, isDanger: false },
       { label: "Onboarding", href: "/caregiverOnboarding", active: isCaregiverOnboarding, isDanger: false },
       { label: "Profile", href: "/profileCaregiver", active: isProfile, isDanger: false },
@@ -327,12 +325,12 @@ export default function Navbar({ onLogin, onSignup }) {
                 )}
                 {userRole === "caregiver" && (
                   <button
-                    onClick={() => navigate("/caregiverAppointments")}
+                    onClick={() => navigate("/caregiver-patients")}
                     className={`text-sm font-medium transition ${
-                      isCaregiverAppointments ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                      isCaregiverPatients ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
                     }`}
                   >
-                    Appointments
+                    My Patients
                   </button>
                 )}
                 {isPatient && (
@@ -358,6 +356,19 @@ export default function Navbar({ onLogin, onSignup }) {
                     }`}
                   >
                     <span className={`h-2 w-2 rounded-full transition ${isPatientMessages ? "bg-cyan-500" : "bg-slate-300 group-hover:bg-cyan-400"}`} />
+                    Updates & Communication
+                  </button>
+                )}
+                {userRole === "caregiver" && (
+                  <button
+                    onClick={() => navigate("/caregiverMessages")}
+                    className={`group inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
+                      isCaregiverMessages
+                        ? "border-cyan-300 bg-cyan-50 text-cyan-800 shadow-sm"
+                        : "border-slate-200 text-slate-600 hover:border-cyan-200 hover:bg-cyan-50/70 hover:text-cyan-700"
+                    }`}
+                  >
+                    <span className={`h-2 w-2 rounded-full transition ${isCaregiverMessages ? "bg-cyan-500" : "bg-slate-300 group-hover:bg-cyan-400"}`} />
                     Updates & Communication
                   </button>
                 )}
