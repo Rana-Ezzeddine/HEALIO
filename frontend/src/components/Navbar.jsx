@@ -17,11 +17,13 @@ const PAGE_PURPOSES = [
   { prefix: "/caregiversymptoms", text: "Review patient symptom history and add caregiver observations with source labels." },
   { prefix: "/patientappointments", text: "Schedule, track, and prepare for upcoming appointments." },
   { prefix: "/doctorappointments", text: "Manage appointment requests and coordinate patient visits." },
+  { prefix: "/doctor-calendar", text: "Review your schedule visually and manage availability across upcoming sessions." },
   { prefix: "/caregiverappointments", text: "Monitor and support appointment follow-through for the selected patient." },
   { prefix: "/patientmessages", text: "Stay aligned with your care team through secure updates and communication." },
   { prefix: "/caregivermessages", text: "Exchange care updates and communication tied to patient support." },
   { prefix: "/caregivernotes", text: "Capture structured caregiver notes to keep support records clear and actionable." },
   { prefix: "/doctor-patients", text: "Browse your panel and open each patient record quickly." },
+  { prefix: "/doctor-patients/requests", text: "Review pending patient link requests before they enter your active panel." },
   { prefix: "/doctor-clinical-notes", text: "Document and review clinical notes to keep treatment decisions traceable." },
   { prefix: "/doctor-treatment-plans", text: "Build and adjust treatment plans based on each patient profile." },
   { prefix: "/caregiver-patients", text: "Manage linked patients and select the right context before taking action." },
@@ -101,6 +103,9 @@ export default function Navbar({ onLogin, onSignup }) {
   const isCaregiverAppointments = path.toLowerCase().startsWith("/caregiverappointments");
   const isCaregiverNotes = path.toLowerCase().startsWith("/caregivernotes");
   const isDoctorPatients = path.toLowerCase().startsWith("/doctor-patients");
+  const isDoctorLinkRequests = path.toLowerCase().startsWith("/doctor-patients/requests");
+  const isDoctorClinicalNotes = path.toLowerCase().startsWith("/doctor-clinical-notes");
+  const isDoctorTreatmentPlans = path.toLowerCase().startsWith("/doctor-treatment-plans");
   const isHealthSummary = path.toLowerCase().startsWith("/healthsummary");
   const isPatientMessages = path.toLowerCase().startsWith("/patientmessages");
   const isPatientNotifications = path.toLowerCase().startsWith("/patient-notifications");
@@ -137,6 +142,23 @@ export default function Navbar({ onLogin, onSignup }) {
     ]
     : [];
   const isCaregiverMoreActive = caregiverMoreNavItems.some((item) => item.active);
+  const doctorMoreNavItems = isDoctor
+    ? doctorApprovalHeld
+      ? [
+        { label: "Application Status", href: "/doctor-approval-status", active: isDoctorApprovalStatus, isDanger: false },
+        { label: "Profile", href: "/profileDoctor", active: isProfile, isDanger: false },
+      ]
+      : [
+        { label: "Appointments", href: "/doctorAppointments", active: isDoctorAppointments, isDanger: false },
+        { label: "Link Requests", href: "/doctor-patients/requests", active: isDoctorLinkRequests, isDanger: false },
+        { label: "Clinical Notes", href: "/doctor-clinical-notes", active: isDoctorClinicalNotes, isDanger: false },
+        { label: "Treatment Plans", href: "/doctor-treatment-plans", active: isDoctorTreatmentPlans, isDanger: false },
+        { label: "Profile", href: "/profileDoctor", active: isProfile, isDanger: false },
+      ]
+    : [];
+  const isDoctorMoreActive = doctorApprovalHeld
+    ? doctorMoreNavItems.some((item) => item.active)
+    : isDoctorAppointments || isDoctorLinkRequests || isDoctorClinicalNotes || isDoctorTreatmentPlans || isProfile;
 
   useEffect(() => {
     if (!showLogoutConfirm) return;
@@ -285,16 +307,6 @@ export default function Navbar({ onLogin, onSignup }) {
 
                 {isDoctor && !doctorApprovalHeld && (
                   <button
-                    onClick={() => navigate("/doctorAppointments")}
-                    className={`text-sm font-medium transition ${
-                      isDoctorAppointments ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
-                    }`}
-                  >
-                    Appointments
-                  </button>
-                )}
-                {isDoctor && !doctorApprovalHeld && (
-                  <button
                     onClick={() => navigate("/doctor-calendar")}
                     className={`text-sm font-medium transition ${
                       isDoctorCalendar ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
@@ -307,7 +319,7 @@ export default function Navbar({ onLogin, onSignup }) {
                   <button
                     onClick={() => navigate("/doctor-patients")}
                     className={`text-sm font-medium transition ${
-                      isDoctorPatients ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                      isDoctorPatients && !isDoctorLinkRequests ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
                     }`}
                   >
                     Patients
@@ -462,7 +474,50 @@ export default function Navbar({ onLogin, onSignup }) {
                   </div>
                 )}
 
-                {!isPatient && userRole !== "caregiver" && (
+                {isDoctor && doctorMoreNavItems.length > 0 && (
+                  <div ref={moreMenuRef} className="relative">
+                    <button
+                      onClick={() => setShowMoreMenu((current) => !current)}
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
+                        isDoctorMoreActive
+                          ? "border-sky-300 bg-sky-50 text-sky-800"
+                          : "border-slate-200 text-slate-600 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+                      }`}
+                    >
+                      More
+                      <svg
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        className={`h-4 w-4 transition ${showMoreMenu ? "rotate-180" : "rotate-0"}`}
+                        aria-hidden="true"
+                      >
+                        <path d="M5.25 7.5a.75.75 0 011.06 0L10 11.19l3.69-3.69a.75.75 0 111.06 1.06l-4.22 4.22a.75.75 0 01-1.06 0L5.25 8.56a.75.75 0 010-1.06z" />
+                      </svg>
+                    </button>
+
+                    {showMoreMenu ? (
+                      <div className="absolute right-0 top-full z-50 mt-2 w-60 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                        {doctorMoreNavItems.map((item) => (
+                          <button
+                            key={item.href}
+                            type="button"
+                            onClick={() => navigate(item.href)}
+                            className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
+                              item.active
+                                ? "bg-sky-50 text-sky-700"
+                                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            }`}
+                          >
+                            <span>{item.label}</span>
+                            {item.active ? <span className="text-xs font-semibold">Open</span> : null}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
+                {!isPatient && userRole !== "caregiver" && !isDoctor && (
                   <button
                     onClick={() => navigate(profilePath)}
                     className={`text-sm font-medium transition ${isProfile ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
