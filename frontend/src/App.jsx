@@ -18,6 +18,7 @@ import PatientMessages from "./pages/PatientMessages";
 import PatientNotificationCenter from "./pages/PatientNotificationCenter";
 import CaregiverMessages from "./pages/CaregiverMessages";
 import DoctorAppointments from "./pages/DoctorAppointments";
+import DoctorCalendar from "./pages/DoctorCalendar";
 import PatientAppointments from "./pages/PatientAppointments";
 import CaregiverAppointments from "./pages/CaregiverAppointments";
 import CaregiverCareNotes from "./pages/CaregiverCareNotes";
@@ -36,6 +37,8 @@ import DoctorApprovedRoute from "./components/DoctorApprovedRoute";
 import DoctorApprovalStatusPage from "./pages/DoctorApprovalStatusPage";
 import DoctorReviewPage from "./pages/DoctorReviewPage";
 import DoctorPatients from "./pages/DoctorPatients";
+import DoctorLinkRequests from "./pages/DoctorLinkRequests";
+import DoctorPatientDetail from "./pages/DoctorPatientDetail";
 import DoctorClinicalNotes from "./pages/DoctorClinicalNotes";
 import DoctorTreatmentPlans from "./pages/DoctorTreatmentPlans";
 import CaregiverPatients from "./pages/CaregiverPatients";
@@ -229,6 +232,22 @@ function RoutedApp() {
           }
         />
         <Route
+          path="/doctor-patients/requests"
+          element={
+            <DoctorApprovedRoute>
+              <DoctorLinkRequests />
+            </DoctorApprovedRoute>
+          }
+        />
+        <Route
+          path="/doctor-patients/:patientId"
+          element={
+            <DoctorApprovedRoute>
+              <DoctorPatientDetail />
+            </DoctorApprovedRoute>
+          }
+        />
+        <Route
           path="/doctor-clinical-notes"
           element={
             <DoctorApprovedRoute>
@@ -249,6 +268,14 @@ function RoutedApp() {
           element={
             <DoctorApprovedRoute>
               <DoctorAppointments />
+            </DoctorApprovedRoute>
+          }
+        />
+        <Route
+          path="/doctor-calendar"
+          element={
+            <DoctorApprovedRoute>
+              <DoctorCalendar />
             </DoctorApprovedRoute>
           }
         />

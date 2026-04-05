@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { clearSession, getUser } from "../api/http";
 import { needsDoctorApprovalHold } from "../utils/authRouting";
 import logo from "../assets/logo.png";
+import DoctorPatientDock from "./doctor/DoctorPatientDock";
 
 const PUBLIC_PATHS = new Set(["/", "/support", "/privacy", "/terms"]);
 
@@ -60,12 +61,11 @@ export default function Navbar({ onLogin, onSignup }) {
   const isCareTeam = path.toLowerCase().startsWith("/care-team");
   const isEmergency = path.toLowerCase().startsWith("/emergency");
   const isDoctorAppointments = path.toLowerCase().startsWith("/doctorappointments");
+  const isDoctorCalendar = path.toLowerCase().startsWith("/doctor-calendar");
   const isPatientAppointments = path.toLowerCase().startsWith("/patientappointments");
   const isCaregiverAppointments = path.toLowerCase().startsWith("/caregiverappointments");
   const isCaregiverNotes = path.toLowerCase().startsWith("/caregivernotes");
   const isDoctorPatients = path.toLowerCase().startsWith("/doctor-patients");
-  const isDoctorClinicalNotes = path.toLowerCase().startsWith("/doctor-clinical-notes");
-  const isDoctorTreatmentPlans = path.toLowerCase().startsWith("/doctor-treatment-plans");
   const isHealthSummary = path.toLowerCase().startsWith("/healthsummary");
   const isPatientMessages = path.toLowerCase().startsWith("/patientmessages");
   const isPatientNotifications = path.toLowerCase().startsWith("/patient-notifications");
@@ -144,13 +144,14 @@ export default function Navbar({ onLogin, onSignup }) {
   }
 
   return (
-    <header className="fixed top-0 left-0 w-full z-40">
-      <div className="mx-auto max-w-7xl px-6 py-4">
-        <div
-          className="flex items-center justify-between rounded-2xl
+    <>
+      <header className="fixed top-0 left-0 w-full z-40">
+        <div className="mx-auto max-w-7xl px-6 py-4">
+          <div
+            className="flex items-center justify-between rounded-2xl
                      bg-white/70 backdrop-blur-md border border-white/60
                      shadow-sm px-6 py-3"
-        >
+          >
           <button
             onClick={() => navigate("/")}
             className="flex items-center gap-2"
@@ -216,32 +217,22 @@ export default function Navbar({ onLogin, onSignup }) {
                 )}
                 {isDoctor && !doctorApprovalHeld && (
                   <button
+                    onClick={() => navigate("/doctor-calendar")}
+                    className={`text-sm font-medium transition ${
+                      isDoctorCalendar ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Calendar
+                  </button>
+                )}
+                {isDoctor && !doctorApprovalHeld && (
+                  <button
                     onClick={() => navigate("/doctor-patients")}
                     className={`text-sm font-medium transition ${
                       isDoctorPatients ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
                     }`}
                   >
                     Patients
-                  </button>
-                )}
-                {isDoctor && !doctorApprovalHeld && (
-                  <button
-                    onClick={() => navigate("/doctor-clinical-notes")}
-                    className={`text-sm font-medium transition ${
-                      isDoctorClinicalNotes ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
-                    }`}
-                  >
-                    Clinical Notes
-                  </button>
-                )}
-                {isDoctor && !doctorApprovalHeld && (
-                  <button
-                    onClick={() => navigate("/doctor-treatment-plans")}
-                    className={`text-sm font-medium transition ${
-                      isDoctorTreatmentPlans ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
-                    }`}
-                  >
-                    Treatment Plans
                   </button>
                 )}
                 {isPatient && (
@@ -404,8 +395,10 @@ export default function Navbar({ onLogin, onSignup }) {
               </>
             )}
           </div>
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
+      {isDoctor && !doctorApprovalHeld ? <DoctorPatientDock /> : null}
+    </>
   );
 }

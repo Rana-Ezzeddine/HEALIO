@@ -4,6 +4,7 @@ import {
   DOCTOR_APPROVAL_STATUS,
   DOCTOR_REVIEW_DECISION,
 } from '../lib/doctorApproval.js';
+import NotificationService from '../services/notificationService.js';
 
 const REVIEWABLE_STATUSES = new Set([
   DOCTOR_APPROVAL_STATUS.PENDING,
@@ -183,6 +184,10 @@ export async function reviewDoctorApplication(req, res) {
     }
 
     const now = new Date();
+    let notificationTitle = '';
+    let notificationMessage = '';
+    let notificationType = 'info';
+
     if (decision === DOCTOR_REVIEW_DECISION.APPROVE) {
       await doctor.update({
         doctorApprovalStatus: DOCTOR_APPROVAL_STATUS.APPROVED,
@@ -190,6 +195,9 @@ export async function reviewDoctorApplication(req, res) {
         doctorApprovalRequestedInfoAt: null,
         doctorApprovalReviewedAt: now,
       });
+      notificationTitle = 'Doctor Account Approved';
+      notificationMessage = 'Congratulations! Your doctor account has been approved.';
+      notificationType = 'success';
     } else if (decision === DOCTOR_REVIEW_DECISION.REJECT) {
       await doctor.update({
         doctorApprovalStatus: DOCTOR_APPROVAL_STATUS.REJECTED,
@@ -197,6 +205,9 @@ export async function reviewDoctorApplication(req, res) {
         doctorApprovalRequestedInfoAt: null,
         doctorApprovalReviewedAt: now,
       });
+      notificationTitle = 'Doctor Account Rejected';
+      notificationMessage = `Your doctor account application was not approved. Notes: ${notes}`;
+      notificationType = 'error';
     } else {
       await doctor.update({
         doctorApprovalStatus: DOCTOR_APPROVAL_STATUS.PENDING,
@@ -204,7 +215,18 @@ export async function reviewDoctorApplication(req, res) {
         doctorApprovalRequestedInfoAt: now,
         doctorApprovalReviewedAt: now,
       });
+      notificationTitle = 'Information Requested for Doctor Account';
+      notificationMessage = `The review team has requested more information: ${notes}`;
+      notificationType = 'warning';
     }
+
+    NotificationService.createNotification({
+      userId: doctor.id,
+      category: 'care_team_approval',
+      title: notificationTitle,
+      message: notificationMessage,
+      type: notificationType,
+    });
 
     return res.json({
       message:

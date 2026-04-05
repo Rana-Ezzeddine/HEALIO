@@ -15,6 +15,7 @@ import {
   resolveActiveCaregiverPatientId,
   setActiveCaregiverPatientId,
 } from "../utils/caregiverPatientContext";
+import { formatListOutput, getDoctorCaregiverNotes, getPatientClinicalNotes, getPatientTreatmentPlans } from "../utils/doctorPatientRecords";
 
 function formatAppointmentDate(dateLike) {
   return new Date(dateLike).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -49,6 +50,20 @@ function DashboardCard({ title, mainText, subText, navPage, disabled = false }) 
         <span className="text-xs text-slate-400 transition group-hover:text-slate-600">Open</span>
       </div>
     </button>
+  );
+}
+
+function MiniPill({ label, value, tone = "sky" }) {
+  const tones = {
+    sky: "bg-sky-100 text-sky-700",
+    violet: "bg-violet-100 text-violet-700",
+    emerald: "bg-emerald-100 text-emerald-700",
+    amber: "bg-amber-100 text-amber-700",
+  };
+  return (
+    <div className={`rounded-full px-3 py-1 text-xs font-semibold ${tones[tone] || tones.sky}`}>
+      {label}: {value}
+    </div>
   );
 }
 
@@ -127,6 +142,9 @@ export default function DashboardCaregiver() {
   const [reminders, setReminders] = useState([]);
   const [caregiverSymptoms, setCaregiverSymptoms] = useState([]);
   const [caregiverNotes, setCaregiverNotes] = useState([]);
+  const [doctorClinicalNotes, setDoctorClinicalNotes] = useState([]);
+  const [doctorTreatmentPlans, setDoctorTreatmentPlans] = useState([]);
+  const [doctorToCaregiverNotes, setDoctorToCaregiverNotes] = useState([]);
   const [conversationCount, setConversationCount] = useState(0);
 
   const activePatientRecord = useMemo(
@@ -289,6 +307,9 @@ export default function DashboardCaregiver() {
       setReminders([]);
       setCaregiverSymptoms([]);
       setCaregiverNotes([]);
+      setDoctorClinicalNotes([]);
+      setDoctorTreatmentPlans([]);
+      setDoctorToCaregiverNotes([]);
       return;
     }
 
@@ -307,12 +328,22 @@ export default function DashboardCaregiver() {
         setReminders(remindersData.reminders || remindersData || []);
         setCaregiverSymptoms(Array.isArray(symptomsData) ? symptomsData : []);
         setCaregiverNotes(Array.isArray(notesData) ? notesData : []);
+        setDoctorClinicalNotes(getPatientClinicalNotes(activePatientId));
+        setDoctorTreatmentPlans(getPatientTreatmentPlans(activePatientId));
+        setDoctorToCaregiverNotes(
+          getDoctorCaregiverNotes(activePatientId).filter(
+            (note) => !note.caregiverId || note.caregiverId === user?.id
+          )
+        );
       } catch (error) {
         if (!cancelled) {
           console.error("Failed to load patient-specific data:", error);
           setReminders([]);
           setCaregiverSymptoms([]);
           setCaregiverNotes([]);
+          setDoctorClinicalNotes([]);
+          setDoctorTreatmentPlans([]);
+          setDoctorToCaregiverNotes([]);
         }
       }
     }
@@ -640,6 +671,79 @@ export default function DashboardCaregiver() {
             subText={activePatientLabel}
             navPage="/caregiver-patients"
           />
+        </section>
+
+        <section className="mt-6 grid gap-6 xl:grid-cols-2">
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Doctor guidance for this patient</h2>
+                <p className="mt-1 text-sm text-slate-500">Only the readable, patient-safe portions of doctor updates appear here.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <MiniPill label="Notes" value={doctorClinicalNotes.length} tone="sky" />
+                <MiniPill label="Plans" value={doctorTreatmentPlans.length} tone="violet" />
+              </div>
+            </div>
+            <div className="mt-4 space-y-3">
+              {doctorClinicalNotes.length ? doctorClinicalNotes.slice(0, 3).map((note) => (
+                <div key={note.id} className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-sky-50 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="font-semibold text-slate-900">{note.noteTitle || "Clinical note"}</p>
+                    <MiniPill label="Action" value={note.patientInstructions?.length ? "Yes" : "None"} tone="sky" />
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-slate-700">{note.patientSafeSummary || "No patient-safe summary provided."}</p>
+                  <div className="mt-3 rounded-2xl bg-white/80 p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Instructions</p>
+                    <p className="mt-2 text-sm text-slate-700">{formatListOutput(note.patientInstructions) || "Not recorded"}</p>
+                  </div>
+                </div>
+              )) : null}
+              {doctorTreatmentPlans.length ? doctorTreatmentPlans.slice(0, 2).map((plan) => (
+                <div key={plan.id} className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-violet-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-semibold text-slate-900">{plan.title}</p>
+                    <span className="rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-700">{plan.status}</span>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-slate-700">{plan.patientSafeSummary || "No patient-safe summary provided."}</p>
+                  <div className="mt-3 rounded-2xl bg-white/80 p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Goals</p>
+                    <p className="mt-2 text-sm text-slate-700">{formatListOutput(plan.treatmentGoals) || "Not recorded"}</p>
+                  </div>
+                </div>
+              )) : null}
+              {!doctorClinicalNotes.length && !doctorTreatmentPlans.length ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 px-5 py-6 text-sm text-slate-500">
+                  No doctor summaries available for this patient yet.
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Doctor-to-caregiver notes</h2>
+                <p className="mt-1 text-sm text-slate-500">Doctor guidance written specifically for your caregiver support role.</p>
+              </div>
+              <MiniPill label="Notes" value={doctorToCaregiverNotes.length} tone="emerald" />
+            </div>
+            <div className="mt-4 space-y-3">
+              {doctorToCaregiverNotes.length ? doctorToCaregiverNotes.map((note) => (
+                <div key={note.id} className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-emerald-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <MiniPill label="Support note" value="Caregiver" tone="emerald" />
+                    <p className="text-xs text-slate-400">{new Date(note.createdAt).toLocaleString()}</p>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-slate-700">{note.note}</p>
+                </div>
+              )) : (
+                <div className="rounded-2xl border border-dashed border-slate-200 px-5 py-6 text-sm text-slate-500">
+                  No doctor-to-caregiver notes for this patient yet.
+                </div>
+              )}
+            </div>
+          </div>
         </section>
 
         <section className="mt-6 grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">

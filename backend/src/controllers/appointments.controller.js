@@ -3,7 +3,11 @@ import Appointment from "../models/Appointment.js";
 import Availability from "../models/Availability.js";
 import User from "../models/User.js";
 import DoctorPatientAssignment from "../models/DoctorPatientAssignment.js";
+import PatientProfile from "../models/PatientProfile.js";
 import { DOCTOR_APPROVAL_STATUS } from "../lib/doctorApproval.js";
+import NotificationService from "../services/notificationService.js";
+import ContextService from "../services/ContextService.js";
+import ReminderSchedulerService from "../services/reminderSchedulerService.js";
 
 function parseISODate(value, fieldName) {
   const d = new Date(value);
@@ -194,6 +198,7 @@ export async function getDoctorSchedule(req, res) {
           model: User,
           as: "patient",
           attributes: ["id", "email"],
+          include: [{ model: PatientProfile, as: "patientProfile", attributes: ["firstName", "lastName"] }],
         },
       ],
       order: [["startsAt", "ASC"]],
@@ -216,6 +221,11 @@ export async function getDoctorSchedule(req, res) {
           ? {
               id: a.patient.id,
               email: a.patient.email,
+              displayName: buildDisplayName(
+                a.patient.email,
+                a.patient.patientProfile?.firstName,
+                a.patient.patientProfile?.lastName
+              ),
             }
           : null,
       })),
@@ -251,6 +261,8 @@ export async function createAppointment(req, res) {
     await ensurePatientUser(patientId);
     await validateDoctorPatientLink(doctorId, patientId);
 
+    const preFill = await ContextService.getPreFillData(patientId, 'appointment');
+
     const conflict = await hasDoctorConflict(doctorId, start, end);
     if (conflict) {
       return res.status(409).json({
@@ -263,10 +275,16 @@ export async function createAppointment(req, res) {
       patientId,
       startsAt: start,
       endsAt: end,
-      location: typeof location === "string" ? location.trim() || null : null,
+      location:
+        typeof location === "string"
+          ? location.trim() || preFill.defaultLocation || null
+          : preFill.defaultLocation || null,
       notes: typeof notes === "string" ? notes.trim() || null : null,
       status: "scheduled",
     });
+
+    await ReminderSchedulerService.scheduleAppointmentReminder(created);
+    await NotificationService.notifyAppointmentUpdate(patientId, created.id, "A new appointment has been scheduled by your doctor.");
 
     return res.status(201).json(created);
   } catch (err) {
@@ -299,6 +317,8 @@ export async function createAppointmentRequest(req, res) {
 
     await ensureDoctorUser(doctorId);
     await validateDoctorPatientLink(doctorId, patientId);
+
+    const preFill = await ContextService.getPreFillData(patientId, 'appointment');
 
     // Task 25.d: Only allow slots that exist in the doctor's generated slot list
     const slotFrom = new Date(start);
@@ -335,10 +355,24 @@ export async function createAppointmentRequest(req, res) {
       patientId,
       startsAt: start,
       endsAt: end,
-      location: typeof location === "string" ? location.trim() || null : null,
+      location:
+        typeof location === "string"
+          ? location.trim() || preFill.defaultLocation || null
+          : preFill.defaultLocation || null,
       notes: typeof notes === "string" ? notes.trim() || null : null,
       status: "requested",
     });
+
+    await NotificationService.createWithContext(
+      { type: 'appointment', relatedId: created.id },
+      {
+        userId: doctorId,
+        category: 'appointment_request',
+        title: 'New Appointment Request',
+        message: `A patient has requested an appointment on ${start.toLocaleString()}`,
+        type: 'info',
+      }
+    );
 
     return res.status(201).json(created);
   } catch (err) {
@@ -358,6 +392,7 @@ export async function getRequestableDoctors(req, res) {
     const doctors = await patient.getDoctors({
       where: { doctorApprovalStatus: DOCTOR_APPROVAL_STATUS.APPROVED },
       attributes: ["id", "email"],
+      include: [{ model: PatientProfile, as: "patientProfile", attributes: ["firstName", "lastName"] }],
       joinTableAttributes: [],
       through: { where: { status: "active" } },
     });
@@ -367,7 +402,11 @@ export async function getRequestableDoctors(req, res) {
       doctors: doctors.map((doctor) => ({
         id: doctor.id,
         email: doctor.email,
-        displayName: buildDisplayName(doctor.email, null, null),
+        displayName: buildDisplayName(
+          doctor.email,
+          doctor.patientProfile?.firstName,
+          doctor.patientProfile?.lastName
+        ),
       })),
     });
   } catch (err) {
@@ -415,6 +454,9 @@ export async function updateAppointment(req, res) {
       location: typeof location === "string" ? location.trim() || null : appt.location,
       notes: typeof notes === "string" ? notes.trim() || null : appt.notes,
     });
+
+    await ReminderSchedulerService.scheduleAppointmentReminder(appt);
+    await NotificationService.notifyAppointmentUpdate(appt.patientId, appt.id, "Your appointment details (time or location) have been updated.");
 
     return res.json(appt);
   } catch (err) {
@@ -470,6 +512,21 @@ export async function updateAppointmentStatus(req, res) {
       status,
       notes: typeof notes === "string" ? notes.trim() || appt.notes : appt.notes,
     });
+
+    if (status === 'scheduled') {
+      await ReminderSchedulerService.scheduleAppointmentReminder(appt);
+    }
+
+    if (status === 'cancelled' || status === 'completed' || status === 'denied') {
+      await ReminderSchedulerService.clearPendingReminders({
+        userId: appt.patientId,
+        type: 'appointment',
+        relatedId: appt.id,
+      });
+    }
+
+    await NotificationService.notifyAppointmentUpdate(appt.patientId, appt.id, `Your appointment status has been updated to ${status}.`);
+
     return res.json(appt);
   } catch (err) {
     return res.status(500).json({ message: err.message || "Failed to update appointment status." });
@@ -626,8 +683,18 @@ export async function getMyAppointments(req, res) {
     const appointments = await Appointment.findAll({
       where,
       include: [
-        { model: User, as: "doctor", attributes: ["id", "email"] },
-        { model: User, as: "patient", attributes: ["id", "email"] },
+        {
+          model: User,
+          as: "doctor",
+          attributes: ["id", "email"],
+          include: [{ model: PatientProfile, as: "patientProfile", attributes: ["firstName", "lastName"] }],
+        },
+        {
+          model: User,
+          as: "patient",
+          attributes: ["id", "email"],
+          include: [{ model: PatientProfile, as: "patientProfile", attributes: ["firstName", "lastName"] }],
+        },
       ],
       order: [["startsAt", "ASC"]],
       limit: 200,
@@ -646,14 +713,22 @@ export async function getMyAppointments(req, res) {
           ? {
               id: a.doctor.id,
               email: a.doctor.email,
-              displayName: buildDisplayName(a.doctor.email, null, null),
+              displayName: buildDisplayName(
+                a.doctor.email,
+                a.doctor.patientProfile?.firstName,
+                a.doctor.patientProfile?.lastName
+              ),
             }
           : null,
         patient: a.patient
           ? {
               id: a.patient.id,
               email: a.patient.email,
-              displayName: buildDisplayName(a.patient.email, null, null),
+              displayName: buildDisplayName(
+                a.patient.email,
+                a.patient.patientProfile?.firstName,
+                a.patient.patientProfile?.lastName
+              ),
             }
           : null,
       })),

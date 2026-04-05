@@ -6,9 +6,12 @@ import {
     Conversation,
     ConversationParticipant,
     Message,
+    CommunicationContext,
     DoctorPatientAssignment,
     CaregiverPatientPermission,
 } from "../models/index.js";
+
+let messagesContextColumnSupported = null;
 
 function buildDisplayName(email, firstName, lastName) {
     return [firstName, lastName].filter(Boolean).join(" ").trim() || email;
@@ -55,6 +58,29 @@ async function ensureConversationMember(conversationId, userId) {
         where: { conversationId, userId },
     });
     return !!membership;
+}
+
+async function supportsMessageContextColumn() {
+    if (messagesContextColumnSupported !== null) {
+        return messagesContextColumnSupported;
+    }
+
+    try {
+        const description = await sequelize.getQueryInterface().describeTable("messages");
+        messagesContextColumnSupported = !!description?.contextId;
+    } catch {
+        messagesContextColumnSupported = false;
+    }
+
+    return messagesContextColumnSupported;
+}
+
+async function getMessageAttributes() {
+    const attributes = ["id", "conversationId", "senderId", "body", "sentAt"];
+    if (await supportsMessageContextColumn()) {
+        attributes.push("contextId");
+    }
+    return attributes;
 }
 
 async function canStartConversation(requester, recipientId, patientId = null) {
@@ -241,6 +267,7 @@ export const getConversations = async (req, res) => {
 
                 const lastMessage = await Message.findOne({
                     where: { conversationId: conversation.id },
+                    attributes: await getMessageAttributes(),
                     order: [["sentAt", "DESC"]],
                     include: [
                         {
@@ -398,6 +425,7 @@ export const getConversationMessages = async (req, res) => {
 
         const messages = await Message.findAll({
             where: { conversationId },
+            attributes: await getMessageAttributes(),
             include: [
                 {
                     model: User,
@@ -426,9 +454,29 @@ export const sendMessage = async (req, res) => {
         const { id: conversationId } = req.params;
         const userId = req.user.id;
         const body = cleanBody(req.body.body);
+        const providedContextId = cleanBody(req.body.contextId);
+        const contextType = cleanBody(req.body.contextType);
+        const contextRelatedId = cleanBody(req.body.contextRelatedId);
+        const contextMetadata =
+            req.body.contextMetadata && typeof req.body.contextMetadata === "object"
+                ? req.body.contextMetadata
+                : {};
+        const allowedContextTypes = new Set([
+            "appointment",
+            "symptom",
+            "medication",
+            "caregiver_invite",
+            "care_concern",
+            "diagnosis",
+            "medical_note",
+        ]);
 
         if (!body) {
             return res.status(400).json({ message: "Message body is required." });
+        }
+
+        if (contextType && !allowedContextTypes.has(contextType)) {
+            return res.status(400).json({ message: "Invalid contextType." });
         }
 
         const isMember = await ensureConversationMember(conversationId, userId);
@@ -441,16 +489,42 @@ export const sendMessage = async (req, res) => {
             return res.status(404).json({ message: "Conversation not found." });
         }
 
-        const message = await Message.create({
+        let contextId = null;
+        if (providedContextId) {
+            contextId = providedContextId;
+        } else if (contextType && contextRelatedId) {
+            try {
+                const context = await CommunicationContext.create({
+                    type: contextType,
+                    relatedId: contextRelatedId,
+                    metadata: contextMetadata,
+                });
+                contextId = context.id;
+            } catch (contextErr) {
+                console.warn("sendMessage context attachment skipped:", contextErr.message);
+                contextId = null;
+            }
+        }
+
+        const messagePayload = {
             conversationId,
             senderId: userId,
             body,
             sentAt: new Date(),
+        };
+
+        if (contextId && (await supportsMessageContextColumn())) {
+            messagePayload.contextId = contextId;
+        }
+
+        const message = await Message.create(messagePayload, {
+            fields: Object.keys(messagePayload),
         });
 
         await conversation.update({ updatedAt: new Date() });
 
         const fullMessage = await Message.findByPk(message.id, {
+            attributes: await getMessageAttributes(),
             include: [
                 {
                     model: User,

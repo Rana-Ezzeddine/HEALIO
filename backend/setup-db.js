@@ -1,5 +1,6 @@
 import sequelize, { testConnection } from './database.js';
-import Medication from './models/Medication.js';
+import './src/models/index.js';
+import Medication from './src/models/Medication.js';
 
 const seedData = [
   {
@@ -41,10 +42,22 @@ async function setupDatabase() {
     await sequelize.sync({ force: true }); // This will drop and recreate tables
     console.log('✓ Database schema synchronized');
 
+    console.log('\nCreating dummy patient...');
+    const User = (await import('./src/models/User.js')).default;
+    const dummyPatient = await User.create({
+      firstName: 'Dummy',
+      lastName: 'Patient',
+      email: 'patient' + Date.now() + '@example.com',
+      passwordHash: 'hashed',
+      role: 'patient',
+      isVerified: true
+    });
+    console.log('Dummy patient created:', dummyPatient.id);
+
     console.log('\nSeeding database with sample data...');
     
     for (const med of seedData) {
-      await Medication.create(med);
+      await Medication.create({ ...med, patientId: dummyPatient.id });
       console.log(`✓ Added ${med.name}`);
     }
     

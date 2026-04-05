@@ -33,9 +33,15 @@ export function getConversationMessages(conversationId) {
   return request(`/api/conversations/${conversationId}/messages`);
 }
 
-export function sendConversationMessage(conversationId, body) {
+export function sendConversationMessage(conversationId, body, options = {}) {
   return request(`/api/conversations/${conversationId}/messages`, {
     method: "POST",
-    body: JSON.stringify({ body }),
+    body: JSON.stringify({
+      body,
+      contextId: options.contextId,
+      contextType: options.contextType,
+      contextRelatedId: options.contextRelatedId,
+      contextMetadata: options.contextMetadata,
+    }),
   });
 }

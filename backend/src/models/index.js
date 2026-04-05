@@ -21,10 +21,14 @@ import Reminder from './Reminder.js';
 import ActivityLog from './ActivityLog.js';
 import CaregiverNote from './CaregiverNote.js';
 import PasswordResetToken from './PasswordResetToken.js';
+import CommunicationContext from './CommunicationContext.js';
+import Notification from './Notification.js';
 
 import CaregiverInvite from './CaregiverInvite.js';
 
 import Availability from './Availability.js';
+import RecentContext from './RecentContext.js';
+import ApiKey from './ApiKey.js';
 
 
 // ========================================
@@ -278,6 +282,71 @@ CaregiverInvite.belongsTo(User, {
   as: 'caregiver',
 });
 
+// User ↔ Notifications (1:Many)
+User.hasMany(Notification, {
+  foreignKey: 'userId',
+  as: 'notifications',
+  onDelete: 'CASCADE'
+});
+Notification.belongsTo(User, {
+  foreignKey: 'userId',
+  as: 'user'
+});
+
+// CommunicationContext ↔ Messages (1:Many)
+CommunicationContext.hasMany(Message, {
+  foreignKey: 'contextId',
+  as: 'messages',
+  onDelete: 'SET NULL'
+});
+Message.belongsTo(CommunicationContext, {
+  foreignKey: 'contextId',
+  as: 'context'
+});
+
+// CommunicationContext ↔ Notifications (1:Many)
+CommunicationContext.hasMany(Notification, {
+  foreignKey: 'contextId',
+  as: 'notifications',
+  onDelete: 'SET NULL'
+});
+Notification.belongsTo(CommunicationContext, {
+  foreignKey: 'contextId',
+  as: 'context'
+});
+
+// RecentContext ↔ User (1:Many for owner, 1:Many for patient)
+User.hasMany(RecentContext, {
+  foreignKey: 'userId',
+  as: 'recentContexts',
+  onDelete: 'CASCADE'
+});
+RecentContext.belongsTo(User, {
+  foreignKey: 'userId',
+  as: 'user'
+});
+
+User.hasMany(RecentContext, {
+  foreignKey: 'patientId',
+  as: 'patientContexts',
+  onDelete: 'CASCADE'
+});
+RecentContext.belongsTo(User, {
+  foreignKey: 'patientId',
+  as: 'patient'
+});
+
+// ApiKey ↔ User (1:Many)
+User.hasMany(ApiKey, {
+  foreignKey: 'ownerId',
+  as: 'apiKeys',
+  onDelete: 'CASCADE'
+});
+ApiKey.belongsTo(User, {
+  foreignKey: 'ownerId',
+  as: 'owner'
+});
+
 // ========================================
 // EXPORT ALL MODELS
 // ========================================
@@ -300,6 +369,10 @@ export {
   CaregiverNote,
   CaregiverInvite,
   Availability,
+  CommunicationContext,
+  Notification,
+  RecentContext,
+  ApiKey,
 };
 
 export default {
@@ -320,4 +393,8 @@ export default {
   CaregiverNote,
   CaregiverInvite,
   Availability,
+  CommunicationContext,
+  Notification,
+  RecentContext,
+  ApiKey,
 };

@@ -51,6 +51,30 @@ export function getDoctorAvailability({
   return request(`/api/appointments/doctor/availability?${params.toString()}`);
 }
 
+export function getMyDoctorAvailability() {
+  return request("/api/doctors/availability");
+}
+
+export function createDoctorAvailability(payload) {
+  return request("/api/doctors/availability", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateDoctorAvailability(id, payload) {
+  return request(`/api/doctors/availability/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteDoctorAvailability(id) {
+  return request(`/api/doctors/availability/${id}`, {
+    method: "DELETE",
+  });
+}
+
 export function createAppointment(payload) {
   return request("/api/appointments", {
     method: "POST",
@@ -100,5 +124,12 @@ export function reviewAppointmentRequest(id, status, notes) {
   return request(`/api/appointments/${id}/status`, {
     method: "PATCH",
     body: JSON.stringify({ status, notes }),
+  });
+}
+
+export function suggestAppointmentSlot(id, payload) {
+  return request(`/api/appointments/requests/${id}/suggest-slot`, {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }

@@ -1,15 +1,48 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import {
   createAppointment,
+  createDoctorAvailability,
+  deleteDoctorAvailability,
   getDoctorAvailability,
   getMyAppointments,
+  getMyDoctorAvailability,
   reviewAppointmentRequest,
+  suggestAppointmentSlot,
   updateAppointmentStatus,
+  updateDoctorAvailability,
 } from "../api/appointments";
 import { apiUrl, authHeaders } from "../api/http";
 
 const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const durationOptions = [15, 30, 45, 60];
+const plannerDays = [1, 2, 3, 4, 5, 6];
+const plannerStartHour = 0;
+const plannerEndHour = 24;
+const availabilityPresets = [
+  { label: "Morning clinic", startTime: "08:00", endTime: "12:00" },
+  { label: "Afternoon clinic", startTime: "13:00", endTime: "17:00" },
+  { label: "Full day", startTime: "08:00", endTime: "17:00" },
+  { label: "Evening clinic", startTime: "17:00", endTime: "22:00" },
+];
+
+function buildPlannerSlots(slotMinutes) {
+  return Array.from(
+    { length: ((plannerEndHour - plannerStartHour) * 60) / slotMinutes },
+    (_, index) => {
+      const totalMinutes = plannerStartHour * 60 + index * slotMinutes;
+      const hour = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
+      const minute = String(totalMinutes % 60).padStart(2, "0");
+      return `${hour}:${minute}`;
+    }
+  );
+}
+
+function getPreferredDuration() {
+  if (typeof window === "undefined") return "30";
+  return localStorage.getItem("doctorPreferredSlotDuration") || "30";
+}
 
 function toDateKey(dateLike) {
   const date = new Date(dateLike);
@@ -34,6 +67,13 @@ function formatDateLabel(dateKey) {
   });
 }
 
+function formatShortDateLabel(dateKey) {
+  return new Date(`${dateKey}T00:00:00`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
 function statusClass(status) {
   if (status === "requested") return "bg-amber-100 text-amber-700";
   if (status === "scheduled") return "bg-emerald-100 text-emerald-700";
@@ -53,7 +93,119 @@ function statusLabel(status) {
 }
 
 function patientLabel(patientRecord) {
-  return patientRecord.profile?.displayName || patientRecord.patient?.email || patientRecord.email || "Patient";
+  return patientRecord.profile?.displayName || patientRecord.patient?.displayName || patientRecord.patient?.email || patientRecord.email || "Patient";
+}
+function MetricCard({ label, value, hint, tone = "sky" }) {
+  const tones = {
+    sky: "from-sky-500 to-cyan-400",
+    emerald: "from-emerald-500 to-teal-400",
+    amber: "from-amber-500 to-orange-400",
+    rose: "from-rose-500 to-pink-400",
+  };
+  return (
+    <div className="rounded-2xl border border-white/15 bg-white/10 p-3 backdrop-blur-sm">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70">{label}</p>
+      <p className="mt-2 text-2xl font-black text-white">{value}</p>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/15">
+        <div className={`h-full rounded-full bg-gradient-to-r ${tones[tone] || tones.sky}`} style={{ width: "100%" }} />
+      </div>
+      <p className="mt-2 text-[11px] text-white/70">{hint}</p>
+    </div>
+  );
+}
+function SoftPill({ label, value, tone = "slate" }) {
+  const tones = {
+    slate: "bg-slate-100 text-slate-700",
+    sky: "bg-sky-100 text-sky-700",
+    emerald: "bg-emerald-100 text-emerald-700",
+    amber: "bg-amber-100 text-amber-700",
+    rose: "bg-rose-100 text-rose-700",
+    violet: "bg-violet-100 text-violet-700",
+  };
+  return <span className={`rounded-full px-3 py-1 text-xs font-semibold ${tones[tone] || tones.slate}`}>{label}: {value}</span>;
+}
+
+function availabilityTypeLabel(type) {
+  if (type === "workHours") return "Work hours";
+  if (type === "break") return "Break";
+  if (type === "blocked") return "Blocked";
+  return type || "Availability";
+}
+
+function availabilityTimingLabel(entry) {
+  if (entry.type === "workHours") {
+    return `${weekDays[entry.dayOfWeek] || "Day"} • ${entry.startTime.slice(0, 5)} - ${entry.endTime.slice(0, 5)}`;
+  }
+  return `${entry.specificDate || "Date"} • ${entry.startTime.slice(0, 5)} - ${entry.endTime.slice(0, 5)}`;
+}
+
+function toMinutes(timeValue) {
+  const [hours, minutes] = String(timeValue || "00:00").split(":").map(Number);
+  return (hours || 0) * 60 + (minutes || 0);
+}
+
+function plannerKey(dayOfWeek, slotTime) {
+  return `${dayOfWeek}-${slotTime}`;
+}
+
+function buildPlannerSelection(entries, slots, slotMinutes) {
+  const selection = {};
+  for (const entry of entries) {
+    if (entry.type !== "workHours") continue;
+    const start = toMinutes(entry.startTime);
+    const end = toMinutes(entry.endTime);
+    const day = Number(entry.dayOfWeek);
+
+    for (const slot of slots) {
+      const slotStart = toMinutes(slot);
+      const slotEnd = slotStart + slotMinutes;
+      if (slotStart >= start && slotEnd <= end) {
+        selection[plannerKey(day, slot)] = true;
+      }
+    }
+  }
+  return selection;
+}
+
+function compressPlannerSelection(selection, slots, slotMinutes) {
+  return plannerDays.flatMap((dayOfWeek) => {
+    const activeSlots = slots.filter((slot) => selection[plannerKey(dayOfWeek, slot)]);
+    if (!activeSlots.length) return [];
+
+    const ranges = [];
+    let rangeStart = activeSlots[0];
+    let previous = activeSlots[0];
+
+    for (let index = 1; index < activeSlots.length; index += 1) {
+      const current = activeSlots[index];
+      if (toMinutes(current) !== toMinutes(previous) + slotMinutes) {
+        ranges.push({
+          dayOfWeek,
+          startTime: rangeStart,
+          endTime: previous,
+        });
+        rangeStart = current;
+      }
+      previous = current;
+    }
+
+    ranges.push({
+      dayOfWeek,
+      startTime: rangeStart,
+      endTime: previous,
+    });
+
+    return ranges.map((range) => {
+      const endMinutes = toMinutes(range.endTime) + slotMinutes;
+      const endHour = String(Math.floor(endMinutes / 60)).padStart(2, "0");
+      const endMinute = String(endMinutes % 60).padStart(2, "0");
+      return {
+        dayOfWeek: range.dayOfWeek,
+        startTime: range.startTime,
+        endTime: `${endHour}:${endMinute}`,
+      };
+    });
+  });
 }
 
 async function fetchAssignedPatients() {
@@ -68,6 +220,7 @@ async function fetchAssignedPatients() {
 }
 
 export default function DoctorAppointments() {
+  const location = useLocation();
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -83,11 +236,39 @@ export default function DoctorAppointments() {
   const [availableSlots, setAvailableSlots] = useState([]);
   const [statusLoadingId, setStatusLoadingId] = useState("");
   const [decisionNotes, setDecisionNotes] = useState({});
+  const [suggestOpenId, setSuggestOpenId] = useState("");
+  const [suggestLoadingId, setSuggestLoadingId] = useState("");
+  const [suggestSlotsLoading, setSuggestSlotsLoading] = useState(false);
+  const [suggestSlots, setSuggestSlots] = useState([]);
+  const [suggestForm, setSuggestForm] = useState({
+    appointmentId: "",
+    date: "",
+    duration: getPreferredDuration(),
+    timeSlot: "",
+    note: "",
+  });
+  const [availabilityEntries, setAvailabilityEntries] = useState([]);
+  const [preferredDuration, setPreferredDuration] = useState(getPreferredDuration());
+  const [availabilityLoading, setAvailabilityLoading] = useState(true);
+  const [availabilityError, setAvailabilityError] = useState("");
+  const [availabilitySaving, setAvailabilitySaving] = useState(false);
+  const [plannerSaving, setPlannerSaving] = useState(false);
+  const [plannerSelection, setPlannerSelection] = useState({});
+  const [editingAvailabilityId, setEditingAvailabilityId] = useState("");
+  const [availabilityForm, setAvailabilityForm] = useState({
+    type: "break",
+    dayOfWeek: "1",
+    selectedWeekdays: ["1"],
+    specificDate: "",
+    startTime: "09:00",
+    endTime: "17:00",
+    reason: "",
+  });
   const [form, setForm] = useState({
     patientId: "",
     date: "",
     timeSlot: "",
-    duration: "30",
+    duration: getPreferredDuration(),
     location: "",
     notes: "",
   });
@@ -103,26 +284,53 @@ export default function DoctorAppointments() {
 
   async function loadPageData() {
     setLoading(true);
+    setAvailabilityLoading(true);
     setError("");
+    setAvailabilityError("");
 
-    try {
-      const [appointmentsData, patientsData] = await Promise.all([
-        getMyAppointments(),
-        fetchAssignedPatients(),
-      ]);
+    const [appointmentsResult, patientsResult, availabilityResult] = await Promise.allSettled([
+      getMyAppointments(),
+      fetchAssignedPatients(),
+      getMyDoctorAvailability(),
+    ]);
 
-      setAppointments(appointmentsData.appointments || []);
-      setAssignedPatients(patientsData.patients || []);
-    } catch (err) {
-      setError(err.message || "Failed to load appointments.");
-    } finally {
-      setLoading(false);
+    if (appointmentsResult.status === "fulfilled") {
+      setAppointments(appointmentsResult.value.appointments || []);
+    } else {
+      setAppointments([]);
+      setError(appointmentsResult.reason?.message || "Failed to load appointments.");
     }
+
+    if (patientsResult.status === "fulfilled") {
+      setAssignedPatients(patientsResult.value.patients || []);
+    } else {
+      setAssignedPatients([]);
+      setError((current) => current || patientsResult.reason?.message || "Failed to load assigned patients.");
+    }
+
+    if (availabilityResult.status === "fulfilled") {
+      setAvailabilityEntries(availabilityResult.value.availabilities || []);
+    } else {
+      setAvailabilityEntries([]);
+      setAvailabilityError(availabilityResult.reason?.message || "Failed to load availability.");
+    }
+
+    setLoading(false);
+    setAvailabilityLoading(false);
   }
 
   useEffect(() => {
     loadPageData();
   }, []);
+
+  useEffect(() => {
+    if (location.hash !== "#schedule-patient") return;
+    const scheduleSection = document.getElementById("schedule-patient");
+    if (!scheduleSection) return;
+    window.requestAnimationFrame(() => {
+      scheduleSection.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [location.hash, loading]);
 
   useEffect(() => {
     let cancelled = false;
@@ -176,6 +384,56 @@ export default function DoctorAppointments() {
     };
   }, [form.date, form.duration]);
 
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSuggestedSlots() {
+      if (!suggestOpenId || !suggestForm.date) {
+        setSuggestSlots([]);
+        return;
+      }
+
+      const durationMinutes = Number(suggestForm.duration || getPreferredDuration());
+      if (!Number.isInteger(durationMinutes) || durationMinutes <= 0) {
+        setSuggestSlots([]);
+        return;
+      }
+
+      try {
+        setSuggestSlotsLoading(true);
+        const dayStart = new Date(`${suggestForm.date}T00:00:00`);
+        const dayEnd = new Date(dayStart);
+        dayEnd.setDate(dayEnd.getDate() + 1);
+
+        const data = await getDoctorAvailability({
+          from: dayStart.toISOString(),
+          to: dayEnd.toISOString(),
+          slotMinutes: durationMinutes,
+        });
+
+        if (!cancelled) {
+          const now = Date.now();
+          setSuggestSlots((data.slots || []).filter((slot) => new Date(slot.startsAt).getTime() > now));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setSuggestSlots([]);
+          setError((current) => current || err.message || "Failed to load suggested slots.");
+        }
+      } finally {
+        if (!cancelled) {
+          setSuggestSlotsLoading(false);
+        }
+      }
+    }
+
+    loadSuggestedSlots();
+    return () => {
+      cancelled = true;
+    };
+  }, [suggestOpenId, suggestForm.date, suggestForm.duration]);
+
   const requestedAppointments = useMemo(() => {
     return appointments
       .filter((appointment) => appointment.status === "requested")
@@ -210,6 +468,37 @@ export default function DoctorAppointments() {
       return accumulator;
     }, {});
   }, [appointments]);
+  const selectedDayAppointmentCount = appointmentCountsByDate[selectedDateKey] || 0;
+
+  const availabilityByType = useMemo(() => ({
+    workHours: availabilityEntries.filter((entry) => entry.type === "workHours"),
+    breaks: availabilityEntries.filter((entry) => entry.type === "break"),
+    blocked: availabilityEntries.filter((entry) => entry.type === "blocked"),
+  }), [availabilityEntries]);
+
+  const groupedWorkHours = useMemo(() => {
+    const grouped = new Map();
+
+    for (const entry of availabilityByType.workHours) {
+      const dayIndex = Number(entry.dayOfWeek);
+      const dayLabel = weekDays[dayIndex] || "Day";
+      const current = grouped.get(dayLabel) || [];
+      current.push(`${entry.startTime.slice(0, 5)}-${entry.endTime.slice(0, 5)}`);
+      grouped.set(dayLabel, current);
+    }
+
+    return Array.from(grouped.entries()).map(([dayLabel, ranges]) => ({
+      dayLabel,
+      ranges,
+    }));
+  }, [availabilityByType.workHours]);
+
+  const plannerSlotMinutes = useMemo(() => Number(preferredDuration || "30"), [preferredDuration]);
+  const plannerSlots = useMemo(() => buildPlannerSlots(plannerSlotMinutes), [plannerSlotMinutes]);
+
+  useEffect(() => {
+    setPlannerSelection(buildPlannerSelection(availabilityEntries, plannerSlots, plannerSlotMinutes));
+  }, [availabilityEntries, plannerSlots, plannerSlotMinutes]);
 
   const monthDays = useMemo(() => {
     const year = visibleMonth.getFullYear();
@@ -308,43 +597,235 @@ export default function DoctorAppointments() {
     }
   }
 
+  function openSuggestSlot(appointment) {
+    const defaultDate = toDateKey(appointment.startsAt);
+    setSuggestOpenId(appointment.id);
+    setSuggestForm({
+      appointmentId: appointment.id,
+      date: defaultDate,
+      duration: String(Math.round((new Date(appointment.endsAt) - new Date(appointment.startsAt)) / 60000) || Number(getPreferredDuration())),
+      timeSlot: "",
+      note: decisionNotes[appointment.id] || "",
+    });
+    setError("");
+  }
+
+  function closeSuggestSlot() {
+    setSuggestOpenId("");
+    setSuggestSlots([]);
+    setSuggestSlotsLoading(false);
+  }
+
+  async function handleSuggestSlot(appointment) {
+    if (!suggestForm.timeSlot) {
+      setError("Select an alternative slot before sending the suggestion.");
+      return;
+    }
+
+    try {
+      setSuggestLoadingId(appointment.id);
+      const startsAt = new Date(suggestForm.timeSlot);
+      const durationMinutes = Number(suggestForm.duration || getPreferredDuration());
+      const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
+      await suggestAppointmentSlot(appointment.id, {
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString(),
+        notes: suggestForm.note,
+      });
+      setDecisionNotes((current) => ({ ...current, [appointment.id]: suggestForm.note }));
+      closeSuggestSlot();
+      await loadPageData();
+    } catch (err) {
+      setError(err.message || "Failed to suggest another slot.");
+    } finally {
+      setSuggestLoadingId("");
+    }
+  }
+
   function changeMonth(direction) {
     setVisibleMonth(
       (previousMonth) => new Date(previousMonth.getFullYear(), previousMonth.getMonth() + direction, 1)
     );
   }
 
+  function resetAvailabilityForm() {
+    setAvailabilityForm({
+      type: "break",
+      dayOfWeek: "1",
+      selectedWeekdays: [],
+      specificDate: "",
+      startTime: "09:00",
+      endTime: "17:00",
+      reason: "",
+    });
+    setEditingAvailabilityId("");
+  }
+
+  function handlePreferredDurationChange(value) {
+    setPreferredDuration(value);
+    localStorage.setItem("doctorPreferredSlotDuration", value);
+    setForm((current) => ({ ...current, duration: value, timeSlot: "" }));
+  }
+
+  function startEditAvailability(entry) {
+    setEditingAvailabilityId(entry.id);
+    setAvailabilityForm({
+      type: entry.type,
+      dayOfWeek: entry.dayOfWeek !== null && entry.dayOfWeek !== undefined ? String(entry.dayOfWeek) : "1",
+      selectedWeekdays:
+        entry.dayOfWeek !== null && entry.dayOfWeek !== undefined ? [String(entry.dayOfWeek)] : [],
+      specificDate: entry.specificDate || "",
+      startTime: entry.startTime?.slice(0, 5) || "09:00",
+      endTime: entry.endTime?.slice(0, 5) || "17:00",
+      reason: entry.reason || "",
+    });
+    setAvailabilityError("");
+  }
+
+  async function handleSubmitAvailability(event) {
+    event.preventDefault();
+    setAvailabilityError("");
+
+    if (availabilityForm.endTime <= availabilityForm.startTime) {
+      setAvailabilityError("End time must be after start time.");
+      return;
+    }
+
+    if (availabilityForm.type === "workHours" && (availabilityForm.selectedWeekdays || []).length === 0) {
+      setAvailabilityError("Select at least one weekday for work hours.");
+      return;
+    }
+
+    if ((availabilityForm.type === "break" || availabilityForm.type === "blocked") && !availabilityForm.specificDate) {
+      setAvailabilityError("Select a date for breaks or blocked time.");
+      return;
+    }
+
+    const basePayload = {
+      type: availabilityForm.type,
+      specificDate: availabilityForm.type === "workHours" ? null : availabilityForm.specificDate,
+      startTime: availabilityForm.startTime,
+      endTime: availabilityForm.endTime,
+      reason: availabilityForm.reason,
+    };
+
+    try {
+      setAvailabilitySaving(true);
+      if (editingAvailabilityId) {
+        await updateDoctorAvailability(editingAvailabilityId, {
+          ...basePayload,
+          dayOfWeek:
+            availabilityForm.type === "workHours"
+              ? Number((availabilityForm.selectedWeekdays || [availabilityForm.dayOfWeek])[0])
+              : null,
+        });
+      } else {
+        if (availabilityForm.type === "workHours") {
+          const weekdays = availabilityForm.selectedWeekdays || [];
+          await Promise.all(
+            weekdays.map((weekday) =>
+              createDoctorAvailability({
+                ...basePayload,
+                dayOfWeek: Number(weekday),
+              })
+            )
+          );
+        } else {
+          await createDoctorAvailability({
+            ...basePayload,
+            dayOfWeek: null,
+          });
+        }
+      }
+      resetAvailabilityForm();
+      await loadPageData();
+    } catch (err) {
+      setAvailabilityError(err.message || "Failed to save availability.");
+    } finally {
+      setAvailabilitySaving(false);
+    }
+  }
+
+  async function handleDeleteAvailability(id) {
+    try {
+      setAvailabilitySaving(true);
+      setAvailabilityError("");
+      await deleteDoctorAvailability(id);
+      if (editingAvailabilityId === id) {
+        resetAvailabilityForm();
+      }
+      await loadPageData();
+    } catch (err) {
+      setAvailabilityError(err.message || "Failed to delete availability.");
+    } finally {
+      setAvailabilitySaving(false);
+    }
+  }
+
+  async function handleSaveWeeklyPlanner() {
+    const ranges = compressPlannerSelection(plannerSelection, plannerSlots, plannerSlotMinutes);
+
+    if (!ranges.length) {
+      setAvailabilityError("Choose at least one weekly slot before saving.");
+      return;
+    }
+
+    try {
+      setPlannerSaving(true);
+      setAvailabilityError("");
+      const existingWorkHours = availabilityByType.workHours || [];
+
+      await Promise.all(existingWorkHours.map((entry) => deleteDoctorAvailability(entry.id)));
+      await Promise.all(
+        ranges.map((range) =>
+          createDoctorAvailability({
+            type: "workHours",
+            dayOfWeek: range.dayOfWeek,
+            specificDate: null,
+            startTime: range.startTime,
+            endTime: range.endTime,
+            reason: "Saved from weekly planner",
+          })
+        )
+      );
+      await loadPageData();
+    } catch (err) {
+      setAvailabilityError(err.message || "Failed to save weekly planner.");
+    } finally {
+      setPlannerSaving(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
 
-      <main className="pt-28 max-w-6xl mx-auto px-6 py-8">
-        <div className="mb-6 flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-3xl text-slate-800 font-bold">Appointments</h1>
-            <p className="text-slate-500 mt-1">
-              Review patient appointment requests, schedule visits, and manage appointment status updates.
-            </p>
+      <main className="mx-auto max-w-6xl px-6 pb-8 pt-28">
+        <section className="mb-6 rounded-[2rem] bg-gradient-to-r from-slate-900 via-sky-800 to-cyan-600 p-6 text-white shadow-xl">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.25em] text-white/75">Doctor Appointments</p>
+              <h1 className="mt-2 text-3xl font-black">Scheduling and Requests</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-white/85">
+                Review requests, schedule patients, and shape availability from one page.
+              </p>
+              <div className="mt-4">
+                <Link
+                  to="/doctor-calendar"
+                  className="inline-flex rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-100"
+                >
+                  Open calendar page
+                </Link>
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 xl:w-[360px]">
+              <MetricCard label="Requests" value={requestedAppointments.length} hint="Awaiting review" tone="amber" />
+              <MetricCard label="Scheduled" value={scheduledCount} hint="Confirmed visits" tone="emerald" />
+              <MetricCard label="Completed" value={completedCount} hint="Closed visits" tone="sky" />
+              <MetricCard label="Cancelled" value={cancelledCount} hint="Dropped or denied" tone="rose" />
+            </div>
           </div>
-          <div className="flex gap-3">
-            <div className="rounded-2xl bg-white border border-slate-200 px-4 py-3 text-right">
-              <p className="text-xs text-slate-500">Requests</p>
-              <p className="text-2xl font-bold text-slate-800">{requestedAppointments.length}</p>
-            </div>
-            <div className="rounded-2xl bg-white border border-slate-200 px-4 py-3 text-right">
-              <p className="text-xs text-slate-500">Scheduled</p>
-              <p className="text-2xl font-bold text-slate-800">{scheduledCount}</p>
-            </div>
-            <div className="rounded-2xl bg-white border border-slate-200 px-4 py-3 text-right">
-              <p className="text-xs text-slate-500">Completed</p>
-              <p className="text-2xl font-bold text-slate-800">{completedCount}</p>
-            </div>
-            <div className="rounded-2xl bg-white border border-slate-200 px-4 py-3 text-right">
-              <p className="text-xs text-slate-500">Cancelled</p>
-              <p className="text-2xl font-bold text-slate-800">{cancelledCount}</p>
-            </div>
-          </div>
-        </div>
+        </section>
 
         {error && (
           <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -352,50 +833,67 @@ export default function DoctorAppointments() {
           </div>
         )}
 
-        <section className="bg-white rounded-3xl shadow p-6 mb-6">
-          <h2 className="text-xl font-semibold text-slate-800 mb-4">Patient Requests</h2>
+        <section className="mb-6 rounded-3xl bg-gradient-to-br from-white to-amber-50 p-6 shadow">
+          <div className="mb-4">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-800">Patient Requests</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Review the requested slot, patient note, location, and your internal review note before approving, denying, or suggesting another time.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <SoftPill label="Pending" value={requestedAppointments.length} tone="amber" />
+                <SoftPill label="Patients" value={assignedPatients.length} tone="sky" />
+              </div>
+            </div>
+          </div>
 
-          <div className="overflow-x-auto">
-            <table className="min-h-full text-sm text-left w-full">
-              <thead className="text-slate-500 border-b">
-                <tr>
-                  <th className="py-3 px-4">Patient</th>
-                  <th className="py-3 px-4">Date</th>
-                  <th className="py-3 px-4">Time</th>
-                  <th className="py-3 px-4">Location</th>
-                  <th className="py-3 px-4">Patient Note</th>
-                  <th className="py-3 px-4">Decision Note</th>
-                  <th className="py-3 px-4">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {loading ? (
-                  <tr>
-                    <td colSpan={7} className="py-6 px-4 text-center text-slate-500">
-                      Loading requests...
-                    </td>
-                  </tr>
-                ) : requestedAppointments.length > 0 ? (
-                  requestedAppointments.map((appointment) => (
-                    <tr key={appointment.id} className="hover:bg-slate-50">
-                      <td className="py-3 px-4 text-slate-800 font-medium">
-                        {patientNameById.get(appointment.patient?.id || appointment.patientId) ||
-                          appointment.patient?.email ||
-                          "Patient"}
-                      </td>
-                      <td className="py-3 px-4 text-slate-700">
-                        {new Date(appointment.startsAt).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
-                      </td>
-                      <td className="py-3 px-4 text-slate-700">{formatTime(appointment.startsAt)}</td>
-                      <td className="py-3 px-4 text-slate-600">{appointment.location || "-"}</td>
-                      <td className="py-3 px-4 text-slate-600">{appointment.notes || "-"}</td>
-                      <td className="py-3 px-4">
-                        <input
-                          type="text"
+          <div className="space-y-4">
+            {loading ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
+                Loading requests...
+              </div>
+            ) : requestedAppointments.length > 0 ? (
+              requestedAppointments.map((appointment) => {
+                const patientName =
+                  patientNameById.get(appointment.patient?.id || appointment.patientId) ||
+                  appointment.patient?.email ||
+                  "Patient";
+                const requestedDuration = Math.round((new Date(appointment.endsAt) - new Date(appointment.startsAt)) / 60000);
+                const isSuggesting = suggestOpenId === appointment.id;
+
+                return (
+                  <div key={appointment.id} className="rounded-3xl border border-slate-200 bg-white/90 p-5 shadow-sm">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-lg font-semibold text-slate-900">{patientName}</h3>
+                          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">Requested</span>
+                        </div>
+                        <p className="mt-2 text-sm text-slate-500">
+                          Requested slot: {formatDateLabel(toDateKey(appointment.startsAt))} at {formatTime(appointment.startsAt)}
+                          {appointment.endsAt ? ` for ${requestedDuration} minutes` : ""}
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <SoftPill label="Duration" value={`${requestedDuration} min`} tone="sky" />
+                          <SoftPill label="Day" value={formatDateLabel(toDateKey(appointment.startsAt))} tone="slate" />
+                        </div>
+                      </div>
+                      <div className="rounded-2xl bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
+                        <p><span className="font-semibold text-slate-900">Location:</span> {appointment.location || "Not specified"}</p>
+                        <p className="mt-1"><span className="font-semibold text-slate-900">Appointment ID:</span> {appointment.id.slice(0, 8)}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                      <div className="rounded-2xl bg-slate-50 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Patient note</p>
+                        <p className="mt-2 text-sm text-slate-700">{appointment.notes || "No note provided by the patient."}</p>
+                      </div>
+                      <div className="rounded-2xl bg-slate-50 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Doctor review note</p>
+                        <textarea
                           value={decisionNotes[appointment.id] || ""}
                           onChange={(event) =>
                             setDecisionNotes((current) => ({
@@ -403,49 +901,139 @@ export default function DoctorAppointments() {
                               [appointment.id]: event.target.value,
                             }))
                           }
-                          placeholder="Optional note"
-                          className="w-52 rounded-lg border border-slate-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-sky-500"
+                          placeholder="Add context for your decision or a message for the patient"
+                          rows={3}
+                          className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
                         />
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex gap-2">
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={statusLoadingId === appointment.id || suggestLoadingId === appointment.id}
+                        onClick={() => handleReviewRequest(appointment.id, "scheduled")}
+                        className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-70"
+                      >
+                        Approve requested slot
+                      </button>
+                      <button
+                        type="button"
+                        disabled={statusLoadingId === appointment.id || suggestLoadingId === appointment.id}
+                        onClick={() => handleReviewRequest(appointment.id, "denied")}
+                        className="rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-600 disabled:opacity-70"
+                      >
+                        Deny request
+                      </button>
+                      <button
+                        type="button"
+                        disabled={statusLoadingId === appointment.id || suggestLoadingId === appointment.id}
+                        onClick={() => (isSuggesting ? closeSuggestSlot() : openSuggestSlot(appointment))}
+                        className="rounded-xl border border-sky-300 bg-white px-4 py-2 text-sm font-semibold text-sky-700 hover:bg-sky-50 disabled:opacity-70"
+                      >
+                        {isSuggesting ? "Close suggestion" : "Suggest another slot"}
+                      </button>
+                    </div>
+
+                    {isSuggesting ? (
+                      <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50/60 p-4">
+                        <div className="mb-3">
+                          <h4 className="text-sm font-semibold text-slate-900">Suggest another slot</h4>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Pick a new date, duration, and available time. The appointment stays in requested state, but its requested slot updates to your suggestion.
+                          </p>
+                        </div>
+
+                        <div className="grid gap-3 md:grid-cols-4">
+                          <input
+                            type="date"
+                            value={suggestForm.date}
+                            onChange={(event) => setSuggestForm((current) => ({ ...current, date: event.target.value, timeSlot: "" }))}
+                            className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                          />
+                          <select
+                            value={suggestForm.duration}
+                            onChange={(event) => setSuggestForm((current) => ({ ...current, duration: event.target.value, timeSlot: "" }))}
+                            className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                          >
+                            {durationOptions.map((minutes) => (
+                              <option key={minutes} value={String(minutes)}>{minutes} minutes</option>
+                            ))}
+                          </select>
+                          <select
+                            value={suggestForm.timeSlot}
+                            onChange={(event) => setSuggestForm((current) => ({ ...current, timeSlot: event.target.value }))}
+                            disabled={!suggestForm.date || suggestSlotsLoading}
+                            className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 md:col-span-2"
+                          >
+                            <option value="">
+                              {!suggestForm.date
+                                ? "Select date first"
+                                : suggestSlotsLoading
+                                ? "Loading suggested slots..."
+                                : suggestSlots.length === 0
+                                ? "No available slots"
+                                : "Select suggested slot"}
+                            </option>
+                            {suggestSlots.map((slot) => (
+                              <option key={slot.startsAt} value={slot.startsAt}>
+                                {formatTime(slot.startsAt)} - {formatTime(slot.endsAt)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <textarea
+                          value={suggestForm.note}
+                          onChange={(event) => setSuggestForm((current) => ({ ...current, note: event.target.value }))}
+                          rows={3}
+                          placeholder="Optional note to explain why you are suggesting another slot"
+                          className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                        />
+
+                        <div className="mt-3 flex flex-wrap gap-2">
                           <button
                             type="button"
-                            disabled={statusLoadingId === appointment.id}
-                            onClick={() => handleReviewRequest(appointment.id, "scheduled")}
-                            className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600 disabled:opacity-70"
+                            onClick={() => handleSuggestSlot(appointment)}
+                            disabled={suggestLoadingId === appointment.id || !suggestForm.timeSlot}
+                            className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-70"
                           >
-                            Approve
+                            {suggestLoadingId === appointment.id ? "Sending..." : "Send suggested slot"}
                           </button>
                           <button
                             type="button"
-                            disabled={statusLoadingId === appointment.id}
-                            onClick={() => handleReviewRequest(appointment.id, "denied")}
-                            className="rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-600 disabled:opacity-70"
+                            onClick={closeSuggestSlot}
+                            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                           >
-                            Deny
+                            Cancel
                           </button>
                         </div>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={7} className="py-6 px-4 text-center text-slate-500">
-                      No pending requests.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })
+            ) : (
+              <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
+                No pending requests.
+              </div>
+            )}
           </div>
         </section>
 
-        <section className="bg-white rounded-3xl shadow p-6 mb-6">
-          <h2 className="text-xl font-semibold text-slate-800 mb-1">Schedule For Assigned Patient</h2>
-          <p className="text-sm text-slate-500 mb-4">
-            Available time slots come from the backend availability endpoint for the selected day.
-          </p>
+        <section id="schedule-patient" className="mb-6 rounded-3xl bg-gradient-to-br from-white to-cyan-50 p-6 shadow">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-800 mb-1">Schedule For Assigned Patient</h2>
+              <p className="text-sm text-slate-500 mb-4">
+                Create a scheduled appointment directly for an assigned patient using your live availability.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <SoftPill label="Selected day" value={form.date || "Not set"} tone="sky" />
+              <SoftPill label="Slots" value={availableSlots.length} tone="emerald" />
+            </div>
+          </div>
 
           <form onSubmit={handleScheduleAppointment} className="grid grid-cols-1 md:grid-cols-6 gap-3">
             <select
@@ -491,10 +1079,9 @@ export default function DoctorAppointments() {
               className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
               required
             >
-              <option value="15">15 minutes</option>
-              <option value="30">30 minutes</option>
-              <option value="45">45 minutes</option>
-              <option value="60">60 minutes</option>
+              {durationOptions.map((minutes) => (
+                <option key={minutes} value={String(minutes)}>{minutes} minutes</option>
+              ))}
             </select>
 
             <select
@@ -558,156 +1145,339 @@ export default function DoctorAppointments() {
           )}
         </section>
 
-        <section className="bg-white rounded-3xl shadow p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
+        <section className="mb-6 rounded-3xl bg-gradient-to-br from-white to-sky-50 p-6 shadow">
+          <div className="flex items-start justify-between gap-4 mb-4">
             <div>
-              <h2 className="text-xl font-semibold text-slate-800 mb-1">Appointments For {formatDateLabel(selectedDateKey)}</h2>
-              <p className="text-sm text-slate-500">Select a date in the calendar to review and update statuses.</p>
-            </div>
-            <button
-              type="button"
-              onClick={loadPageData}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
-            >
-              Refresh
-            </button>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="min-h-full text-sm text-left w-full">
-              <thead className="text-slate-500 border-b">
-                <tr>
-                  <th className="py-3 px-4">Time</th>
-                  <th className="py-3 px-4">Patient</th>
-                  <th className="py-3 px-4">Location</th>
-                  <th className="py-3 px-4">Notes</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {loading ? (
-                  <tr>
-                    <td colSpan={6} className="py-6 px-4 text-center text-slate-500">
-                      Loading appointments...
-                    </td>
-                  </tr>
-                ) : selectedAppointments.length > 0 ? (
-                  selectedAppointments.map((appointment) => (
-                    <tr key={appointment.id} className="hover:bg-slate-50">
-                      <td className="py-3 px-4 text-slate-700 font-medium">{formatTime(appointment.startsAt)}</td>
-                      <td className="py-3 px-4 text-slate-800">
-                        {patientNameById.get(appointment.patient?.id || appointment.patientId) ||
-                          appointment.patient?.displayName ||
-                          appointment.patient?.email ||
-                          "Patient"}
-                      </td>
-                      <td className="py-3 px-4 text-slate-600">{appointment.location || "-"}</td>
-                      <td className="py-3 px-4 text-slate-600">{appointment.notes || "-"}</td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2 py-1 text-xs rounded-full ${statusClass(appointment.status)}`}>
-                          {statusLabel(appointment.status)}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        {appointment.status === "scheduled" ? (
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              disabled={statusLoadingId === appointment.id}
-                              onClick={() => handleStatusChange(appointment.id, "completed")}
-                              className="rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-600 disabled:opacity-70"
-                            >
-                              Complete
-                            </button>
-                            <button
-                              type="button"
-                              disabled={statusLoadingId === appointment.id}
-                              onClick={() => handleStatusChange(appointment.id, "cancelled")}
-                              className="rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-600 disabled:opacity-70"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-slate-400">No action</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={6} className="py-6 px-4 text-center text-slate-500">
-                      No appointments found for this date.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section className="bg-white rounded-3xl shadow p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-slate-800">
-              {visibleMonth.toLocaleString("en-US", { month: "long", year: "numeric" })}
-            </h2>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => changeMonth(-1)}
-                className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
-              >
-                Prev
-              </button>
-              <button
-                type="button"
-                onClick={() => changeMonth(1)}
-                className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-7 gap-2 mb-2">
-            {weekDays.map((day) => (
-              <p key={day} className="text-xs font-semibold text-slate-500 px-2 py-1">
-                {day}
+              <h2 className="text-xl font-semibold text-slate-800 mb-1">Availability Management</h2>
+              <p className="text-sm text-slate-500">
+                Manage the working-time blocks that power patient appointment requests and doctor-side scheduling.
               </p>
+            </div>
+            {editingAvailabilityId ? (
+              <button
+                type="button"
+                onClick={resetAvailabilityForm}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
+              >
+                Cancel edit
+              </button>
+            ) : null}
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Weekly availability planner</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Paint only the exact booking windows you want open. The grid follows your appointment duration rule.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <SoftPill label="Weekly blocks" value={availabilityByType.workHours.length} tone="sky" />
+                <SoftPill label="Breaks" value={availabilityByType.breaks.length} tone="amber" />
+                <SoftPill label="Blocked" value={availabilityByType.blocked.length} tone="rose" />
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <div className="rounded-2xl bg-white/90 p-4 shadow-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Planner</p>
+                <p className="mt-2 text-2xl font-black text-slate-900">{availabilityByType.workHours.length}</p>
+                <p className="mt-2 text-sm text-slate-500">Saved weekly bookable ranges</p>
+              </div>
+              <div className="rounded-2xl bg-white/90 p-4 shadow-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Slot size</p>
+                <p className="mt-2 text-2xl font-black text-slate-900">{plannerSlotMinutes} min</p>
+                <p className="mt-2 text-sm text-slate-500">Driven by duration rule</p>
+              </div>
+              <div className="rounded-2xl bg-white/90 p-4 shadow-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Exceptions</p>
+                <p className="mt-2 text-2xl font-black text-slate-900">{availabilityByType.breaks.length + availabilityByType.blocked.length}</p>
+                <p className="mt-2 text-sm text-slate-500">Breaks and blocked dates</p>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Quick fill presets</p>
+                <p className="mt-1 text-xs text-slate-500">Use these to paint the grid faster, then refine manually.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {availabilityPresets.map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() =>
+                      setPlannerSelection((current) => {
+                        const next = { ...current };
+                        const start = toMinutes(preset.startTime);
+                        const end = toMinutes(preset.endTime);
+                        for (const day of plannerDays) {
+                          for (const slot of plannerSlots) {
+                            const slotStart = toMinutes(slot);
+                            const slotEnd = slotStart + plannerSlotMinutes;
+                            const key = plannerKey(day, slot);
+                            if (slotStart >= start && slotEnd <= end) {
+                              next[key] = true;
+                            }
+                          }
+                        }
+                        return next;
+                      })
+                    }
+                    className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setPlannerSelection({})}
+                  className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-5 overflow-x-auto rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-inner shadow-slate-100/70">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">24-hour availability canvas</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    The planner spans the full day, so you can open only the exact windows you want bookable.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <SoftPill label="Starts" value={`${String(plannerStartHour).padStart(2, "0")}:00`} tone="slate" />
+                  <SoftPill label="Ends" value={`${String(plannerEndHour).padStart(2, "0")}:00`} tone="violet" />
+                </div>
+              </div>
+
+              <div className="min-w-[1320px]">
+                <div className="grid gap-2" style={{ gridTemplateColumns: `120px repeat(${plannerSlots.length}, minmax(24px, 1fr))` }}>
+                  <div />
+                  {plannerSlots.map((slot, index) => (
+                    <div key={slot} className="text-center text-[10px] font-semibold text-slate-400">
+                      {index % 2 === 0 ? slot : ""}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-2 space-y-2">
+                  {plannerDays.map((day) => (
+                    <div
+                      key={day}
+                      className="grid gap-2 items-center"
+                      style={{ gridTemplateColumns: `120px repeat(${plannerSlots.length}, minmax(24px, 1fr))` }}
+                    >
+                      <div className="rounded-2xl bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-800">
+                        {weekDays[day]}
+                      </div>
+                      {plannerSlots.map((slot) => {
+                        const key = plannerKey(day, slot);
+                        const active = Boolean(plannerSelection[key]);
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() =>
+                              setPlannerSelection((current) => ({
+                                ...current,
+                                [key]: !current[key],
+                              }))
+                            }
+                            className={`h-8 rounded-xl border transition ${
+                              active
+                                ? "border-sky-400 bg-gradient-to-br from-sky-400 to-cyan-400 shadow-sm shadow-sky-200/80"
+                                : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                            }`}
+                            title={`${weekDays[day]} ${slot}`}
+                          />
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-slate-500">
+                Breaks and blocked dates can still be added below for exceptions. Current slot size: {plannerSlotMinutes} minutes.
+              </p>
+              <button
+                type="button"
+                onClick={handleSaveWeeklyPlanner}
+                disabled={plannerSaving}
+                className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-600 disabled:opacity-70"
+              >
+                {plannerSaving ? "Saving planner..." : "Save weekly availability"}
+              </button>
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmitAvailability} className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-6">
+            <select
+              value={availabilityForm.type}
+              onChange={(event) =>
+                setAvailabilityForm((current) => ({
+                  ...current,
+                  type: event.target.value,
+                  selectedWeekdays:
+                    event.target.value === "workHours"
+                      ? current.selectedWeekdays?.length
+                        ? current.selectedWeekdays
+                        : [current.dayOfWeek || "1"]
+                      : [],
+                  specificDate: event.target.value === "workHours" ? "" : current.specificDate,
+                }))
+              }
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+            >
+              <option value="break">Break</option>
+              <option value="blocked">Blocked date</option>
+            </select>
+
+            <input
+              type="date"
+              value={availabilityForm.specificDate}
+              onChange={(event) => setAvailabilityForm((current) => ({ ...current, specificDate: event.target.value }))}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              required
+            />
+
+            <input
+              type="time"
+              value={availabilityForm.startTime}
+              onChange={(event) => setAvailabilityForm((current) => ({ ...current, startTime: event.target.value }))}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              required
+            />
+
+            <input
+              type="time"
+              value={availabilityForm.endTime}
+              onChange={(event) => setAvailabilityForm((current) => ({ ...current, endTime: event.target.value }))}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              required
+            />
+
+            <input
+              type="text"
+              placeholder="Reason (optional)"
+              value={availabilityForm.reason}
+              onChange={(event) => setAvailabilityForm((current) => ({ ...current, reason: event.target.value }))}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 md:col-span-2"
+            />
+
+            <button
+              type="submit"
+              disabled={availabilitySaving}
+              className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 transition disabled:opacity-70"
+            >
+              {availabilitySaving ? "Saving..." : editingAvailabilityId ? "Update entry" : "Add entry"}
+            </button>
+          </form>
+
+          <div className="mt-3 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+            Use the visual planner for weekly bookable hours. Use the form below only for one-off breaks and blocked dates.
+          </div>
+
+          {availabilityError && (
+            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {availabilityError}
+            </div>
+          )}
+
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Appointment duration rule</p>
+                <p className="text-xs text-slate-500">Doctor-side scheduling now defaults to your preferred visit length.</p>
+              </div>
+              <select
+                value={preferredDuration}
+                onChange={(event) => handlePreferredDurationChange(event.target.value)}
+                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              >
+                {durationOptions.map((minutes) => (
+                  <option key={minutes} value={String(minutes)}>{minutes} minutes</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-3">
+            {[
+              { key: "workHours", title: "Work days & hours", empty: "No weekly work-hour blocks yet." },
+              { key: "breaks", title: "Breaks", empty: "No break windows defined yet." },
+              { key: "blocked", title: "Blocked dates", empty: "No blocked dates defined yet." },
+            ].map((section) => (
+              <div key={section.key} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <h3 className="text-sm font-semibold text-slate-900">{section.title}</h3>
+                <div className="mt-3 space-y-3">
+                  {availabilityLoading ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">
+                      Loading...
+                    </div>
+                  ) : section.key === "workHours" && groupedWorkHours.length > 0 ? (
+                    <div className="space-y-2">
+                      {groupedWorkHours.map((group) => (
+                        <div key={group.dayLabel} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">{group.dayLabel}</p>
+                              <p className="mt-1 text-sm text-slate-600">{group.ranges.join("  •  ")}</p>
+                            </div>
+                            <span className="rounded-full bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-700">
+                              Edit in planner
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : availabilityByType[section.key].length > 0 ? (
+                    availabilityByType[section.key].map((entry) => (
+                      <div key={entry.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                        <p className="text-sm font-semibold text-slate-900">{availabilityTimingLabel(entry)}</p>
+                        {entry.reason ? <p className="mt-1 text-xs text-slate-500">{entry.reason}</p> : null}
+                        <div className="mt-3 flex gap-2">
+                          {entry.type === "workHours" ? (
+                            <span className="rounded-lg bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700">
+                              Edit in planner
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => startEditAvailability(entry)}
+                              className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                            >
+                              Edit
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            disabled={availabilitySaving}
+                            onClick={() => handleDeleteAvailability(entry.id)}
+                            className="rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-600 disabled:opacity-70"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">
+                      {section.empty}
+                    </div>
+                  )}
+                </div>
+              </div>
             ))}
           </div>
-
-          <div className="grid grid-cols-7 gap-2">
-            {monthDays.map((day) => {
-              const isSelected = day.dateKey === selectedDateKey;
-              const appointmentCount = appointmentCountsByDate[day.dateKey] || 0;
-
-              return (
-                <button
-                  key={day.dateKey}
-                  type="button"
-                  onClick={() => {
-                    setSelectedDateKey(day.dateKey);
-                    setVisibleMonth(new Date(day.date.getFullYear(), day.date.getMonth(), 1));
-                  }}
-                  className={`rounded-xl border p-2 text-left min-h-[72px] transition ${
-                    isSelected
-                      ? "border-sky-400 bg-sky-50"
-                      : "border-slate-200 bg-white hover:bg-slate-50"
-                  } ${!day.inCurrentMonth ? "opacity-50" : "opacity-100"}`}
-                >
-                  <p className="text-sm font-medium text-slate-700">{day.date.getDate()}</p>
-                  {appointmentCount > 0 && (
-                    <p className="text-[11px] mt-2 text-sky-700 font-medium">
-                      {appointmentCount} appt{appointmentCount === 1 ? "" : "s"}
-                    </p>
-                  )}
-                </button>
-              );
-            })}
-          </div>
         </section>
+
       </main>
     </div>
   );
