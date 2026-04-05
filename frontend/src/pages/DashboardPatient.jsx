@@ -408,8 +408,6 @@ export default function DashboardPatient() {
               <h2 className="text-xl font-semibold text-slate-900">Quick actions</h2>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {[
-                  { label: "Health summary", href: "/healthSummary", style: "bg-sky-100 text-sky-700" },
-                  { label: "Notification center", href: "/patient-notifications", style: "bg-indigo-100 text-indigo-700" },
                   {
                     label: profileCompletion.complete
                       ? "Profile complete"

@@ -230,7 +230,7 @@ export default function PatientMessages() {
 
       <main className="pt-26 max-w-6xl mx-auto w-full px-6 pb-5 flex-1 min-h-0 flex flex-col overflow-hidden">
         <div className="mb-6 shrink-0">
-          <h1 className="text-3xl font-bold text-slate-800">Caregiver Messages</h1>
+          <h1 className="text-3xl font-bold text-slate-800">Updates & Communication</h1>
           <p className="mt-1 text-slate-500">Chat securely with caregivers linked to your care.</p>
         </div>
 
@@ -323,7 +323,7 @@ export default function PatientMessages() {
                   );
                 })
               ) : (
-                <p className="text-sm text-slate-500">No conversations found.</p>
+                <p className="text-sm text-slate-500">No conversations found. Start a new conversation with a linked caregiver to begin communication.</p>
               )}
             </div>
           </aside>
@@ -370,7 +370,7 @@ export default function PatientMessages() {
                       );
                     })
                   ) : (
-                    <p className="text-sm text-slate-500">No messages yet.</p>
+                    <p className="text-sm text-slate-500">No messages yet. Send the first message to start this care update thread.</p>
                   )}
                 </div>
 

@@ -15,7 +15,7 @@ const PERMISSION_LABELS = {
   canViewMedications: "View medications",
   canViewSymptoms: "View symptoms",
   canViewAppointments: "View appointments",
-  canMessageDoctor: "Message caregiver",
+  canMessageDoctor: "Message doctor",
   canReceiveReminders: "Receive reminders",
 };
 

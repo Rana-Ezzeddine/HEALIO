@@ -237,7 +237,7 @@ export default function PatientAppointments() {
               onClick={() => navigate("/patientMessages")}
               className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
             >
-              Message Caregiver
+              Open updates & communication
             </button>
           </div>
 
@@ -332,7 +332,7 @@ export default function PatientAppointments() {
 
           {requestableDoctors.length === 0 && (
             <p className="mt-3 text-sm text-amber-700">
-              No assigned doctors found for this patient account.
+              No assigned doctors found for this patient account. Link a doctor from Care Team first, then request an appointment here.
             </p>
           )}
 
@@ -404,7 +404,7 @@ export default function PatientAppointments() {
                 ) : (
                   <tr>
                     <td colSpan={6} className="py-6 px-4 text-center text-slate-500">
-                      No appointments found.
+                      No appointments found. Send your first request above after selecting a linked doctor.
                     </td>
                   </tr>
                 )}

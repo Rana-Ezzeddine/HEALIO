@@ -121,7 +121,6 @@ export default function Navbar({ onLogin, onSignup }) {
   const patientMoreNavItems = isPatient
     ? [
       { label: "Health Summary", href: "/healthSummary", active: isHealthSummary, isDanger: false },
-      { label: "Notifications", href: "/patient-notifications", active: isPatientNotifications, isDanger: false },
       { label: "Medications", href: "/medication", active: isMedication, isDanger: false },
       { label: "Symptoms", href: "/symptoms", active: isSymptoms, isDanger: false },
       { label: "Care Team", href: "/care-team", active: isCareTeam, isDanger: false },
