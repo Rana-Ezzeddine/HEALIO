@@ -13,7 +13,7 @@ import {
   saveDoctorEmergencyReview,
 } from "../utils/doctorPatientRecords";
 import { formatDoseTime, getNextMedicationDose, getScheduleTimes, isActiveMedication } from "../utils/medicationSchedule";
-import { createConversation, getConversationMessages, sendConversationMessage } from "../api/messaging";
+import { createConversation, getConversationMessages, getConversations, sendConversationMessage } from "../api/messaging";
 
 function patientDisplayName(record) {
   const p = record?.patient || record;
@@ -36,6 +36,26 @@ function formatField(value) {
   if (Array.isArray(value)) return value.filter(Boolean).join(", ") || "Not recorded";
   if (typeof value === "object") return [value.name, value.relationship, value.phoneNumber].filter(Boolean).join(" • ") || "Not recorded";
   return String(value).trim() || "Not recorded";
+}
+function parseCareConcernMessage(body) {
+  const lines = String(body || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (!lines.length || !/^care concern from caregiver$/i.test(lines[0])) {
+    return null;
+  }
+
+  const patientLine = lines.find((line) => /^patient id:/i.test(line));
+  const concernLine = lines.find((line) => /^concern:/i.test(line));
+  const contextLine = lines.find((line) => /^context:/i.test(line));
+
+  return {
+    patientId: patientLine ? patientLine.replace(/^patient id:/i, "").trim() : "",
+    concern: concernLine ? concernLine.replace(/^concern:/i, "").trim() : String(body || "").trim(),
+    context: contextLine ? contextLine.replace(/^context:/i, "").trim() : "",
+  };
 }
 function parseScheduleInput(value) {
   const list = Array.isArray(value) ? value : String(value || "").split(",");
@@ -130,6 +150,9 @@ export default function DoctorPatientDetail() {
   const [sendingCommunication, setSendingCommunication] = useState(false);
   const [communicationContextType, setCommunicationContextType] = useState("");
   const [communicationContextRelatedId, setCommunicationContextRelatedId] = useState("");
+  const [caregiverConcerns, setCaregiverConcerns] = useState([]);
+  const [caregiverConcernsLoading, setCaregiverConcernsLoading] = useState(false);
+  const [caregiverConcernsError, setCaregiverConcernsError] = useState("");
   const [aiSummary, setAiSummary] = useState(null);
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
   const [aiSummaryError, setAiSummaryError] = useState("");
@@ -162,6 +185,8 @@ export default function DoctorPatientDetail() {
     setCommunicationDraft("");
     setCommunicationContextType("");
     setCommunicationContextRelatedId("");
+    setCaregiverConcerns([]);
+    setCaregiverConcernsError("");
     if (!preserveMedicationForm) {
       setMedicationFormOpen(false);
       setEditingMedicationId(null);
@@ -482,6 +507,105 @@ export default function DoctorPatientDetail() {
     }
   }
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCaregiverConcerns() {
+      const caregiverIds = caregivers
+        .map((entry) => entry.caregiverId)
+        .filter(Boolean);
+
+      if (!caregiverIds.length || !currentUserId) {
+        if (!cancelled) {
+          setCaregiverConcerns([]);
+          setCaregiverConcernsError("");
+          setCaregiverConcernsLoading(false);
+        }
+        return;
+      }
+
+      try {
+        setCaregiverConcernsLoading(true);
+        setCaregiverConcernsError("");
+
+        const conversationData = await getConversations();
+        const conversationList = conversationData.conversations || [];
+        const caregiverIdSet = new Set(caregiverIds.map((id) => String(id)));
+
+        const caregiverConversations = conversationList.filter((conversation) => {
+          const participantIds = (conversation.participants || []).map((participant) => String(participant.id));
+          return participantIds.includes(String(currentUserId)) && participantIds.some((id) => caregiverIdSet.has(id));
+        });
+
+        const messagePayloads = await Promise.all(
+          caregiverConversations.map(async (conversation) => {
+            const messageData = await getConversationMessages(conversation.id);
+            return {
+              conversation,
+              messages: messageData.messages || [],
+            };
+          })
+        );
+
+        const concernItems = [];
+
+        for (const payload of messagePayloads) {
+          const participant = (payload.conversation.participants || []).find(
+            (p) => String(p.id) !== String(currentUserId) && caregiverIdSet.has(String(p.id))
+          );
+
+          for (const message of payload.messages) {
+            const parsedConcern = parseCareConcernMessage(message.body);
+            const contextType = String(message.contextType || "").toLowerCase();
+            const isCareConcernContext = contextType === "care_concern";
+
+            if (!parsedConcern && !isCareConcernContext) {
+              continue;
+            }
+
+            if (parsedConcern?.patientId && String(parsedConcern.patientId) !== String(patientId)) {
+              continue;
+            }
+
+            const metadataPatientId = message.contextMetadata?.patientId;
+            if (isCareConcernContext && metadataPatientId && String(metadataPatientId) !== String(patientId)) {
+              continue;
+            }
+
+            concernItems.push({
+              id: message.id,
+              sentAt: message.sentAt || message.createdAt,
+              caregiverName: participant?.displayName || participant?.email || "Caregiver",
+              concern: parsedConcern?.concern || String(message.body || "").trim() || "Care concern reported.",
+              context: parsedConcern?.context || "",
+            });
+          }
+        }
+
+        concernItems.sort((a, b) => new Date(b.sentAt || 0) - new Date(a.sentAt || 0));
+
+        if (!cancelled) {
+          setCaregiverConcerns(concernItems.slice(0, 8));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setCaregiverConcerns([]);
+          setCaregiverConcernsError(err.message || "Failed to load caregiver concerns.");
+        }
+      } finally {
+        if (!cancelled) {
+          setCaregiverConcernsLoading(false);
+        }
+      }
+    }
+
+    loadCaregiverConcerns();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [caregivers, currentUserId, patientId]);
+
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
@@ -722,6 +846,37 @@ export default function DoctorPatientDetail() {
                     <p className="mt-3 text-sm text-slate-700">{note.note}</p>
                   </div>
                 )) : <p className="text-sm text-slate-500">No caregiver notes recorded yet.</p>}
+              </div>
+            </div>
+            <div className="rounded-3xl bg-gradient-to-br from-white to-orange-50 p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">Caregiver concerns</h3>
+                  <p className="mt-1 text-sm text-slate-500">Recent concern alerts sent by linked caregivers in this patient context.</p>
+                </div>
+                <InfoPill label="Recent" value={caregiverConcerns.length} tone="amber" />
+              </div>
+              {caregiverConcernsError ? (
+                <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{caregiverConcernsError}</div>
+              ) : null}
+              <div className="mt-4 space-y-3">
+                {caregiverConcernsLoading ? (
+                  <p className="text-sm text-slate-500">Loading caregiver concerns...</p>
+                ) : caregiverConcerns.length ? caregiverConcerns.map((item) => (
+                  <div key={item.id} className="rounded-2xl border border-slate-200 bg-white/90 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-slate-900">{item.caregiverName}</p>
+                        <p className="mt-1 text-xs text-slate-400">{formatDateTime(item.sentAt)}</p>
+                      </div>
+                      <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-700">Care concern</span>
+                    </div>
+                    <p className="mt-3 text-sm text-slate-800">{item.concern}</p>
+                    {item.context ? <p className="mt-2 text-xs text-slate-500">Context: {item.context}</p> : null}
+                  </div>
+                )) : (
+                  <p className="text-sm text-slate-500">No caregiver concerns have been sent for this patient yet.</p>
+                )}
               </div>
             </div>
             <div className="rounded-3xl bg-gradient-to-br from-white to-cyan-50 p-5 shadow-sm">
