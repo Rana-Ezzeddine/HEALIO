@@ -7,6 +7,39 @@ import DoctorPatientDock from "./doctor/DoctorPatientDock";
 
 const PUBLIC_PATHS = new Set(["/", "/support", "/privacy", "/terms"]);
 
+const PAGE_PURPOSES = [
+  { prefix: "/dashboardpatient", text: "Track daily health activity, tasks, and next care actions in one place." },
+  { prefix: "/dashboarddoctor", text: "Review assigned patients and coordinate clinical follow-up efficiently." },
+  { prefix: "/dashboardcaregiver", text: "Manage support tasks within the active patient context." },
+  { prefix: "/healthsummary", text: "See key health trends, risk signals, and overall progress at a glance." },
+  { prefix: "/medication", text: "Review medications, schedules, and adherence details for safer daily care." },
+  { prefix: "/symptoms", text: "Log and review symptom history to detect patterns early." },
+  { prefix: "/caregiversymptoms", text: "Review patient symptom history and add caregiver observations with source labels." },
+  { prefix: "/patientappointments", text: "Schedule, track, and prepare for upcoming appointments." },
+  { prefix: "/doctorappointments", text: "Manage appointment requests and coordinate patient visits." },
+  { prefix: "/caregiverappointments", text: "Monitor and support appointment follow-through for the selected patient." },
+  { prefix: "/patientmessages", text: "Stay aligned with your care team through secure updates and communication." },
+  { prefix: "/caregivermessages", text: "Exchange care updates and communication tied to patient support." },
+  { prefix: "/caregivernotes", text: "Capture structured caregiver notes to keep support records clear and actionable." },
+  { prefix: "/doctor-patients", text: "Browse your panel and open each patient record quickly." },
+  { prefix: "/doctor-clinical-notes", text: "Document and review clinical notes to keep treatment decisions traceable." },
+  { prefix: "/doctor-treatment-plans", text: "Build and adjust treatment plans based on each patient profile." },
+  { prefix: "/caregiver-patients", text: "Manage linked patients and select the right context before taking action." },
+  { prefix: "/care-team", text: "View connected care roles and coordination details for your support network." },
+  { prefix: "/emergency", text: "Access emergency status and urgent-care information quickly." },
+  { prefix: "/profilepatient", text: "Update personal and health profile information used across your care workflow." },
+  { prefix: "/profiledoctor", text: "Maintain doctor profile and credentials used for patient trust and approvals." },
+  { prefix: "/profilecaregiver", text: "Keep caregiver profile details current for patient visibility and support." },
+];
+
+function resolvePagePurpose(pathname) {
+  const normalizedPath = String(pathname || "").toLowerCase();
+  const match = PAGE_PURPOSES.find(
+    (item) => normalizedPath === item.prefix || normalizedPath.startsWith(`${item.prefix}/`)
+  );
+  return match?.text || "";
+}
+
 function PublicNavLink({ to, children }) {
   const isAnchor = to.startsWith("#");
 
@@ -30,8 +63,10 @@ export default function Navbar({ onLogin, onSignup }) {
   const navigate = useNavigate();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showPageHelp, setShowPageHelp] = useState(false);
   const logoutConfirmRef = useRef(null);
   const moreMenuRef = useRef(null);
+  const pageHelpRef = useRef(null);
 
   const user = getUser();
   const userRole = user?.role?.toLowerCase() || null;
@@ -72,6 +107,7 @@ export default function Navbar({ onLogin, onSignup }) {
   const isCaregiverMessages = path.toLowerCase().startsWith("/caregivermessages");
   const isLanding = path === "/";
   const isPublicPage = PUBLIC_PATHS.has(path.toLowerCase());
+  const pagePurpose = isPublicPage ? "" : resolvePagePurpose(path);
   const patientMoreNavItems = isPatient
     ? [
       { label: "Health Summary", href: "/healthSummary", active: isHealthSummary, isDanger: false },
@@ -134,7 +170,32 @@ export default function Navbar({ onLogin, onSignup }) {
   }, [showMoreMenu]);
 
   useEffect(() => {
+    if (!showPageHelp) return;
+
+    function handleOutsideClick(event) {
+      if (!pageHelpRef.current?.contains(event.target)) {
+        setShowPageHelp(false);
+      }
+    }
+
+    function handleEscape(event) {
+      if (event.key === "Escape") {
+        setShowPageHelp(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [showPageHelp]);
+
+  useEffect(() => {
     setShowMoreMenu(false);
+    setShowPageHelp(false);
   }, [path]);
 
   function handleLogout() {
@@ -298,7 +359,7 @@ export default function Navbar({ onLogin, onSignup }) {
                       isCaregiverMessages ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
                     }`}
                   >
-                    Messages
+                    Updates & Communication
                   </button>
                 )}
                 {isPatient && patientMoreNavItems.length > 0 && (
@@ -357,6 +418,26 @@ export default function Navbar({ onLogin, onSignup }) {
                     Profile
                   </button>
                 )}
+
+                {pagePurpose ? (
+                  <div ref={pageHelpRef} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowPageHelp((current) => !current)}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+                    >
+                      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">?</span>
+                      <span className="hidden sm:inline">About this page</span>
+                    </button>
+
+                    {showPageHelp ? (
+                      <div className="absolute right-0 top-full z-50 mt-3 w-80 max-w-[calc(100vw-3rem)] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Page purpose</p>
+                        <p className="mt-2 text-sm leading-6 text-slate-700">{pagePurpose}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 <div ref={logoutConfirmRef} className="relative">
                   <button
