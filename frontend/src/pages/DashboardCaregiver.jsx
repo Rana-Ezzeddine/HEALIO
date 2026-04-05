@@ -788,7 +788,7 @@ export default function DashboardCaregiver() {
                   <p className="font-semibold text-slate-900">Recent symptoms</p>
                   <button
                     type="button"
-                    onClick={() => navigate("/symptoms")}
+                    onClick={() => navigate("/caregiverSymptoms")}
                     disabled={!canViewSymptoms}
                     className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
                       canViewSymptoms
@@ -896,7 +896,7 @@ export default function DashboardCaregiver() {
                   },
                   {
                     label: "Symptom review",
-                    href: "/symptoms",
+                    href: "/caregiverSymptoms",
                     style: "bg-indigo-100 text-indigo-700",
                     enabled: canViewSymptoms,
                   },

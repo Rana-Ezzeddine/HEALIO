@@ -40,6 +40,24 @@ function getSeverityStyle(severity) {
   };
 }
 
+function getLogSource(log) {
+  const rawSource = String(log.loggedBy || "").trim().toLowerCase();
+
+  if (rawSource === "caregiver") {
+    return {
+      key: "caregiver",
+      label: "Caregiver-entered",
+      tone: "bg-indigo-100 text-indigo-700 ring-1 ring-indigo-200",
+    };
+  }
+
+  return {
+    key: "patient",
+    label: "Patient-entered",
+    tone: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+  };
+}
+
 export default function Symptoms() {
   const [logs, setLogs] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -94,6 +112,7 @@ export default function Symptoms() {
           symptom: item.name,
           severity: item.severity,
           notes: item.notes,
+          loggedBy: item.loggedBy,
         }))
       );
       setError("");
@@ -176,6 +195,7 @@ export default function Symptoms() {
           symptom: data.name,
           severity: data.severity,
           notes: data.notes,
+          loggedBy: data.loggedBy,
         },
         ...current,
       ]);
@@ -363,6 +383,7 @@ export default function Symptoms() {
         </div>
 
         <h2 className="mb-3 text-lg font-semibold text-slate-700">Recent Logs</h2>
+        <p className="mb-3 text-sm text-slate-500">Each symptom entry is labeled by who recorded it.</p>
         {error ? <p className="mb-3 text-sm text-red-600">{error}</p> : null}
         <div className="flex flex-col gap-4">
           {loading ? (
@@ -380,6 +401,7 @@ export default function Symptoms() {
           ) : (
             logs.map((log) => {
               const style = getSeverityStyle(log.severity ?? 0);
+              const source = getLogSource(log);
               return (
                 <div
                   key={log.id}
@@ -390,7 +412,10 @@ export default function Symptoms() {
                       <p className="text-sm text-slate-400">{formatLoggedDate(log.date)}</p>
                       <p className="text-xl font-semibold text-slate-900">{log.symptom}</p>
                     </div>
-                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${style.badge}`}>{style.label}</span>
+                    <div className="flex flex-col items-end gap-1.5">
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${style.badge}`}>{style.label}</span>
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${source.tone}`}>{source.label}</span>
+                    </div>
                   </div>
 
                   <div className="mt-3 flex items-center justify-between text-sm text-slate-600">

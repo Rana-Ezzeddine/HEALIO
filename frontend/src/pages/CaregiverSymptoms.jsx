@@ -16,6 +16,21 @@ function getSeverityStyle(severity) {
   return { border: "border-emerald-400", badge: "bg-emerald-100 text-emerald-700", bar: "bg-emerald-500", label: "Mild" };
 }
 
+function getLogSource(loggedBy) {
+  const source = String(loggedBy || "").trim().toLowerCase();
+  if (source === "caregiver") {
+    return {
+      label: "Caregiver-entered",
+      tone: "bg-indigo-100 text-indigo-700 ring-1 ring-indigo-200",
+    };
+  }
+
+  return {
+    label: "Patient-entered",
+    tone: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+  };
+}
+
 export default function CaregiverSymptoms() {
   const [searchParams] = useSearchParams();
   const [patients, setPatients] = useState([]);
@@ -88,10 +103,8 @@ export default function CaregiverSymptoms() {
           )}
         </div>
 
-        {/*explain who logged each symptom */}
         <p className="text-slate-500 mb-6">
-          Symptom history for this patient. Each entry shows who logged it —
-          patient or caregiver.
+          Symptom history for this patient with clear labels for caregiver-entered and patient-entered entries.
         </p>
 
         {patients.length > 1 && (
@@ -125,6 +138,7 @@ export default function CaregiverSymptoms() {
         <div className="flex flex-col gap-4">
           {permission && symptoms.map((s) => {
             const style = getSeverityStyle(s.severity ?? 0);
+            const source = getLogSource(s.loggedBy);
             return (
               <div
                 key={s.id}
@@ -141,13 +155,8 @@ export default function CaregiverSymptoms() {
                     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${style.badge}`}>
                       {style.label}
                     </span>
-                    {/* show who logged */}
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                      s.loggedBy === "caregiver"
-                        ? "bg-indigo-100 text-indigo-700"
-                        : "bg-slate-100 text-slate-600"
-                    }`}>
-                      Logged by {s.loggedBy === "caregiver" ? "caregiver" : "patient"}
+                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${source.tone}`}>
+                      {source.label}
                     </span>
                   </div>
                 </div>
