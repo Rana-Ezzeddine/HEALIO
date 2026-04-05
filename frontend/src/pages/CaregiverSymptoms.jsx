@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import Navbar from "../components/Navbar";
-import { Activity, Plus, X, Check } from "lucide-react";
+import { Activity, Plus, X, Check, HeartPulse, CalendarDays, Sparkles, ShieldCheck } from "lucide-react";
 import {
   getCaregiverPatientSymptoms,
   caregiverLogSymptom,
@@ -44,6 +44,27 @@ export default function CaregiverSymptoms() {
   const [severity, setSeverity] = useState(null);
   const [notes, setNotes] = useState("");
   const [error, setError] = useState(null);
+
+  const todayLabel = useMemo(
+    () =>
+      new Date().toLocaleDateString(undefined, {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+      }),
+    []
+  );
+
+  const averageSeverity =
+    symptoms.length > 0
+      ? (symptoms.reduce((sum, item) => sum + Number(item.severity || 0), 0) / symptoms.length).toFixed(1)
+      : "-";
+
+  const caregiverLoggedCount = symptoms.filter(
+    (item) => String(item.loggedBy || "").toLowerCase() === "caregiver"
+  ).length;
+
+  const intenseCount = symptoms.filter((item) => Number(item.severity || 0) >= 7).length;
 
   useEffect(() => {
     getMyPatients().then((data) => {
@@ -88,50 +109,111 @@ export default function CaregiverSymptoms() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-indigo-50">
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-cyan-50 via-white to-indigo-50">
+      <div className="pointer-events-none absolute -left-20 -top-24 h-80 w-80 rounded-full bg-cyan-200/35 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -right-20 h-96 w-96 rounded-full bg-indigo-200/35 blur-3xl" />
       <Navbar />
-      <main className="mx-auto max-w-4xl px-6 pt-28 pb-10">
-        <div className="flex items-center justify-between mb-1">
-          <h1 className="text-3xl font-bold text-slate-800">Symptoms</h1>
-          {permission && (
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="inline-flex items-center gap-2 rounded-2xl bg-sky-500 px-5 py-2 text-sm font-semibold text-white hover:bg-sky-600 transition"
-            >
-              <Plus size={16} /> Log Observation
-            </button>
-          )}
+      <main className="relative mx-auto max-w-5xl px-6 pb-10 pt-28">
+        <header className="mb-6 rounded-3xl border border-white/80 bg-white/75 p-6 shadow-sm backdrop-blur-sm">
+          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="inline-flex items-center gap-2 rounded-full bg-cyan-100 px-3 py-1 text-sm font-medium text-cyan-700">
+                <ShieldCheck size={16} /> Caregiver symptom review
+              </p>
+              <h1 className="mt-3 text-4xl font-black text-slate-900">Observed Symptoms</h1>
+              <p className="mt-1 text-slate-600">
+                Review patient patterns and log caregiver observations with clear source labels.
+              </p>
+            </div>
+            <div className="min-w-[220px] rounded-2xl border border-slate-100 bg-white/90 p-4">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Today</p>
+              <p className="mt-1 flex items-center gap-2 font-semibold text-slate-800">
+                <CalendarDays size={16} className="text-cyan-600" />
+                {todayLabel}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            {permission && (
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-b from-cyan-500 to-blue-500 px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:scale-[1.02]"
+              >
+                <Plus size={16} /> Log Observation
+              </button>
+            )}
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+              {permission ? "Access granted for symptom review" : "Symptom access restricted"}
+            </span>
+          </div>
+        </header>
+
+        <div className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="rounded-2xl border border-white/80 bg-white/85 p-4 shadow-sm">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Entries</p>
+            <p className="mt-1 text-2xl font-bold text-slate-900">{symptoms.length}</p>
+          </div>
+          <div className="rounded-2xl border border-white/80 bg-white/85 p-4 shadow-sm">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Avg severity</p>
+            <p className="mt-1 text-2xl font-bold text-slate-900">{averageSeverity}</p>
+          </div>
+          <div className="rounded-2xl border border-white/80 bg-white/85 p-4 shadow-sm">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Caregiver-entered</p>
+            <p className="mt-1 text-2xl font-bold text-slate-900">{caregiverLoggedCount}</p>
+          </div>
         </div>
 
-        <p className="text-slate-500 mb-6">
-          Symptom history for this patient with clear labels for caregiver-entered and patient-entered entries.
-        </p>
+        <div className="mb-6 rounded-2xl border border-cyan-100 bg-cyan-50/60 px-4 py-3 text-sm text-cyan-800">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="inline-flex items-center gap-2 font-medium">
+              <Sparkles size={14} /> Symptom history for this patient with clear source attribution.
+            </p>
+            <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-cyan-700">
+              High-severity entries: {intenseCount}
+            </span>
+          </div>
+        </div>
 
         {patients.length > 1 && (
-          <select
-            value={patientId}
-            onChange={(e) => setPatientId(e.target.value)}
-            className="mb-6 rounded-xl border border-slate-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-          >
-            {patients.map((e) => (
-              <option key={e.patient.id} value={e.patient.id}>
-                {e.patient.email}
-              </option>
-            ))}
-          </select>
+          <div className="mb-6">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Patient context</p>
+            <div className="relative max-w-sm overflow-hidden rounded-full border border-slate-200 bg-white shadow-sm">
+              <select
+                value={patientId}
+                onChange={(e) => setPatientId(e.target.value)}
+                className="w-full appearance-none bg-transparent px-5 py-3 pr-12 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              >
+                {patients.map((e) => (
+                  <option key={e.patient.id} value={e.patient.id}>
+                    {e.patient.email}
+                  </option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-slate-400">▾</span>
+            </div>
+          </div>
         )}
 
         {!permission && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 mb-6">
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
             You do not have permission to view symptoms for this patient.
           </div>
         )}
 
-        {loading && <p className="text-slate-400 text-sm">Loading symptoms...</p>}
+        {loading && (
+          <div className="rounded-3xl border border-dashed border-cyan-200 bg-white/80 p-10 text-center text-sm text-slate-500">
+            Loading symptom history...
+          </div>
+        )}
 
         {permission && !loading && symptoms.length === 0 && (
-          <div className="rounded-3xl border border-dashed border-slate-200 p-10 text-center text-slate-400 text-sm">
-            No symptoms logged yet for this patient.
+          <div className="rounded-3xl border border-dashed border-slate-200 bg-white/80 p-10 text-center">
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-cyan-100 text-cyan-700">
+              <HeartPulse size={24} />
+            </div>
+            <p className="font-medium text-slate-700">No symptoms logged yet for this patient.</p>
+            <p className="mt-1 text-sm text-slate-500">Once observations are recorded, they will appear in this timeline.</p>
           </div>
         )}
 
@@ -142,14 +224,18 @@ export default function CaregiverSymptoms() {
             return (
               <div
                 key={s.id}
-                className={`rounded-2xl border-l-4 ${style.border} bg-white p-5 shadow-sm`}
+                className={`rounded-2xl border-l-4 ${style.border} bg-white/90 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm text-slate-400">
-                      {new Date(s.loggedAt).toLocaleDateString()}
+                      {new Date(s.loggedAt).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
                     </p>
-                    <p className="text-lg font-semibold text-slate-900">{s.name}</p>
+                    <p className="text-xl font-semibold text-slate-900">{s.name}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${style.badge}`}>
@@ -164,12 +250,12 @@ export default function CaregiverSymptoms() {
                   <span className="inline-flex items-center gap-1">
                     <Activity size={14} /> Severity
                   </span>
-                  <span className="font-semibold">{s.severity} / 10</span>
+                  <span className="font-semibold text-slate-800">{s.severity} / 10</span>
                 </div>
                 <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
                   <div
                     className={`h-full ${style.bar}`}
-                    style={{ width: `${(s.severity ?? 0) * 10}%` }}
+                    style={{ width: `${Math.max(0, Math.min(100, (s.severity ?? 0) * 10))}%` }}
                   />
                 </div>
                 {s.notes && (

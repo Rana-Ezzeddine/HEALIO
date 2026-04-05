@@ -491,25 +491,28 @@ export default function DashboardCaregiver() {
                 <label className="mb-3 block text-xs font-semibold uppercase tracking-[0.16em] text-white/70">
                   Active patient context
                 </label>
-                <select
-                  value={activePatientId}
-                  onChange={(event) => {
-                    const nextId = event.target.value;
-                    setActivePatientId(nextId);
-                    setActiveCaregiverPatientId(nextId);
-                  }}
-                  className="w-full rounded-xl border border-white/30 bg-white/95 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-300"
-                >
-                  {linkedPatients.length > 0 ? (
-                    linkedPatients.map(({ patient }) => (
-                      <option key={patient?.id} value={patient?.id || ""}>
-                        {patient?.displayName || patient?.email || "Patient"}
-                      </option>
-                    ))
-                  ) : (
-                    <option value="">No linked patients</option>
-                  )}
-                </select>
+                <div className="relative overflow-hidden rounded-full border border-white/35 bg-white/95 shadow-sm">
+                  <select
+                    value={activePatientId}
+                    onChange={(event) => {
+                      const nextId = event.target.value;
+                      setActivePatientId(nextId);
+                      setActiveCaregiverPatientId(nextId);
+                    }}
+                    className="w-full appearance-none bg-transparent px-5 py-3 pr-12 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-300"
+                  >
+                    {linkedPatients.length > 0 ? (
+                      linkedPatients.map(({ patient }) => (
+                        <option key={patient?.id} value={patient?.id || ""}>
+                          {patient?.displayName || patient?.email || "Patient"}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="">No linked patients</option>
+                    )}
+                  </select>
+                  <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-slate-400">▾</span>
+                </div>
               </div>
             </section>
 
