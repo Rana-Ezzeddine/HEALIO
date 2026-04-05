@@ -74,7 +74,7 @@ export default function DoctorLinkRequests() {
           </div>
           <div className="mt-5 space-y-4">
             {loading ? <p className="text-sm text-slate-500">Loading...</p> : requests.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 px-6 py-8 text-center text-sm text-slate-500">No pending patient requests.</div>
+              <div className="rounded-2xl border border-dashed border-slate-200 px-6 py-8 text-center text-sm text-slate-500">No pending patient requests. Return to Patients to review your active panel or refresh later for new requests.</div>
             ) : requests.map((request) => (
               <div key={request.patientId} className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

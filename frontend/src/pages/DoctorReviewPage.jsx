@@ -197,7 +197,7 @@ export default function DoctorReviewPage() {
                   </div>
                 ) : applications.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">
-                    No doctor applications found for this filter.
+                    No doctor applications found for this filter. Change the current filter or refresh to load a different review queue.
                   </div>
                 ) : (
                   applications.map((application) => (
@@ -285,7 +285,7 @@ export default function DoctorReviewPage() {
                   <div className="mt-4 rounded-3xl border border-slate-200 bg-white px-5 py-4">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Reviewer notes history</p>
                     {notesHistory.length === 0 ? (
-                      <p className="mt-3 text-sm text-slate-500">No reviewer notes history yet.</p>
+                      <p className="mt-3 text-sm text-slate-500">No reviewer notes history yet. Add notes above if you need to record your approval, rejection, or follow-up rationale.</p>
                     ) : (
                       <div className="mt-3 space-y-3">
                         {notesHistory.map((entry, index) => (
@@ -329,7 +329,7 @@ export default function DoctorReviewPage() {
                 </>
               ) : (
                 <div className="flex min-h-[420px] items-center justify-center rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500">
-                  Select an application to review.
+                  Select an application from the list on the left to review its details and record a decision.
                 </div>
               )}
             </section>

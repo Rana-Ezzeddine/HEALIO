@@ -385,11 +385,11 @@ export default function DoctorPatients() {
               <p className="text-sm text-slate-500">Loading...</p>
             ) : assignedPatients.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-200 px-6 py-8 text-center text-sm text-slate-500">
-                No patients linked yet.
+                No patients linked yet. Open Link Requests from the doctor navigation to approve a patient first.
               </div>
             ) : filteredPatients.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-200 px-6 py-8 text-center text-sm text-slate-500">
-                No patients match the current search.
+                No patients match the current search. Clear or adjust the search and urgency filters to see more results.
               </div>
             ) : (
               filteredPatients.map((record) => {

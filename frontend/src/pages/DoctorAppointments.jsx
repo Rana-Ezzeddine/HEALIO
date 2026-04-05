@@ -1015,7 +1015,7 @@ export default function DoctorAppointments() {
               })
             ) : (
               <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
-                No pending requests.
+                No pending requests. Check back later or use the scheduling form below to create an appointment for an assigned patient.
               </div>
             )}
           </div>
@@ -1134,7 +1134,7 @@ export default function DoctorAppointments() {
 
           {assignedPatients.length === 0 && (
             <p className="mt-3 text-sm text-amber-700">
-              No active patient assignments were found for this doctor account.
+              No active patient assignments were found for this doctor account. Approve a patient link request first, then return here to schedule directly.
             </p>
           )}
 
@@ -1410,9 +1410,9 @@ export default function DoctorAppointments() {
 
           <div className="mt-5 grid gap-4 lg:grid-cols-3">
             {[
-              { key: "workHours", title: "Work days & hours", empty: "No weekly work-hour blocks yet." },
-              { key: "breaks", title: "Breaks", empty: "No break windows defined yet." },
-              { key: "blocked", title: "Blocked dates", empty: "No blocked dates defined yet." },
+              { key: "workHours", title: "Work days & hours", empty: "No weekly work-hour blocks yet. Use the planner above, then save weekly availability to open booking slots." },
+              { key: "breaks", title: "Breaks", empty: "No break windows defined yet. Add a break entry above if you need to protect time inside your workday." },
+              { key: "blocked", title: "Blocked dates", empty: "No blocked dates defined yet. Add a blocked date above when you need to close a full day or one-off window." },
             ].map((section) => (
               <div key={section.key} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <h3 className="text-sm font-semibold text-slate-900">{section.title}</h3>

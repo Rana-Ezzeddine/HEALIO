@@ -430,7 +430,7 @@ export default function DoctorTreatmentPlans() {
                       </div>
                     )) : (
                       <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-sm text-slate-500">
-                        No structured treatment plans saved for this patient yet.
+                        No structured treatment plans saved for this patient yet. Use the treatment plan form above to create the first plan for this patient.
                       </div>
                     )}
                   </div>
