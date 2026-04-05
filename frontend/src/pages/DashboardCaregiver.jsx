@@ -7,7 +7,6 @@ import { getConversations } from "../api/messaging";
 import { getCaregiverReminders, getCaregiverPatientSymptoms, getCareNotes } from "../api/caregiver";
 import {
   formatDoseTime,
-  getNextMedicationDose,
   getScheduleTimes,
   isActiveMedication,
 } from "../utils/medicationSchedule";
@@ -23,34 +22,6 @@ function formatAppointmentDate(dateLike) {
 
 function formatAppointmentTime(dateLike) {
   return new Date(dateLike).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-}
-
-function DashboardCard({ title, mainText, subText, navPage, disabled = false }) {
-  const navigate = useNavigate();
-
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        if (!disabled) navigate(navPage);
-      }}
-      disabled={disabled}
-      className={`group rounded-3xl bg-white p-5 text-left shadow-sm transition ${
-        disabled
-          ? "cursor-not-allowed opacity-65"
-          : "hover:-translate-y-1 hover:bg-slate-50 hover:shadow-md"
-      }`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm text-slate-500">{title}</h3>
-          <p className="mt-1 text-2xl font-bold text-slate-900">{mainText}</p>
-          {subText ? <p className="mt-2 text-sm font-medium text-sky-700">{subText}</p> : null}
-        </div>
-        <span className="text-xs text-slate-400 transition group-hover:text-slate-600">Open</span>
-      </div>
-    </button>
-  );
 }
 
 function MiniPill({ label, value, tone = "sky" }) {
@@ -146,6 +117,7 @@ export default function DashboardCaregiver() {
   const [doctorTreatmentPlans, setDoctorTreatmentPlans] = useState([]);
   const [doctorToCaregiverNotes, setDoctorToCaregiverNotes] = useState([]);
   const [conversationCount, setConversationCount] = useState(0);
+  const [isScopeModalOpen, setIsScopeModalOpen] = useState(false);
 
   const activePatientRecord = useMemo(
     () => linkedPatients.find((record) => record.patient?.id === activePatientId) || null,
@@ -154,8 +126,6 @@ export default function DashboardCaregiver() {
   const activePermissions = activePatientRecord?.permissions || {};
 
   const activePatientLabel = activePatientRecord?.patient?.displayName || activePatientRecord?.patient?.email || "No active patient";
-  const allPatientCount = linkedPatients.length;
-
   const scopedAppointments = useMemo(() => {
     if (!activePatientId) return [];
     return appointments.filter((appointment) => {
@@ -192,7 +162,6 @@ export default function DashboardCaregiver() {
   }, [activePatientId, symptoms]);
 
   const nextAppointment = upcomingAppointments[0] || null;
-  const nextDose = useMemo(() => getNextMedicationDose(scopedMedications), [scopedMedications]);
   const medicationDosesToday = useMemo(() => {
     const now = new Date();
     const doses = [];
@@ -416,30 +385,17 @@ export default function DashboardCaregiver() {
                     Understand your role so you can support patients confidently and appropriately.
                   </p>
 
-                  <div className="mt-6 space-y-4">
-                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                      <p className="text-sm font-bold uppercase tracking-wide text-emerald-700">✓ You can do this</p>
-                      <ul className="mt-3 space-y-2 text-sm text-emerald-900">
-                        {CAREGIVER_SCOPE_ALLOWED.map((item) => (
-                          <li key={item} className="flex gap-2">
-                            <span className="font-bold">•</span>
-                            <span>{item}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                      <p className="text-sm font-bold uppercase tracking-wide text-amber-700">✗ You cannot do this</p>
-                      <ul className="mt-3 space-y-2 text-sm text-amber-900">
-                        {CAREGIVER_SCOPE_RESTRICTED.map((item) => (
-                          <li key={item} className="flex gap-2">
-                            <span className="font-bold">•</span>
-                            <span>{item}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+                  <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <p className="text-sm text-slate-600">
+                      Need a refresher on role boundaries before linking with a patient?
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setIsScopeModalOpen(true)}
+                      className="mt-3 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      View caregiver role boundaries
+                    </button>
                   </div>
                 </div>
               </div>
@@ -593,84 +549,19 @@ export default function DashboardCaregiver() {
           </section>
         ) : null}
 
-        <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <h2 className="text-xl font-semibold text-slate-900">Caregiver role scope</h2>
-              <p className="mt-1 text-sm text-slate-600">
-                Your role is support-focused and permission-scoped. Access depends on what the patient granted.
-              </p>
-            </div>
+        <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-slate-600">
+              Caregiver access is patient-permission scoped for <span className="font-semibold text-slate-800">{activePatientLabel}</span>.
+            </p>
             <button
               type="button"
-              onClick={() => navigate("/profileCaregiver")}
-              className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
+              onClick={() => setIsScopeModalOpen(true)}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
             >
-              Review permissions
+              Role boundaries
             </button>
           </div>
-
-          <div className="mt-5 grid gap-4 lg:grid-cols-2">
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-              <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">Can do</p>
-              <ul className="mt-2 space-y-2 text-sm text-emerald-900">
-                {CAREGIVER_SCOPE_ALLOWED.map((item) => (
-                  <li key={item}>• {item}</li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-              <p className="text-sm font-semibold uppercase tracking-wide text-amber-700">Cannot do</p>
-              <ul className="mt-2 space-y-2 text-sm text-amber-900">
-                {CAREGIVER_SCOPE_RESTRICTED.map((item) => (
-                  <li key={item}>• {item}</li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </section>
-
-        <section className="mt-6 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
-          <DashboardCard
-            title="Active Medications"
-            mainText={canViewMedications ? `${scopedMedications.length} tracked` : "No access"}
-            subText={
-              canViewMedications
-                ? (nextDose ? `Next dose at ${formatDoseTime(nextDose.at)}` : "No upcoming dose")
-                : "Enable medication visibility"
-            }
-            navPage="/medication"
-            disabled={!canViewMedications}
-          />
-          <DashboardCard
-            title="Next Appointment"
-            mainText={
-              canViewAppointments
-                ? (nextAppointment ? formatAppointmentDate(nextAppointment.startsAt) : "Not booked")
-                : "No access"
-            }
-            subText={
-              canViewAppointments
-                ? (nextAppointment ? `${formatAppointmentTime(nextAppointment.startsAt)} scheduled` : "No upcoming visit")
-                : "Enable appointment visibility"
-            }
-            navPage="/caregiverAppointments"
-            disabled={!canViewAppointments}
-          />
-          {/* <DashboardCard
-            title="Patient Conversations"
-            mainText={canMessagePatient ? `${conversationCount}` : "No access"}
-            subText={canMessagePatient ? "Secure caregiver chat" : "Enable messaging permission"}
-            navPage="/caregiverMessages"
-            disabled={!canMessagePatient}
-          /> */}
-          <DashboardCard
-            title="Linked Patients"
-            mainText={`${allPatientCount}`}
-            subText={activePatientLabel}
-            navPage="/caregiver-patients"
-          />
         </section>
 
         <section className="mt-6 grid gap-6 xl:grid-cols-2">
@@ -752,6 +643,11 @@ export default function DashboardCaregiver() {
               <div>
                 <h2 className="text-xl font-semibold text-slate-900">Patient timeline</h2>
                 <p className="mt-1 text-sm text-slate-500">Activities for the selected patient context.</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">
+                    Medications due today: {canViewMedications ? dueTodayCount : "Hidden"}
+                  </span>
+                </div>
               </div>
               <button
                 type="button"
@@ -762,225 +658,188 @@ export default function DashboardCaregiver() {
               </button>
             </div>
 
-            <div className="mt-5 space-y-3">
-              <div className="rounded-2xl border border-slate-200 p-4">
-                <p className="font-semibold text-slate-900">Active patient</p>
-                <p className="mt-1 text-sm text-slate-600">{activePatientLabel}</p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 p-4">
-                <p className="font-semibold text-slate-900">Symptoms logged</p>
-                <p className="mt-1 text-sm text-slate-600">
-                  {canViewSymptoms ? `${scopedSymptoms.length} in current scope` : "Not visible in current permissions"}
-                </p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 p-4">
-                <p className="font-semibold text-slate-900">Appointments in scope</p>
-                <p className="mt-1 text-sm text-slate-600">
-                  {canViewAppointments ? `${scopedAppointments.length} total` : "Not visible in current permissions"}
-                </p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-semibold text-slate-900">Medications due today</p>
-                  <button
-                    type="button"
-                    onClick={() => navigate("/medication")}
-                    disabled={!canViewMedications}
-                    className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
-                      canViewMedications
-                        ? "bg-sky-100 text-sky-700 hover:bg-sky-200"
-                        : "cursor-not-allowed bg-slate-100 text-slate-400"
-                    }`}
-                  >
-                    Open meds
-                  </button>
+            <div className="mt-5">
+              <div className="mb-4 rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-50 to-sky-50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Current Context</p>
+                    <p className="mt-1 font-semibold text-slate-900">{activePatientLabel}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                      Symptoms: {canViewSymptoms ? scopedSymptoms.length : "Hidden"}
+                    </span>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                      Appointments: {canViewAppointments ? scopedAppointments.length : "Hidden"}
+                    </span>
+                  </div>
                 </div>
-
-                {!canViewMedications ? (
-                  <p className="mt-1 text-sm text-slate-600">Not visible in current permissions.</p>
-                ) : medicationDosesToday.length === 0 ? (
-                  <p className="mt-1 text-sm text-slate-600">No scheduled doses today.</p>
-                ) : (
-                  <>
-                    <p className="mt-1 text-sm text-slate-600">
-                      <span className="font-semibold text-slate-900">{dueTodayCount}</span> remaining of {medicationDosesToday.length} scheduled doses.
-                    </p>
-                    <ul className="mt-3 space-y-2">
-                      {nextDueDoses.map((dose) => (
-                        <li key={dose.id} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm">
-                          <span className="font-medium text-slate-700">{dose.medication?.name || "Medication"}</span>
-                          <span className="text-slate-500">{formatDoseTime(dose.at)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
               </div>
-              <div className="rounded-2xl border border-slate-200 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-semibold text-slate-900">Next appointment</p>
-                  <button
-                    type="button"
-                    onClick={() => navigate("/caregiverAppointments")}
-                    disabled={!canViewAppointments}
-                    className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
-                      canViewAppointments
-                        ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
-                        : "cursor-not-allowed bg-slate-100 text-slate-400"
-                    }`}
-                  >
-                    Open appts
-                  </button>
-                </div>
 
-                {!canViewAppointments ? (
-                  <p className="mt-1 text-sm text-slate-600">Not visible in current permissions.</p>
-                ) : !nextAppointment ? (
-                  <p className="mt-1 text-sm text-slate-600">No upcoming appointment booked.</p>
-                ) : (
-                  <>
+              <div className="relative pl-6">
+                <div className="absolute left-2.5 top-1 h-[calc(100%-10px)] w-px bg-slate-200" />
+
+                <article className="relative mb-4 rounded-2xl border border-slate-200 bg-white p-4">
+                  <span className="absolute -left-[18px] top-5 h-3 w-3 rounded-full bg-sky-500 ring-4 ring-sky-100" />
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-semibold text-slate-900">Medications due today</p>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/medication")}
+                      disabled={!canViewMedications}
+                      className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
+                        canViewMedications
+                          ? "bg-sky-100 text-sky-700 hover:bg-sky-200"
+                          : "cursor-not-allowed bg-slate-100 text-slate-400"
+                      }`}
+                    >
+                      Open meds
+                    </button>
+                  </div>
+                  {!canViewMedications ? (
+                    <p className="mt-1 text-sm text-slate-600">Not visible in current permissions.</p>
+                  ) : medicationDosesToday.length === 0 ? (
+                    <p className="mt-1 text-sm text-slate-600">No scheduled doses today.</p>
+                  ) : (
+                    <>
+                      <p className="mt-1 text-sm text-slate-600">
+                        <span className="font-semibold text-slate-900">{dueTodayCount}</span> remaining of {medicationDosesToday.length} total doses.
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {nextDueDoses.map((dose) => (
+                          <span key={dose.id} className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
+                            {dose.medication?.name || "Medication"} at {formatDoseTime(dose.at)}
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </article>
+
+                <article className="relative mb-4 rounded-2xl border border-slate-200 bg-white p-4">
+                  <span className="absolute -left-[18px] top-5 h-3 w-3 rounded-full bg-amber-500 ring-4 ring-amber-100" />
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-semibold text-slate-900">Next appointment</p>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/caregiverAppointments")}
+                      disabled={!canViewAppointments}
+                      className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
+                        canViewAppointments
+                          ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                          : "cursor-not-allowed bg-slate-100 text-slate-400"
+                      }`}
+                    >
+                      Open appts
+                    </button>
+                  </div>
+                  {!canViewAppointments ? (
+                    <p className="mt-1 text-sm text-slate-600">Not visible in current permissions.</p>
+                  ) : !nextAppointment ? (
+                    <p className="mt-1 text-sm text-slate-600">No upcoming appointment booked.</p>
+                  ) : (
                     <p className="mt-1 text-sm text-slate-600">
                       <span className="font-semibold text-slate-900">{formatAppointmentDate(nextAppointment.startsAt)}</span>
                       {" "}at {formatAppointmentTime(nextAppointment.startsAt)}
+                      <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                        {nextAppointment.status || "scheduled"}
+                      </span>
                     </p>
-                    <p className="mt-2 text-xs text-slate-500">
-                      Status: {nextAppointment.status || "scheduled"}
-                    </p>
-                  </>
-                )}
-              </div>
-              <div className="rounded-2xl border border-slate-200 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-semibold text-slate-900">Pending reminders</p>
-                  <button
-                    type="button"
-                    onClick={() => navigate("/profileCaregiver")}
-                    disabled={!activePatientId}
-                    className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
-                      activePatientId
-                        ? "bg-purple-100 text-purple-700 hover:bg-purple-200"
-                        : "cursor-not-allowed bg-slate-100 text-slate-400"
-                    }`}
-                  >
-                    View all
-                  </button>
-                </div>
+                  )}
+                </article>
 
-                {!activePatientId ? (
-                  <p className="mt-1 text-sm text-slate-600">Select an active patient to view reminders.</p>
-                ) : reminders.length === 0 ? (
-                  <p className="mt-1 text-sm text-slate-600">No pending reminders.</p>
-                ) : (
-                  <ul className="mt-3 space-y-2">
-                    {reminders.slice(0, 5).map((reminder) => (
-                      <li key={reminder.id} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm">
-                        <div className="flex-1">
-                          <p className="font-medium text-slate-700">{reminder.type || "Reminder"}</p>
-                          {reminder.scheduledAt && (
-                            <p className="text-xs text-slate-500">
-                              {new Date(reminder.scheduledAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                            </p>
-                          )}
-                        </div>
-                        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${reminder.status === "pending" ? "bg-amber-100 text-amber-700" : "bg-slate-200 text-slate-600"}`}>
-                          {reminder.status || "pending"}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div className="rounded-2xl border border-slate-200 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-semibold text-slate-900">Recent symptoms</p>
-                  <button
-                    type="button"
-                    onClick={() => navigate("/caregiverSymptoms")}
-                    disabled={!canViewSymptoms}
-                    className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
-                      canViewSymptoms
-                        ? "bg-rose-100 text-rose-700 hover:bg-rose-200"
-                        : "cursor-not-allowed bg-slate-100 text-slate-400"
-                    }`}
-                  >
-                    View all
-                  </button>
-                </div>
-
-                {!canViewSymptoms ? (
-                  <p className="mt-1 text-sm text-slate-600">Not visible in current permissions.</p>
-                ) : caregiverSymptoms.length === 0 ? (
-                  <p className="mt-1 text-sm text-slate-600">No symptoms logged yet.</p>
-                ) : (
-                  <ul className="mt-3 space-y-2">
-                    {caregiverSymptoms.slice(0, 4).map((symptom) => (
-                      <li key={symptom.id} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm">
-                        <div className="flex-1">
-                          <p className="font-medium text-slate-700">{symptom.name || "Symptom"}</p>
-                          <p className="text-xs text-slate-500">
-                            Severity: <span className="font-semibold">{symptom.severity || 0}/10</span>
-                          </p>
-                        </div>
-                        {symptom.loggedAt && (
-                          <span className="text-xs text-slate-500">
-                            {new Date(symptom.loggedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                          </span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div className="rounded-2xl border border-slate-200 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-semibold text-slate-900">Care notes</p>
-                  <button
-                    type="button"
-                    onClick={() => navigate("/caregiverNotes")}
-                    disabled={!activePatientId}
-                    className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
-                      activePatientId
-                        ? "bg-teal-100 text-teal-700 hover:bg-teal-200"
-                        : "cursor-not-allowed bg-slate-100 text-slate-400"
-                    }`}
-                  >
-                    Manage
-                  </button>
-                </div>
-
-                {!activePatientId ? (
-                  <p className="mt-1 text-sm text-slate-600">Select an active patient to view care notes.</p>
-                ) : caregiverNotes.length === 0 ? (
-                  <p className="mt-1 text-sm text-slate-600">No care notes yet.</p>
-                ) : (
-                  <ul className="mt-3 space-y-2">
-                    {caregiverNotes.slice(0, 3).map((note) => (
-                      <li key={note.id} className="rounded-xl bg-slate-50 px-3 py-2 text-sm">
-                        <p className="font-medium text-slate-700 line-clamp-2">{note.note || "Note"}</p>
-                        {note.createdAt && (
-                          <p className="mt-1 text-xs text-slate-500">
-                            {new Date(note.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                          </p>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              {linkedPatients.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
-                  No linked patients yet. Accept an invitation to unlock patient-scoped tasks.
-                  <div className="mt-3">
+                <article className="relative mb-4 rounded-2xl border border-slate-200 bg-white p-4">
+                  <span className="absolute -left-[18px] top-5 h-3 w-3 rounded-full bg-violet-500 ring-4 ring-violet-100" />
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-semibold text-slate-900">Pending reminders</p>
                     <button
                       type="button"
-                       onClick={() => navigate("/caregiver-patients")}
-                      className="rounded-xl bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-200 transition"
+                      onClick={() => navigate("/profileCaregiver")}
+                      disabled={!activePatientId}
+                      className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
+                        activePatientId
+                          ? "bg-violet-100 text-violet-700 hover:bg-violet-200"
+                          : "cursor-not-allowed bg-slate-100 text-slate-400"
+                      }`}
                     >
-                      Open invitations
+                      View all
                     </button>
                   </div>
-                </div>
-              ) : null}
+                  {!activePatientId ? (
+                    <p className="mt-1 text-sm text-slate-600">Select an active patient to view reminders.</p>
+                  ) : reminders.length === 0 ? (
+                    <p className="mt-1 text-sm text-slate-600">No pending reminders.</p>
+                  ) : (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {reminders.slice(0, 4).map((reminder) => (
+                        <span key={reminder.id} className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
+                          {reminder.type || "Reminder"}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </article>
+
+                <article className="relative mb-4 rounded-2xl border border-slate-200 bg-white p-4">
+                  <span className="absolute -left-[18px] top-5 h-3 w-3 rounded-full bg-rose-500 ring-4 ring-rose-100" />
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-semibold text-slate-900">Recent symptoms</p>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/caregiverSymptoms")}
+                      disabled={!canViewSymptoms}
+                      className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
+                        canViewSymptoms
+                          ? "bg-rose-100 text-rose-700 hover:bg-rose-200"
+                          : "cursor-not-allowed bg-slate-100 text-slate-400"
+                      }`}
+                    >
+                      View all
+                    </button>
+                  </div>
+                  {!canViewSymptoms ? (
+                    <p className="mt-1 text-sm text-slate-600">Not visible in current permissions.</p>
+                  ) : caregiverSymptoms.length === 0 ? (
+                    <p className="mt-1 text-sm text-slate-600">No symptoms logged yet.</p>
+                  ) : (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {caregiverSymptoms.slice(0, 4).map((symptom) => (
+                        <span key={symptom.id} className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
+                          {symptom.name || "Symptom"} ({symptom.severity || 0}/10)
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </article>
+
+                <article className="relative rounded-2xl border border-slate-200 bg-white p-4">
+                  <span className="absolute -left-[18px] top-5 h-3 w-3 rounded-full bg-teal-500 ring-4 ring-teal-100" />
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-semibold text-slate-900">Care notes</p>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/caregiverNotes")}
+                      disabled={!activePatientId}
+                      className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
+                        activePatientId
+                          ? "bg-teal-100 text-teal-700 hover:bg-teal-200"
+                          : "cursor-not-allowed bg-slate-100 text-slate-400"
+                      }`}
+                    >
+                      Manage
+                    </button>
+                  </div>
+                  {!activePatientId ? (
+                    <p className="mt-1 text-sm text-slate-600">Select an active patient to view care notes.</p>
+                  ) : caregiverNotes.length === 0 ? (
+                    <p className="mt-1 text-sm text-slate-600">No care notes yet.</p>
+                  ) : (
+                    <p className="mt-1 text-sm text-slate-600">
+                      <span className="font-semibold text-slate-900">{caregiverNotes.length}</span> notes in this context.
+                    </p>
+                  )}
+                </article>
+              </div>
             </div>
           </div>
 
@@ -1047,15 +906,59 @@ export default function DashboardCaregiver() {
               </div>
             </section>
 
-            <section className="rounded-3xl bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-semibold text-slate-900">Permission summary</h2>
-              <div className="mt-4 space-y-3 text-sm text-slate-600">
+          </div>
+        </section>
+          </>
+        )}
+      </main>
+
+      {isScopeModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-3xl rounded-3xl border border-white/80 bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Caregiver Role Boundaries</p>
+                <h2 className="mt-1 text-2xl font-bold text-slate-900">What you can and cannot do</h2>
+                <p className="mt-1 text-sm text-slate-600">Applies to your active patient context and granted permissions.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsScopeModalOpen(false)}
+                className="rounded-full border border-slate-200 px-3 py-1 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Can do</p>
+                <ul className="mt-3 space-y-2 text-sm text-emerald-900">
+                  {CAREGIVER_SCOPE_ALLOWED.map((item) => (
+                    <li key={item}>✓ {item}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Cannot do</p>
+                <ul className="mt-3 space-y-2 text-sm text-rose-900">
+                  {CAREGIVER_SCOPE_RESTRICTED.map((item) => (
+                    <li key={item}>✕ {item}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Permission access summary</p>
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
                 {Object.entries(CAREGIVER_PERMISSION_HELP).map(([key, info]) => {
                   const enabled = canUsePermission(activePermissions, key);
                   return (
-                    <div key={key} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div key={key} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
                       <div className="flex items-center justify-between gap-3">
-                        <p className="font-semibold text-slate-900">{info.label}</p>
+                        <p className="text-sm font-semibold text-slate-900">{info.label}</p>
                         <span className={`rounded-full px-2 py-1 text-xs font-semibold ${enabled ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-700"}`}>
                           {enabled ? "Enabled" : "Disabled"}
                         </span>
@@ -1065,12 +968,11 @@ export default function DashboardCaregiver() {
                   );
                 })}
               </div>
-            </section>
+            </div>
+            
           </div>
-        </section>
-          </>
-        )}
-      </main>
+        </div>
+      ) : null}
     </div>
   );
 }
