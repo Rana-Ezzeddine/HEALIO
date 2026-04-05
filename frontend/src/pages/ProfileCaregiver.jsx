@@ -344,7 +344,7 @@ export default function ProfileCaregiver(){
                     canViewMedications: "View medications",
                     canViewSymptoms: "View symptoms",
                     canViewAppointments: "View appointments",
-                    canMessageDoctor: "Message caregiver",
+                    canMessageDoctor: "Doctor contact info",
                     canReceiveReminders: "Receive reminders",
                   };
                   const grantedPerms = request.permissions

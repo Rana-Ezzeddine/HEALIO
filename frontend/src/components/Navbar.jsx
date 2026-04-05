@@ -135,7 +135,7 @@ export default function Navbar({ onLogin, onSignup }) {
       { label: "Care Notes", href: "/caregiverNotes", active: isCaregiverNotes, isDanger: false },
       { label: "Medications", href: "/medication", active: isCaregiverMedications, isDanger: false },
       { label: "Symptoms", href: "/caregiverSymptoms", active: isCaregiverSymptoms, isDanger: false },
-      { label: "Care Concern", href: "/caregiverCareConcern", active: isCaregiverCareConcern, isDanger: false },
+      { label: "Care Contacts", href: "/caregiverCareConcern", active: isCaregiverCareConcern, isDanger: false },
       { label: "Onboarding", href: "/caregiverOnboarding", active: isCaregiverOnboarding, isDanger: false },
       { label: "Profile", href: "/profileCaregiver", active: isProfile, isDanger: false },
     ]

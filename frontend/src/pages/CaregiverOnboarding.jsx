@@ -118,7 +118,7 @@ export default function CaregiverOnboarding() {
                   <li>✅ Write care notes</li>
                   <li>✅ Log symptom observations</li>
                   <li>✅ Help with appointment coordination</li>
-                  <li>✅ Send structured care concerns to the doctor</li>
+                  <li>✅ View shared doctor contact details for coordination</li>
                 </ul>
               </div>
               {/* guardrails */}

@@ -14,7 +14,7 @@ import {
   resolveActiveCaregiverPatientId,
   setActiveCaregiverPatientId,
 } from "../utils/caregiverPatientContext";
-import { formatListOutput, getDoctorCaregiverNotes, getPatientClinicalNotes, getPatientTreatmentPlans } from "../utils/doctorPatientRecords";
+import { formatListOutput, getPatientClinicalNotes, getPatientTreatmentPlans } from "../utils/doctorPatientRecords";
 
 function formatAppointmentDate(dateLike) {
   return new Date(dateLike).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -91,8 +91,8 @@ const CAREGIVER_PERMISSION_HELP = {
     description: "View upcoming and requested appointments.",
   },
   canMessageDoctor: {
-    label: "Secure messaging",
-    description: "Access patient-related communication workflows.",
+    label: "Doctor contact visibility",
+    description: "View doctor contact details shared in this patient context.",
   },
   canReceiveReminders: {
     label: "Reminder routing",
@@ -115,7 +115,6 @@ export default function DashboardCaregiver() {
   const [caregiverNotes, setCaregiverNotes] = useState([]);
   const [doctorClinicalNotes, setDoctorClinicalNotes] = useState([]);
   const [doctorTreatmentPlans, setDoctorTreatmentPlans] = useState([]);
-  const [doctorToCaregiverNotes, setDoctorToCaregiverNotes] = useState([]);
   const [conversationCount, setConversationCount] = useState(0);
   const [isScopeModalOpen, setIsScopeModalOpen] = useState(false);
 
@@ -162,6 +161,20 @@ export default function DashboardCaregiver() {
   }, [activePatientId, symptoms]);
 
   const nextAppointment = upcomingAppointments[0] || null;
+  const doctorContacts = useMemo(() => {
+    const map = new Map();
+    for (const appointment of scopedAppointments) {
+      const doctor = appointment?.doctor;
+      if (!doctor) continue;
+      const key = doctor.id || doctor.email || doctor.displayName;
+      if (!key || map.has(key)) continue;
+      map.set(key, {
+        displayName: doctor.displayName || "Doctor",
+        email: doctor.email || "Not shared",
+      });
+    }
+    return Array.from(map.values());
+  }, [scopedAppointments]);
   const medicationDosesToday = useMemo(() => {
     const now = new Date();
     const doses = [];
@@ -278,7 +291,6 @@ export default function DashboardCaregiver() {
       setCaregiverNotes([]);
       setDoctorClinicalNotes([]);
       setDoctorTreatmentPlans([]);
-      setDoctorToCaregiverNotes([]);
       return;
     }
 
@@ -299,11 +311,6 @@ export default function DashboardCaregiver() {
         setCaregiverNotes(Array.isArray(notesData) ? notesData : []);
         setDoctorClinicalNotes(getPatientClinicalNotes(activePatientId));
         setDoctorTreatmentPlans(getPatientTreatmentPlans(activePatientId));
-        setDoctorToCaregiverNotes(
-          getDoctorCaregiverNotes(activePatientId).filter(
-            (note) => !note.caregiverId || note.caregiverId === user?.id
-          )
-        );
       } catch (error) {
         if (!cancelled) {
           console.error("Failed to load patient-specific data:", error);
@@ -312,7 +319,6 @@ export default function DashboardCaregiver() {
           setCaregiverNotes([]);
           setDoctorClinicalNotes([]);
           setDoctorTreatmentPlans([]);
-          setDoctorToCaregiverNotes([]);
         }
       }
     }
@@ -614,23 +620,29 @@ export default function DashboardCaregiver() {
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <h2 className="text-xl font-semibold text-slate-900">Doctor-to-caregiver notes</h2>
-                <p className="mt-1 text-sm text-slate-500">Doctor guidance written specifically for your caregiver support role.</p>
+                <h2 className="text-xl font-semibold text-slate-900">Care contacts</h2>
+                <p className="mt-1 text-sm text-slate-500">Contact details only. Direct doctor-caregiver messaging is not available in the app.</p>
               </div>
-              <MiniPill label="Notes" value={doctorToCaregiverNotes.length} tone="emerald" />
+              <MiniPill label="Doctors" value={doctorContacts.length} tone="emerald" />
             </div>
             <div className="mt-4 space-y-3">
-              {doctorToCaregiverNotes.length ? doctorToCaregiverNotes.map((note) => (
-                <div key={note.id} className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-emerald-50 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <MiniPill label="Support note" value="Caregiver" tone="emerald" />
-                    <p className="text-xs text-slate-400">{new Date(note.createdAt).toLocaleString()}</p>
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-slate-700">{note.note}</p>
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Patient contact</p>
+                <p className="mt-2 text-sm text-slate-800">{activePatientRecord?.patient?.displayName || "Patient"}</p>
+                <p className="mt-1 text-sm text-slate-600">{activePatientRecord?.patient?.email || "No patient email shared"}</p>
+                <p className="mt-1 text-sm text-slate-600">{activePatientRecord?.patient?.phoneNumber || "No patient phone shared"}</p>
+              </div>
+
+              {doctorContacts.length ? doctorContacts.map((doctor) => (
+                <div key={`${doctor.displayName}-${doctor.email}`} className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-emerald-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Doctor contact</p>
+                  <p className="mt-2 text-sm text-slate-800">{doctor.displayName}</p>
+                  <p className="mt-1 text-sm text-slate-600">{doctor.email}</p>
+                  <p className="mt-1 text-sm text-slate-600">{doctor.phoneNumber || "No doctor phone shared"}</p>
                 </div>
               )) : (
                 <div className="rounded-2xl border border-dashed border-slate-200 px-5 py-6 text-sm text-slate-500">
-                  No doctor-to-caregiver notes for this patient yet.
+                  No doctor contact has been shared for this patient yet.
                 </div>
               )}
             </div>
