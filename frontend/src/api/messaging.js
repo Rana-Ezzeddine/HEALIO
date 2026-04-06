@@ -33,6 +33,12 @@ export function getConversationMessages(conversationId) {
   return request(`/api/conversations/${conversationId}/messages`);
 }
 
+export function deleteConversation(conversationId) {
+  return request(`/api/conversations/${conversationId}`, {
+    method: "DELETE",
+  });
+}
+
 export function sendConversationMessage(conversationId, body, options = {}) {
   return request(`/api/conversations/${conversationId}/messages`, {
     method: "POST",

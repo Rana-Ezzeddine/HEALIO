@@ -551,3 +551,26 @@ export const sendMessage = async (req, res) => {
         return res.status(500).json({ message: "Server error." });
     }
 };
+
+export const deleteConversation = async (req, res) => {
+    try {
+        const { id: conversationId } = req.params;
+        const userId = req.user.id;
+
+        const isMember = await ensureConversationMember(conversationId, userId);
+        if (!isMember) {
+            return res.status(403).json({ message: "Access denied." });
+        }
+
+        const conversation = await Conversation.findByPk(conversationId);
+        if (!conversation) {
+            return res.status(404).json({ message: "Conversation not found." });
+        }
+
+        await conversation.destroy();
+        return res.json({ message: "Conversation deleted." });
+    } catch (err) {
+        console.error("deleteConversation error:", err);
+        return res.status(500).json({ message: "Server error." });
+    }
+};
