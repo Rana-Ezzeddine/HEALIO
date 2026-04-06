@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { register as registerApi, resendVerification, startSocialAuth } from "../api/auth";
 import { clearSession, getToken, getUser, setSession } from "../api/http";
 import { getPostAuthRoute } from "../utils/authRouting";
+import { readSafePrefill, writeSafePrefill } from "../utils/safePrefill";
 import logo from "../assets/logo.png";
 
 const NEW_PATIENT_WELCOME_FLAG = "healio:new-patient-signup";
@@ -20,14 +21,21 @@ function GoogleIcon() {
 
 export default function SignupPage({ embedded = false, onClose, onSwitchToLogin }) {
   const navigate = useNavigate();
+  const signupPrefill = readSafePrefill("signup", {
+    userType: "",
+    firstName: "",
+    lastName: "",
+    email: "",
+    licenseNb: "",
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [userType, setUserType] = useState("");
+  const [userType, setUserType] = useState(signupPrefill.userType || "");
 
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
-  const [licenseNb, setLicenseNb] = useState("");
+  const [firstName, setFirstName] = useState(signupPrefill.firstName || "");
+  const [lastName, setLastName] = useState(signupPrefill.lastName || "");
+  const [email, setEmail] = useState(signupPrefill.email || "");
+  const [licenseNb, setLicenseNb] = useState(signupPrefill.licenseNb || "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
@@ -79,6 +87,16 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
       clearSession();
     }
   }, [embedded]);
+
+  useEffect(() => {
+    writeSafePrefill("signup", {
+      userType,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      email: email.trim().toLowerCase(),
+      licenseNb: licenseNb.trim(),
+    });
+  }, [email, firstName, lastName, licenseNb, userType]);
 
   async function handleCreateAccount(e) {
     e.preventDefault();

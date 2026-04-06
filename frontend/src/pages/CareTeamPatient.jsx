@@ -10,6 +10,7 @@ import {
   removeCaregiverAssignment,
   updateCaregiverPermissions,
 } from "../api/links";
+import { readSafePrefill, writeSafePrefill } from "../utils/safePrefill";
 
 const PERMISSION_LABELS = {
   canViewMedications: "View medications",
@@ -20,12 +21,16 @@ const PERMISSION_LABELS = {
 };
 
 export default function CareTeamPatient() {
+  const careTeamPrefill = readSafePrefill("care-team", {
+    doctorEmailToLink: "",
+    caregiverEmailToLink: "",
+  });
   const [linkedDoctors, setLinkedDoctors] = useState([]);
   const [linkedCaregivers, setLinkedCaregivers] = useState([]);
   const [doctorRequests, setDoctorRequests] = useState([]);
   const [caregiverRequests, setCaregiverRequests] = useState([]);
-  const [doctorEmailToLink, setDoctorEmailToLink] = useState("");
-  const [caregiverEmailToLink, setCaregiverEmailToLink] = useState("");
+  const [doctorEmailToLink, setDoctorEmailToLink] = useState(careTeamPrefill.doctorEmailToLink || "");
+  const [caregiverEmailToLink, setCaregiverEmailToLink] = useState(careTeamPrefill.caregiverEmailToLink || "");
   const [status, setStatus] = useState({ error: "", success: "" });
   const [loading, setLoading] = useState(true);
 
@@ -53,6 +58,13 @@ export default function CareTeamPatient() {
   useEffect(() => {
     loadAssignments();
   }, []);
+
+  useEffect(() => {
+    writeSafePrefill("care-team", {
+      doctorEmailToLink: doctorEmailToLink.trim().toLowerCase(),
+      caregiverEmailToLink: caregiverEmailToLink.trim().toLowerCase(),
+    });
+  }, [caregiverEmailToLink, doctorEmailToLink]);
 
   async function handleLinkDoctor() {
     try {

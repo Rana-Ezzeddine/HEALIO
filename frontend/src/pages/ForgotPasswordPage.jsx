@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { requestPasswordReset } from "../api/auth";
+import { readSafePrefill, writeSafePrefill } from "../utils/safePrefill";
 import logo from "../assets/logo.png";
 
 export default function ForgotPasswordPage() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => readSafePrefill("auth", { email: "" }).email || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -18,6 +19,7 @@ export default function ForgotPasswordPage() {
 
     try {
       const data = await requestPasswordReset(email.trim());
+      writeSafePrefill("auth", { email: email.trim().toLowerCase() });
       setSuccess(data?.message || "If an account with that email exists, a reset link has been sent.");
     } catch (err) {
       setError(err?.message || "Failed to request password reset.");

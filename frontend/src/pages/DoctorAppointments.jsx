@@ -14,6 +14,7 @@ import {
   updateDoctorAvailability,
 } from "../api/appointments";
 import { apiUrl, authHeaders } from "../api/http";
+import { readSafePrefill, writeSafePrefill } from "../utils/safePrefill";
 
 const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const durationOptions = [15, 30, 45, 60];
@@ -212,6 +213,16 @@ async function fetchAssignedPatients() {
 
 export default function DoctorAppointments() {
   const location = useLocation();
+  const doctorAppointmentsPrefill = readSafePrefill("doctor-appointments", {
+    duration: getPreferredDuration(),
+    location: "",
+    notes: "",
+    suggestNote: "",
+    availabilityType: "break",
+    availabilityReason: "",
+    availabilityStart: "09:00",
+    availabilityEnd: "17:00",
+  });
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -234,12 +245,12 @@ export default function DoctorAppointments() {
   const [suggestForm, setSuggestForm] = useState({
     appointmentId: "",
     date: "",
-    duration: getPreferredDuration(),
+    duration: doctorAppointmentsPrefill.duration || getPreferredDuration(),
     timeSlot: "",
-    note: "",
+    note: doctorAppointmentsPrefill.suggestNote || "",
   });
   const [availabilityEntries, setAvailabilityEntries] = useState([]);
-  const [preferredDuration, setPreferredDuration] = useState(getPreferredDuration());
+  const [preferredDuration, setPreferredDuration] = useState(doctorAppointmentsPrefill.duration || getPreferredDuration());
   const [availabilityLoading, setAvailabilityLoading] = useState(true);
   const [availabilityError, setAvailabilityError] = useState("");
   const [availabilitySaving, setAvailabilitySaving] = useState(false);
@@ -247,21 +258,21 @@ export default function DoctorAppointments() {
   const [plannerSelection, setPlannerSelection] = useState({});
   const [editingAvailabilityId, setEditingAvailabilityId] = useState("");
   const [availabilityForm, setAvailabilityForm] = useState({
-    type: "break",
+    type: doctorAppointmentsPrefill.availabilityType || "break",
     dayOfWeek: "1",
     selectedWeekdays: ["1"],
     specificDate: "",
-    startTime: "09:00",
-    endTime: "17:00",
-    reason: "",
+    startTime: doctorAppointmentsPrefill.availabilityStart || "09:00",
+    endTime: doctorAppointmentsPrefill.availabilityEnd || "17:00",
+    reason: doctorAppointmentsPrefill.availabilityReason || "",
   });
   const [form, setForm] = useState({
     patientId: "",
     date: "",
     timeSlot: "",
-    duration: getPreferredDuration(),
-    location: "",
-    notes: "",
+    duration: doctorAppointmentsPrefill.duration || getPreferredDuration(),
+    location: doctorAppointmentsPrefill.location || "",
+    notes: doctorAppointmentsPrefill.notes || "",
   });
 
   const patientNameById = useMemo(() => {
@@ -313,6 +324,28 @@ export default function DoctorAppointments() {
   useEffect(() => {
     loadPageData();
   }, []);
+
+  useEffect(() => {
+    writeSafePrefill("doctor-appointments", {
+      duration: preferredDuration,
+      location: form.location.trim(),
+      notes: form.notes.trim(),
+      suggestNote: suggestForm.note.trim(),
+      availabilityType: availabilityForm.type,
+      availabilityReason: availabilityForm.reason.trim(),
+      availabilityStart: availabilityForm.startTime,
+      availabilityEnd: availabilityForm.endTime,
+    });
+  }, [
+    availabilityForm.endTime,
+    availabilityForm.reason,
+    availabilityForm.startTime,
+    availabilityForm.type,
+    form.location,
+    form.notes,
+    preferredDuration,
+    suggestForm.note,
+  ]);
 
   useEffect(() => {
     if (location.hash !== "#schedule-patient") return;
@@ -548,9 +581,9 @@ export default function DoctorAppointments() {
         patientId: "",
         date: "",
         timeSlot: "",
-        duration: "30",
-        location: "",
-        notes: "",
+        duration: preferredDuration,
+        location: form.location,
+        notes: form.notes,
       });
       setAvailableSlots([]);
       await loadPageData();
@@ -596,7 +629,7 @@ export default function DoctorAppointments() {
       date: defaultDate,
       duration: String(Math.round((new Date(appointment.endsAt) - new Date(appointment.startsAt)) / 60000) || Number(getPreferredDuration())),
       timeSlot: "",
-      note: decisionNotes[appointment.id] || "",
+      note: decisionNotes[appointment.id] || doctorAppointmentsPrefill.suggestNote || "",
     });
     setError("");
   }
@@ -641,13 +674,13 @@ export default function DoctorAppointments() {
 
   function resetAvailabilityForm() {
     setAvailabilityForm({
-      type: "break",
+      type: doctorAppointmentsPrefill.availabilityType || "break",
       dayOfWeek: "1",
       selectedWeekdays: [],
       specificDate: "",
-      startTime: "09:00",
-      endTime: "17:00",
-      reason: "",
+      startTime: doctorAppointmentsPrefill.availabilityStart || "09:00",
+      endTime: doctorAppointmentsPrefill.availabilityEnd || "17:00",
+      reason: doctorAppointmentsPrefill.availabilityReason || "",
     });
     setEditingAvailabilityId("");
   }

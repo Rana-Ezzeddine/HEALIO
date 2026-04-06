@@ -7,6 +7,7 @@ import {
   getMyAppointments,
   getRequestableDoctors,
 } from "../api/appointments";
+import { readSafePrefill, writeSafePrefill } from "../utils/safePrefill";
 
 function formatDateTimeParts(dateLike) {
   const date = new Date(dateLike);
@@ -40,6 +41,12 @@ function doctorDisplayName(appointment) {
 
 export default function PatientAppointments() {
   const navigate = useNavigate();
+  const patientAppointmentsPrefill = readSafePrefill("patient-appointments", {
+    doctorId: "",
+    duration: "30",
+    location: "",
+    notes: "",
+  });
   const [appointments, setAppointments] = useState([]);
   const [requestableDoctors, setRequestableDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -49,13 +56,22 @@ export default function PatientAppointments() {
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [availableSlots, setAvailableSlots] = useState([]);
   const [form, setForm] = useState({
-    doctorId: "",
+    doctorId: patientAppointmentsPrefill.doctorId || "",
     date: "",
     timeSlot: "",
-    duration: "30",
-    location: "",
-    notes: "",
+    duration: patientAppointmentsPrefill.duration || "30",
+    location: patientAppointmentsPrefill.location || "",
+    notes: patientAppointmentsPrefill.notes || "",
   });
+
+  useEffect(() => {
+    writeSafePrefill("patient-appointments", {
+      doctorId: form.doctorId,
+      duration: form.duration,
+      location: form.location.trim(),
+      notes: form.notes.trim(),
+    });
+  }, [form.doctorId, form.duration, form.location, form.notes]);
 
   async function loadAppointmentsPage() {
     setLoading(true);
