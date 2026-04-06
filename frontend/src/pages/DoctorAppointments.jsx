@@ -95,21 +95,12 @@ function statusLabel(status) {
 function patientLabel(patientRecord) {
   return patientRecord.profile?.displayName || patientRecord.patient?.displayName || patientRecord.patient?.email || patientRecord.email || "Patient";
 }
-function MetricCard({ label, value, hint, tone = "sky" }) {
-  const tones = {
-    sky: "from-sky-500 to-cyan-400",
-    emerald: "from-emerald-500 to-teal-400",
-    amber: "from-amber-500 to-orange-400",
-    rose: "from-rose-500 to-pink-400",
-  };
+function MetricCard({ label, value, hint }) {
   return (
-    <div className="rounded-2xl border border-white/15 bg-white/10 p-3 backdrop-blur-sm">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70">{label}</p>
-      <p className="mt-2 text-2xl font-black text-white">{value}</p>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/15">
-        <div className={`h-full rounded-full bg-gradient-to-r ${tones[tone] || tones.sky}`} style={{ width: "100%" }} />
-      </div>
-      <p className="mt-2 text-[11px] text-white/70">{hint}</p>
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">{label}</p>
+      <p className="mt-2 text-2xl font-black text-slate-900">{value}</p>
+      <p className="mt-2 text-[11px] text-slate-600">{hint}</p>
     </div>
   );
 }
@@ -819,10 +810,10 @@ export default function DoctorAppointments() {
               </div>
             </div>
             <div className="grid gap-2 sm:grid-cols-2 xl:w-[360px]">
-              <MetricCard label="Requests" value={requestedAppointments.length} hint="Awaiting review" tone="amber" />
-              <MetricCard label="Scheduled" value={scheduledCount} hint="Confirmed visits" tone="emerald" />
-              <MetricCard label="Completed" value={completedCount} hint="Closed visits" tone="sky" />
-              <MetricCard label="Cancelled" value={cancelledCount} hint="Dropped or denied" tone="rose" />
+              <MetricCard label="Requests" value={requestedAppointments.length} hint="Awaiting review" />
+              <MetricCard label="Scheduled" value={scheduledCount} hint="Confirmed visits" />
+              <MetricCard label="Completed" value={completedCount} hint="Closed visits" />
+              <MetricCard label="Cancelled" value={cancelledCount} hint="Dropped or denied" />
             </div>
           </div>
         </section>
@@ -833,7 +824,7 @@ export default function DoctorAppointments() {
           </div>
         )}
 
-        <section className="mb-6 rounded-3xl bg-gradient-to-br from-white to-amber-50 p-6 shadow">
+        <section className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-4">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
