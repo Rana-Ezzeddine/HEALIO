@@ -329,6 +329,22 @@ export default function DashboardPatient() {
               ) : (
                 <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
                   No appointment requests yet. Link a doctor, then request your first visit.
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => navigate("/care-team")}
+                      className="rounded-xl bg-sky-100 px-3 py-2 text-xs font-semibold text-sky-700 hover:bg-sky-200 transition"
+                    >
+                      Link a doctor
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/patientAppointments")}
+                      className="rounded-xl bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-200 transition"
+                    >
+                      Request appointment
+                    </button>
+                  </div>
                 </div>
               )}
               {remainingAppointmentCount > 0 ? (

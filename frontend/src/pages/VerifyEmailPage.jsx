@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { resendVerification, verifyEmail } from "../api/auth";
 import { clearSession, setSession } from "../api/http";
 import { getPostAuthRoute } from "../utils/authRouting";
+import { readSafePrefill, writeSafePrefill } from "../utils/safePrefill";
 
 const NEW_PATIENT_WELCOME_FLAG = "healio:new-patient-signup";
 
@@ -15,7 +16,7 @@ function getInitialView(searchParams) {
       token: "",
       status: "error",
       message: "Verification token is missing. Open the full link from your email and try again.",
-      canResend: false,
+      canResend: true,
       email: "",
     };
   }
@@ -37,6 +38,7 @@ export default function VerifyEmailPage() {
   const [message, setMessage] = useState(initialView.message);
   const [canResend, setCanResend] = useState(initialView.canResend);
   const [email, setEmail] = useState(initialView.email);
+  const [manualEmail, setManualEmail] = useState(() => readSafePrefill("auth", { email: "" }).email || "");
   const [isResending, setIsResending] = useState(false);
 
   useEffect(() => {
@@ -77,6 +79,7 @@ export default function VerifyEmailPage() {
 
         if (err?.code === "VERIFICATION_TOKEN_EXPIRED" && err?.email) {
           setEmail(err.email);
+          setManualEmail(err.email);
           setCanResend(true);
         }
       }
@@ -90,11 +93,16 @@ export default function VerifyEmailPage() {
   }, [initialView.token, navigate]);
 
   async function handleResend() {
-    if (!email) return;
+    const targetEmail = (email || manualEmail || "").trim().toLowerCase();
+    if (!targetEmail) {
+      setMessage("Enter your account email to resend verification.");
+      return;
+    }
 
     setIsResending(true);
     try {
-      const data = await resendVerification(email);
+      const data = await resendVerification(targetEmail);
+      writeSafePrefill("auth", { email: targetEmail });
       setCanResend(false);
       setMessage(data?.message || "Verification email sent. Check your inbox for a new link.");
     } catch (err) {
@@ -111,14 +119,23 @@ export default function VerifyEmailPage() {
         <p className="mt-4 text-sm text-slate-600">{message}</p>
 
         {canResend ? (
-          <button
-            type="button"
-            onClick={handleResend}
-            disabled={isResending}
-            className="mt-6 w-full h-11 rounded-xl border border-sky-300 text-sky-700 font-semibold hover:bg-sky-50 transition disabled:opacity-70"
-          >
-            {isResending ? "Sending..." : "Resend verification email"}
-          </button>
+          <div className="mt-6 space-y-3">
+            <input
+              type="email"
+              value={manualEmail}
+              onChange={(event) => setManualEmail(event.target.value)}
+              placeholder="Enter your account email"
+              className="w-full h-11 rounded-xl border border-slate-300 px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-sky-400"
+            />
+            <button
+              type="button"
+              onClick={handleResend}
+              disabled={isResending}
+              className="w-full h-11 rounded-xl border border-sky-300 text-sky-700 font-semibold hover:bg-sky-50 transition disabled:opacity-70"
+            >
+              {isResending ? "Sending..." : "Resend verification email"}
+            </button>
+          </div>
         ) : null}
 
         {status === "error" ? (

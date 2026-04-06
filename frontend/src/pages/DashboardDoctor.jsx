@@ -216,21 +216,33 @@ export default function DashboardDoctor() {
         ) : null}
 
         <section className="mt-6 grid gap-4 sm:grid-cols-3">
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <button
+            type="button"
+            onClick={() => navigate("/doctor-patients")}
+            className="rounded-3xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:bg-slate-50"
+          >
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Assigned patients</p>
             <p className="mt-2 text-3xl font-black text-slate-900">{assignedPatients.length}</p>
             <p className="mt-1 text-sm text-slate-500">Active doctor-patient links</p>
-          </div>
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate("/doctorAppointments")}
+            className="rounded-3xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:bg-slate-50"
+          >
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Appointments today</p>
             <p className="mt-2 text-3xl font-black text-slate-900">{todayAppointments.length}</p>
             <p className="mt-1 text-sm text-slate-500">Scheduled and completed visits</p>
-          </div>
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate("/doctor-patients/requests")}
+            className="rounded-3xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:bg-slate-50"
+          >
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Pending requests</p>
             <p className="mt-2 text-3xl font-black text-slate-900">{overviewSummary?.pendingPatientRequestsCount || 0}</p>
             <p className="mt-1 text-sm text-slate-500">Patients waiting for approval</p>
-          </div>
+          </button>
         </section>
 
         <section className="mt-6 grid gap-6 lg:grid-cols-2">

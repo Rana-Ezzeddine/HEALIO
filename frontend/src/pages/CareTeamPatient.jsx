@@ -33,6 +33,8 @@ export default function CareTeamPatient() {
   const [caregiverEmailToLink, setCaregiverEmailToLink] = useState(careTeamPrefill.caregiverEmailToLink || "");
   const [status, setStatus] = useState({ error: "", success: "" });
   const [loading, setLoading] = useState(true);
+  const [linkingDoctor, setLinkingDoctor] = useState(false);
+  const [linkingCaregiver, setLinkingCaregiver] = useState(false);
 
   async function loadAssignments() {
     setLoading(true);
@@ -67,8 +69,15 @@ export default function CareTeamPatient() {
   }, [caregiverEmailToLink, doctorEmailToLink]);
 
   async function handleLinkDoctor() {
+    const trimmedEmail = doctorEmailToLink.trim().toLowerCase();
+    if (!trimmedEmail) {
+      setStatus({ error: "Enter a doctor email first.", success: "" });
+      return;
+    }
+
     try {
-      await linkDoctorByEmail(doctorEmailToLink.trim());
+      setLinkingDoctor(true);
+      await linkDoctorByEmail(trimmedEmail);
       setDoctorEmailToLink("");
       setStatus({ error: "", success: "Doctor request sent successfully." });
       await loadAssignments();
@@ -78,12 +87,21 @@ export default function CareTeamPatient() {
         return;
       }
       setStatus({ error: error.message || "Failed to link doctor.", success: "" });
+    } finally {
+      setLinkingDoctor(false);
     }
   }
 
   async function handleLinkCaregiver() {
+    const trimmedEmail = caregiverEmailToLink.trim().toLowerCase();
+    if (!trimmedEmail) {
+      setStatus({ error: "Enter a caregiver email first.", success: "" });
+      return;
+    }
+
     try {
-      await linkCaregiverByEmail(caregiverEmailToLink.trim(), {
+      setLinkingCaregiver(true);
+      await linkCaregiverByEmail(trimmedEmail, {
         canViewMedications: true,
         canViewSymptoms: true,
         canViewAppointments: true,
@@ -95,6 +113,8 @@ export default function CareTeamPatient() {
       await loadAssignments();
     } catch (error) {
       setStatus({ error: error.message || "Failed to link caregiver.", success: "" });
+    } finally {
+      setLinkingCaregiver(false);
     }
   }
 
@@ -201,9 +221,10 @@ export default function CareTeamPatient() {
               <button
                 type="button"
                 onClick={handleLinkDoctor}
-                className="rounded-2xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white hover:bg-sky-600 transition"
+                disabled={loading || linkingDoctor || !doctorEmailToLink.trim()}
+                className="rounded-2xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white hover:bg-sky-600 transition disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Link doctor
+                {linkingDoctor ? "Linking..." : "Link doctor"}
               </button>
             </div>
 
@@ -258,9 +279,10 @@ export default function CareTeamPatient() {
               <button
                 type="button"
                 onClick={handleLinkCaregiver}
-                className="rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-600 transition"
+                disabled={loading || linkingCaregiver || !caregiverEmailToLink.trim()}
+                className="rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-600 transition disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Link caregiver
+                {linkingCaregiver ? "Linking..." : "Link caregiver"}
               </button>
             </div>
 
