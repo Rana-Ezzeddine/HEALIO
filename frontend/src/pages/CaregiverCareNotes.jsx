@@ -246,7 +246,7 @@ export default function CaregiverCareNotes() {
           </section>
         ) : (
           <>
-            <section className="mt-6 grid gap-4 sm:grid-cols-3">
+            <section className="mt-6 grid gap-4 sm:grid-cols-2">
               <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total notes</p>
                 <p className="mt-2 text-3xl font-black text-slate-900">{notes.length}</p>
@@ -256,16 +256,6 @@ export default function CaregiverCareNotes() {
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Latest update</p>
                 <p className="mt-2 text-base font-bold text-slate-900">{latestUpdate}</p>
                 <p className="mt-1 text-sm text-slate-500">Most recent edit time</p>
-              </div>
-              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Quick action</p>
-                <button
-                  type="button"
-                  onClick={() => navigate("/caregiverAppointments")}
-                  className="mt-2 rounded-xl bg-cyan-100 px-3 py-2 text-sm font-semibold text-cyan-800 transition hover:bg-cyan-200"
-                >
-                  View appointments
-                </button>
               </div>
             </section>
 

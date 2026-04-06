@@ -209,7 +209,7 @@ function RoutedApp() {
         <Route
           path="/medication"
           element={
-            <ProtectedRoute allowedRoles={["patient", "caregiver"]}>
+            <ProtectedRoute allowedRoles={["patient"]}>
               <Medication />
             </ProtectedRoute>
           }

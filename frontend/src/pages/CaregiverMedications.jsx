@@ -34,6 +34,7 @@ export default function CaregiverMedications() {
   const [actionNote, setActionNote] = useState({});
   const [message, setMessage] = useState(null);
   const [historyMap, setHistoryMap] = useState({});
+  const [historyLoadingMap, setHistoryLoadingMap] = useState({});
 
   useEffect(() => {
     getMyPatients().then((data) => {
@@ -71,16 +72,22 @@ export default function CaregiverMedications() {
         ...prev,
         [medicationId]: hist.adherenceHistory || [],
       }));
+      setHistoryLoadingMap((prev) => ({ ...prev, [medicationId]: false }));
       setActionNote((prev) => ({ ...prev, [medicationId]: "" }));
     } catch (err) {
       setMessage(err.message || "Failed to log action.");
+      setHistoryLoadingMap((prev) => ({ ...prev, [medicationId]: false }));
     }
   };
 
   const loadHistory = async (medicationId) => {
-    if (historyMap[medicationId]) return;
+    if (historyLoadingMap[medicationId]) return;
+    if (Object.prototype.hasOwnProperty.call(historyMap, medicationId)) return;
+
+    setHistoryLoadingMap((prev) => ({ ...prev, [medicationId]: true }));
     const hist = await getMedicationAdherenceHistory(medicationId).catch(() => ({ adherenceHistory: [] }));
     setHistoryMap((prev) => ({ ...prev, [medicationId]: hist.adherenceHistory || [] }));
+    setHistoryLoadingMap((prev) => ({ ...prev, [medicationId]: false }));
   };
 
   return (
@@ -136,6 +143,13 @@ export default function CaregiverMedications() {
 
         {permission && medications.map((med) => (
           <div key={med.id} className="rounded-3xl border border-slate-200 bg-white p-6 mb-4 shadow-sm">
+            {(() => {
+              const hasLoadedHistory = Object.prototype.hasOwnProperty.call(historyMap, med.id);
+              const isHistoryLoading = Boolean(historyLoadingMap[med.id]);
+              const historyItems = historyMap[med.id] || [];
+
+              return (
+                <>
             <div className="flex items-start justify-between gap-4 mb-3">
               <div>
                 <h3 className="text-lg font-semibold text-slate-800">{med.name}</h3>
@@ -182,11 +196,15 @@ export default function CaregiverMedications() {
                 onClick={() => loadHistory(med.id)}
                 className="text-xs text-sky-600 hover:underline"
               >
-                {historyMap[med.id] ? "History loaded" : "View support history"}
+                {isHistoryLoading
+                  ? "Loading support history..."
+                  : hasLoadedHistory
+                    ? "History loaded"
+                    : "View support history"}
               </button>
-              {historyMap[med.id] && historyMap[med.id].length > 0 && (
+              {hasLoadedHistory && historyItems.length > 0 && (
                 <div className="mt-2 space-y-1">
-                  {historyMap[med.id].slice(-3).reverse().map((h, i) => (
+                  {historyItems.slice(-3).reverse().map((h, i) => (
                     <div key={i} className="flex items-center gap-2 text-xs text-slate-500">
                       <ActionBadge action={h.action} />
                       {/*  always show loggedBy */}
@@ -198,7 +216,13 @@ export default function CaregiverMedications() {
                   ))}
                 </div>
               )}
+              {hasLoadedHistory && !isHistoryLoading && historyItems.length === 0 ? (
+                <p className="mt-2 text-xs text-slate-500">No support history yet for this medication.</p>
+              ) : null}
             </div>
+                </>
+              );
+            })()}
           </div>
         ))}
       </main>

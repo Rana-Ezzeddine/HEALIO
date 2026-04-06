@@ -112,7 +112,7 @@ export default function Navbar({ onLogin, onSignup }) {
   const isCaregiverMessages = path.toLowerCase().startsWith("/caregivermessages");
   const isCaregiverPatients = path.toLowerCase().startsWith("/caregiver-patients");
   const isCaregiverSymptoms = path.toLowerCase().startsWith("/caregiversymptoms");
-  const isCaregiverMedications = path.toLowerCase().startsWith("/caregivermedications") || path.toLowerCase().startsWith("/medication");
+  const isCaregiverMedications = path.toLowerCase().startsWith("/caregivermedications");
   const isCaregiverCareConcern = path.toLowerCase().startsWith("/caregivercareconcern");
   const isLanding = path === "/";
   const isPublicPage = PUBLIC_PATHS.has(path.toLowerCase());
@@ -132,7 +132,7 @@ export default function Navbar({ onLogin, onSignup }) {
     ? [
       { label: "Appointments", href: "/caregiverAppointments", active: isCaregiverAppointments, isDanger: false },
       { label: "Care Notes", href: "/caregiverNotes", active: isCaregiverNotes, isDanger: false },
-      { label: "Medications", href: "/medication", active: isCaregiverMedications, isDanger: false },
+      { label: "Medications", href: "/caregiverMedications", active: isCaregiverMedications, isDanger: false },
       { label: "Symptoms", href: "/caregiverSymptoms", active: isCaregiverSymptoms, isDanger: false },
       { label: "Care Contacts", href: "/caregiverCareConcern", active: isCaregiverCareConcern, isDanger: false },
       { label: "Profile", href: "/profileCaregiver", active: isProfile, isDanger: false },

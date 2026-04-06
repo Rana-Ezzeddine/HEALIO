@@ -439,7 +439,7 @@ export default function DashboardCaregiver() {
                     <p className="font-semibold text-slate-900">Medications due today</p>
                     <button
                       type="button"
-                      onClick={() => navigate("/medication")}
+                      onClick={() => navigate("/caregiverMedications")}
                       disabled={!canViewMedications}
                       className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
                         canViewMedications
@@ -610,7 +610,7 @@ export default function DashboardCaregiver() {
                   },
                   {
                     label: "Medication tasks",
-                    href: "/medication",
+                    href: "/caregiverMedications",
                     style: "bg-sky-100 text-sky-700",
                     enabled: canViewMedications,
                   },
