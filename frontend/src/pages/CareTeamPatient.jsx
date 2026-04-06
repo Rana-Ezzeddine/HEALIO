@@ -189,6 +189,12 @@ export default function CareTeamPatient() {
                 type="email"
                 value={doctorEmailToLink}
                 onChange={(event) => setDoctorEmailToLink(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    handleLinkDoctor();
+                  }
+                }}
                 placeholder="doctor@email.com"
                 className="flex-1 rounded-2xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
@@ -240,6 +246,12 @@ export default function CareTeamPatient() {
                 type="email"
                 value={caregiverEmailToLink}
                 onChange={(event) => setCaregiverEmailToLink(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    handleLinkCaregiver();
+                  }
+                }}
                 placeholder="caregiver@email.com"
                 className="flex-1 rounded-2xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
               />

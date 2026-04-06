@@ -408,6 +408,20 @@ export default function DoctorAppointments() {
     };
   }, [form.date, form.duration]);
 
+  useEffect(() => {
+    if (!availableSlots.length) {
+      if (form.timeSlot) {
+        setForm((current) => ({ ...current, timeSlot: "" }));
+      }
+      return;
+    }
+
+    const hasSelectedSlot = availableSlots.some((slot) => slot.startsAt === form.timeSlot);
+    if (!hasSelectedSlot) {
+      setForm((current) => ({ ...current, timeSlot: availableSlots[0].startsAt }));
+    }
+  }, [availableSlots, form.timeSlot]);
+
 
   useEffect(() => {
     let cancelled = false;
@@ -457,6 +471,22 @@ export default function DoctorAppointments() {
       cancelled = true;
     };
   }, [suggestOpenId, suggestForm.date, suggestForm.duration]);
+
+  useEffect(() => {
+    if (!suggestOpenId) return;
+
+    if (!suggestSlots.length) {
+      if (suggestForm.timeSlot) {
+        setSuggestForm((current) => ({ ...current, timeSlot: "" }));
+      }
+      return;
+    }
+
+    const hasSelectedSlot = suggestSlots.some((slot) => slot.startsAt === suggestForm.timeSlot);
+    if (!hasSelectedSlot) {
+      setSuggestForm((current) => ({ ...current, timeSlot: suggestSlots[0].startsAt }));
+    }
+  }, [suggestOpenId, suggestSlots, suggestForm.timeSlot]);
 
   const requestedAppointments = useMemo(() => {
     return appointments

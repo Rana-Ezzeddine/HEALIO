@@ -142,6 +142,20 @@ export default function PatientAppointments() {
     };
   }, [form.date, form.doctorId, form.duration]);
 
+  useEffect(() => {
+    if (!availableSlots.length) {
+      if (form.timeSlot) {
+        setForm((current) => ({ ...current, timeSlot: "" }));
+      }
+      return;
+    }
+
+    const hasSelectedSlot = availableSlots.some((slot) => slot.startsAt === form.timeSlot);
+    if (!hasSelectedSlot) {
+      setForm((current) => ({ ...current, timeSlot: availableSlots[0].startsAt }));
+    }
+  }, [availableSlots, form.timeSlot]);
+
   const requestedCount = useMemo(
     () => appointments.filter((appointment) => appointment.status === "requested").length,
     [appointments]
@@ -196,14 +210,10 @@ export default function PatientAppointments() {
         notes: form.notes,
       });
 
-      setForm({
-        doctorId: "",
-        date: "",
+      setForm((current) => ({
+        ...current,
         timeSlot: "",
-        duration: "30",
-        location: "",
-        notes: "",
-      });
+      }));
       await loadAppointmentsPage();
     } catch (err) {
       setRequestError(err.message || "Failed to submit appointment request.");
