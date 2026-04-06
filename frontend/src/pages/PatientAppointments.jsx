@@ -52,6 +52,7 @@ export default function PatientAppointments() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [requestError, setRequestError] = useState("");
+  const [requestSuccess, setRequestSuccess] = useState("");
   const [requestLoading, setRequestLoading] = useState(false);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [availableSlots, setAvailableSlots] = useState([]);
@@ -174,6 +175,7 @@ export default function PatientAppointments() {
   async function handleRequestAppointment(event) {
     event.preventDefault();
     setRequestError("");
+    setRequestSuccess("");
 
     if (!form.doctorId || !form.date || !form.timeSlot) {
       setRequestError("Select doctor, date, and an available time slot.");
@@ -215,6 +217,7 @@ export default function PatientAppointments() {
         timeSlot: "",
       }));
       await loadAppointmentsPage();
+      setRequestSuccess("Appointment request sent successfully. You will see doctor response in status updates.");
     } catch (err) {
       setRequestError(err.message || "Failed to submit appointment request.");
     } finally {
@@ -365,6 +368,12 @@ export default function PatientAppointments() {
           {requestError && (
             <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {requestError}
+            </div>
+          )}
+
+          {requestSuccess && (
+            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              {requestSuccess}
             </div>
           )}
         </section>

@@ -226,6 +226,7 @@ export default function DoctorAppointments() {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [assignedPatients, setAssignedPatients] = useState([]);
   const [selectedDateKey, setSelectedDateKey] = useState(toDateKey(new Date()));
   const [visibleMonth, setVisibleMonth] = useState(() => {
@@ -288,6 +289,7 @@ export default function DoctorAppointments() {
     setLoading(true);
     setAvailabilityLoading(true);
     setError("");
+    setSuccessMessage("");
     setAvailabilityError("");
 
     const [appointmentsResult, patientsResult, availabilityResult] = await Promise.allSettled([
@@ -575,6 +577,7 @@ export default function DoctorAppointments() {
   async function handleScheduleAppointment(event) {
     event.preventDefault();
     setCreateError("");
+    setSuccessMessage("");
 
     if (!form.patientId || !form.timeSlot) {
       setCreateError("Select a patient and an available time slot.");
@@ -619,6 +622,7 @@ export default function DoctorAppointments() {
       await loadPageData();
       setSelectedDateKey(toDateKey(startsAt));
       setVisibleMonth(new Date(startsAt.getFullYear(), startsAt.getMonth(), 1));
+      setSuccessMessage("Appointment scheduled successfully.");
     } catch (err) {
       setCreateError(err.message || "Failed to create appointment.");
     } finally {
@@ -628,9 +632,11 @@ export default function DoctorAppointments() {
 
   async function handleStatusChange(appointmentId, status) {
     try {
+      setSuccessMessage("");
       setStatusLoadingId(appointmentId);
       await updateAppointmentStatus(appointmentId, status);
       await loadPageData();
+      setSuccessMessage(`Appointment marked as ${statusLabel(status).toLowerCase()}.`);
     } catch (err) {
       setError(err.message || "Failed to update appointment status.");
     } finally {
@@ -640,10 +646,16 @@ export default function DoctorAppointments() {
 
   async function handleReviewRequest(appointmentId, status) {
     try {
+      setSuccessMessage("");
       setStatusLoadingId(appointmentId);
       await reviewAppointmentRequest(appointmentId, status, decisionNotes[appointmentId] || "");
       setDecisionNotes((current) => ({ ...current, [appointmentId]: "" }));
       await loadPageData();
+      setSuccessMessage(
+        status === "scheduled"
+          ? "Request approved and appointment scheduled."
+          : "Request denied successfully."
+      );
     } catch (err) {
       setError(err.message || "Failed to review appointment request.");
     } finally {
@@ -677,6 +689,7 @@ export default function DoctorAppointments() {
     }
 
     try {
+      setSuccessMessage("");
       setSuggestLoadingId(appointment.id);
       const startsAt = new Date(suggestForm.timeSlot);
       const durationMinutes = Number(suggestForm.duration || getPreferredDuration());
@@ -689,6 +702,7 @@ export default function DoctorAppointments() {
       setDecisionNotes((current) => ({ ...current, [appointment.id]: suggestForm.note }));
       closeSuggestSlot();
       await loadPageData();
+      setSuccessMessage("Alternative slot suggested successfully.");
     } catch (err) {
       setError(err.message || "Failed to suggest another slot.");
     } finally {
@@ -739,6 +753,7 @@ export default function DoctorAppointments() {
   async function handleSubmitAvailability(event) {
     event.preventDefault();
     setAvailabilityError("");
+    setSuccessMessage("");
 
     if (availabilityForm.endTime <= availabilityForm.startTime) {
       setAvailabilityError("End time must be after start time.");
@@ -793,6 +808,7 @@ export default function DoctorAppointments() {
       }
       resetAvailabilityForm();
       await loadPageData();
+      setSuccessMessage(editingAvailabilityId ? "Availability updated." : "Availability saved.");
     } catch (err) {
       setAvailabilityError(err.message || "Failed to save availability.");
     } finally {
@@ -802,6 +818,7 @@ export default function DoctorAppointments() {
 
   async function handleDeleteAvailability(id) {
     try {
+      setSuccessMessage("");
       setAvailabilitySaving(true);
       setAvailabilityError("");
       await deleteDoctorAvailability(id);
@@ -809,6 +826,7 @@ export default function DoctorAppointments() {
         resetAvailabilityForm();
       }
       await loadPageData();
+      setSuccessMessage("Availability entry removed.");
     } catch (err) {
       setAvailabilityError(err.message || "Failed to delete availability.");
     } finally {
@@ -825,6 +843,7 @@ export default function DoctorAppointments() {
     }
 
     try {
+      setSuccessMessage("");
       setPlannerSaving(true);
       setAvailabilityError("");
       const existingWorkHours = availabilityByType.workHours || [];
@@ -843,6 +862,7 @@ export default function DoctorAppointments() {
         )
       );
       await loadPageData();
+      setSuccessMessage("Weekly planner saved successfully.");
     } catch (err) {
       setAvailabilityError(err.message || "Failed to save weekly planner.");
     } finally {
@@ -884,6 +904,12 @@ export default function DoctorAppointments() {
         {error && (
           <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            {successMessage}
           </div>
         )}
 
