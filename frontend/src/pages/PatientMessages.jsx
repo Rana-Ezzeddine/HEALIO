@@ -20,6 +20,7 @@ function formatTimestamp(dateLike) {
 }
 
 function getOtherParticipant(conversation, currentUserId) {
+  if (!conversation) return null;
   return (conversation.participants || []).find((participant) => participant.id !== currentUserId) || null;
 }
 
@@ -174,7 +175,9 @@ export default function PatientMessages() {
 
   const selectedConversation =
     conversations.find((conversation) => conversation.id === selectedConversationId) || null;
-  const deleteTargetLabel = participantLabel(getOtherParticipant(selectedConversation, currentUserId));
+  const deleteTargetLabel = selectedConversation
+    ? participantLabel(getOtherParticipant(selectedConversation, currentUserId))
+    : "this participant";
 
   async function handleCreateConversation(event) {
     event.preventDefault();
