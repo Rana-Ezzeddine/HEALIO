@@ -73,19 +73,6 @@ export async function assignCaregiver(req, res) {
       return res.status(400).json({ message: "Caregiver not found or user is not a caregiver." });
     }
 
-    const conflictingLink = await CaregiverPatientPermission.findOne({
-      where: {
-        patientId,
-        status: { [Op.in]: ["pending", "active"] },
-        caregiverId: { [Op.ne]: caregiver.id },
-      },
-    });
-    if (conflictingLink) {
-      return res.status(409).json({
-        message: "Patient already has a caregiver link or pending caregiver request.",
-      });
-    }
-
     const permissionData = normalizePermissionPayload(permissions);
     const [link, created] = await CaregiverPatientPermission.findOrCreate({
       where: { caregiverId: caregiver.id, patientId },
