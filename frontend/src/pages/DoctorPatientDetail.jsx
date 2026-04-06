@@ -5,15 +5,13 @@ import { apiUrl, authHeaders } from "../api/http";
 import { rememberDoctorPatientTab } from "../utils/doctorPatientTabs";
 import {
   formatListOutput,
-  getDoctorCaregiverNotes,
   getDoctorEmergencyReview,
   getPatientClinicalNotes,
   getPatientTreatmentPlans,
-  saveDoctorCaregiverNote,
   saveDoctorEmergencyReview,
 } from "../utils/doctorPatientRecords";
 import { formatDoseTime, getNextMedicationDose, getScheduleTimes, isActiveMedication } from "../utils/medicationSchedule";
-import { createConversation, getConversationMessages, getConversations, sendConversationMessage } from "../api/messaging";
+import { createConversation, getConversationMessages, sendConversationMessage } from "../api/messaging";
 
 function patientDisplayName(record) {
   const p = record?.patient || record;
@@ -37,25 +35,40 @@ function formatField(value) {
   if (typeof value === "object") return [value.name, value.relationship, value.phoneNumber].filter(Boolean).join(" • ") || "Not recorded";
   return String(value).trim() || "Not recorded";
 }
-function parseCareConcernMessage(body) {
-  const lines = String(body || "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+function formatEmergencyContact(value) {
+  if (!value) return "Not recorded";
 
-  if (!lines.length || !/^care concern from caregiver$/i.test(lines[0])) {
-    return null;
+  let contact = value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return "Not recorded";
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      try {
+        contact = JSON.parse(trimmed);
+      } catch {
+        return trimmed;
+      }
+    } else {
+      return trimmed;
+    }
   }
 
-  const patientLine = lines.find((line) => /^patient id:/i.test(line));
-  const concernLine = lines.find((line) => /^concern:/i.test(line));
-  const contextLine = lines.find((line) => /^context:/i.test(line));
+  if (Array.isArray(contact)) {
+    return contact
+      .map((entry) => formatEmergencyContact(entry))
+      .filter(Boolean)
+      .join("; ") || "Not recorded";
+  }
 
-  return {
-    patientId: patientLine ? patientLine.replace(/^patient id:/i, "").trim() : "",
-    concern: concernLine ? concernLine.replace(/^concern:/i, "").trim() : String(body || "").trim(),
-    context: contextLine ? contextLine.replace(/^context:/i, "").trim() : "",
-  };
+  if (contact && typeof contact === "object") {
+    const name = contact.name || contact.fullName || contact.contactName;
+    const relationship = contact.relationship || contact.relation;
+    const phone = contact.phoneNumber || contact.phone || contact.number;
+    const parts = [name, relationship, phone].filter(Boolean);
+    if (parts.length) return parts.join(" • ");
+  }
+
+  return formatField(contact);
 }
 function parseScheduleInput(value) {
   const list = Array.isArray(value) ? value : String(value || "").split(",");
@@ -136,9 +149,6 @@ export default function DoctorPatientDetail() {
   const [savingMedication, setSavingMedication] = useState(false);
   const [editingMedicationId, setEditingMedicationId] = useState(null);
   const [medicationError, setMedicationError] = useState("");
-  const [doctorCaregiverNotes, setDoctorCaregiverNotes] = useState([]);
-  const [doctorCaregiverNoteForm, setDoctorCaregiverNoteForm] = useState({ caregiverId: "", note: "" });
-  const [doctorCaregiverNoteMessage, setDoctorCaregiverNoteMessage] = useState("");
   const [emergencyReview, setEmergencyReview] = useState(null);
   const [emergencyReviewForm, setEmergencyReviewForm] = useState({ disposition: "monitoring", note: "" });
   const [emergencyReviewMessage, setEmergencyReviewMessage] = useState("");
@@ -150,9 +160,6 @@ export default function DoctorPatientDetail() {
   const [sendingCommunication, setSendingCommunication] = useState(false);
   const [communicationContextType, setCommunicationContextType] = useState("");
   const [communicationContextRelatedId, setCommunicationContextRelatedId] = useState("");
-  const [caregiverConcerns, setCaregiverConcerns] = useState([]);
-  const [caregiverConcernsLoading, setCaregiverConcernsLoading] = useState(false);
-  const [caregiverConcernsError, setCaregiverConcernsError] = useState("");
   const [aiSummary, setAiSummary] = useState(null);
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
   const [aiSummaryError, setAiSummaryError] = useState("");
@@ -177,7 +184,6 @@ export default function DoctorPatientDetail() {
     rememberDoctorPatientTab({ id: currentPatientId, name: patientDisplayName(overview) });
     setLocalNotes(getPatientClinicalNotes(currentPatientId));
     setLocalPlans(getPatientTreatmentPlans(currentPatientId));
-    setDoctorCaregiverNotes(getDoctorCaregiverNotes(currentPatientId));
     setEmergencyReview(getDoctorEmergencyReview(currentPatientId));
     setCommunicationConversationId("");
     setCommunicationMessages([]);
@@ -185,8 +191,6 @@ export default function DoctorPatientDetail() {
     setCommunicationDraft("");
     setCommunicationContextType("");
     setCommunicationContextRelatedId("");
-    setCaregiverConcerns([]);
-    setCaregiverConcernsError("");
     if (!preserveMedicationForm) {
       setMedicationFormOpen(false);
       setEditingMedicationId(null);
@@ -244,7 +248,6 @@ export default function DoctorPatientDetail() {
   const diagnoses = overview?.diagnoses || [];
   const appointments = overview?.appointmentsAsPatient || [];
   const caregivers = overview?.caregivers || [];
-  const caregiverNotes = overview?.caregiverNotes || [];
   const currentUserId = reqUserId();
   const activeMedications = medications.filter((item) => isActiveMedication(item));
   const nextMedicationDose = getNextMedicationDose(activeMedications);
@@ -413,27 +416,6 @@ export default function DoctorPatientDetail() {
     });
   }
 
-  function handleSaveDoctorCaregiverNote(event) {
-    event.preventDefault();
-    const caregiverId = doctorCaregiverNoteForm.caregiverId;
-    const note = doctorCaregiverNoteForm.note.trim();
-    if (!caregiverId || !note) {
-      setDoctorCaregiverNoteMessage("Choose a caregiver and add a note.");
-      return;
-    }
-    const caregiverEntry = caregivers.find((entry) => entry.caregiverId === caregiverId);
-    const next = saveDoctorCaregiverNote(patientId, {
-      id: crypto.randomUUID(),
-      caregiverId,
-      caregiverName: caregiverEntry?.caregiver?.displayName || caregiverEntry?.caregiver?.email || "Caregiver",
-      createdAt: new Date().toISOString(),
-      note,
-    });
-    setDoctorCaregiverNotes(next);
-    setDoctorCaregiverNoteForm({ caregiverId: "", note: "" });
-    setDoctorCaregiverNoteMessage("Doctor-to-caregiver note saved.");
-  }
-
   function handleSaveEmergencyReview(event) {
     event.preventDefault();
     const note = emergencyReviewForm.note.trim();
@@ -507,105 +489,6 @@ export default function DoctorPatientDetail() {
     }
   }
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadCaregiverConcerns() {
-      const caregiverIds = caregivers
-        .map((entry) => entry.caregiverId)
-        .filter(Boolean);
-
-      if (!caregiverIds.length || !currentUserId) {
-        if (!cancelled) {
-          setCaregiverConcerns([]);
-          setCaregiverConcernsError("");
-          setCaregiverConcernsLoading(false);
-        }
-        return;
-      }
-
-      try {
-        setCaregiverConcernsLoading(true);
-        setCaregiverConcernsError("");
-
-        const conversationData = await getConversations();
-        const conversationList = conversationData.conversations || [];
-        const caregiverIdSet = new Set(caregiverIds.map((id) => String(id)));
-
-        const caregiverConversations = conversationList.filter((conversation) => {
-          const participantIds = (conversation.participants || []).map((participant) => String(participant.id));
-          return participantIds.includes(String(currentUserId)) && participantIds.some((id) => caregiverIdSet.has(id));
-        });
-
-        const messagePayloads = await Promise.all(
-          caregiverConversations.map(async (conversation) => {
-            const messageData = await getConversationMessages(conversation.id);
-            return {
-              conversation,
-              messages: messageData.messages || [],
-            };
-          })
-        );
-
-        const concernItems = [];
-
-        for (const payload of messagePayloads) {
-          const participant = (payload.conversation.participants || []).find(
-            (p) => String(p.id) !== String(currentUserId) && caregiverIdSet.has(String(p.id))
-          );
-
-          for (const message of payload.messages) {
-            const parsedConcern = parseCareConcernMessage(message.body);
-            const contextType = String(message.contextType || "").toLowerCase();
-            const isCareConcernContext = contextType === "care_concern";
-
-            if (!parsedConcern && !isCareConcernContext) {
-              continue;
-            }
-
-            if (parsedConcern?.patientId && String(parsedConcern.patientId) !== String(patientId)) {
-              continue;
-            }
-
-            const metadataPatientId = message.contextMetadata?.patientId;
-            if (isCareConcernContext && metadataPatientId && String(metadataPatientId) !== String(patientId)) {
-              continue;
-            }
-
-            concernItems.push({
-              id: message.id,
-              sentAt: message.sentAt || message.createdAt,
-              caregiverName: participant?.displayName || participant?.email || "Caregiver",
-              concern: parsedConcern?.concern || String(message.body || "").trim() || "Care concern reported.",
-              context: parsedConcern?.context || "",
-            });
-          }
-        }
-
-        concernItems.sort((a, b) => new Date(b.sentAt || 0) - new Date(a.sentAt || 0));
-
-        if (!cancelled) {
-          setCaregiverConcerns(concernItems.slice(0, 8));
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setCaregiverConcerns([]);
-          setCaregiverConcernsError(err.message || "Failed to load caregiver concerns.");
-        }
-      } finally {
-        if (!cancelled) {
-          setCaregiverConcernsLoading(false);
-        }
-      }
-    }
-
-    loadCaregiverConcerns();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [caregivers, currentUserId, patientId]);
-
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
@@ -644,7 +527,7 @@ export default function DoctorPatientDetail() {
                   ["Blood type", formatField(profile?.bloodType)],
                   ["Allergies", formatField(profile?.allergies)],
                   ["Medical conditions", formatField(profile?.medicalConditions)],
-                  ["Emergency contact", formatField(profile?.emergencyContact)],
+                  ["Emergency contact", formatEmergencyContact(profile?.emergencyContact)],
                 ].map(([label, value]) => (
                   <div key={label} className="rounded-2xl border border-slate-200 bg-white/80 p-4">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">{label}</p>
@@ -672,7 +555,7 @@ export default function DoctorPatientDetail() {
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Emergency contact</p>
-                  <p className="mt-2 text-sm font-semibold text-slate-900">{formatField(profile?.emergencyContact)}</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">{formatEmergencyContact(profile?.emergencyContact)}</p>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Latest symptom event</p>
@@ -799,8 +682,8 @@ export default function DoctorPatientDetail() {
             <div className="rounded-3xl bg-gradient-to-br from-white to-emerald-50 p-5 shadow-sm">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Care team and caregiver access</h3>
-                  <p className="mt-1 text-sm text-slate-500">Linked caregivers and their current permission envelope.</p>
+                  <h3 className="text-lg font-semibold text-slate-900">Caregiver contact</h3>
+                  <p className="mt-1 text-sm text-slate-500">Linked caregiver contact details for coordination.</p>
                 </div>
                 <InfoPill label="Linked" value={caregivers.length} tone="emerald" />
               </div>
@@ -814,125 +697,9 @@ export default function DoctorPatientDetail() {
                       </div>
                       <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">{entry.status || "active"}</span>
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {Object.entries(entry.permissions || {}).map(([key, allowed]) => (
-                        <span key={key} className={`rounded-full px-3 py-1 text-xs font-semibold ${allowed ? "bg-sky-100 text-sky-700" : "bg-slate-100 text-slate-500"}`}>
-                          {key === "canViewMedications" ? "Medications" : key === "canViewSymptoms" ? "Symptoms" : key === "canViewAppointments" ? "Appointments" : key === "canMessageDoctor" ? "Doctor communication" : key === "canReceiveReminders" ? "Reminders" : key}
-                        </span>
-                      ))}
-                    </div>
                   </div>
                 )) : <p className="text-sm text-slate-500">No active caregiver linked to this patient. Ask the patient to add a caregiver if shared support access is needed.</p>}
               </div>
-            </div>
-            <div className="rounded-3xl bg-gradient-to-br from-white to-amber-50 p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Caregiver notes</h3>
-                  <p className="mt-1 text-sm text-slate-500">Support observations written by caregivers for this patient.</p>
-                </div>
-                <InfoPill label="Notes" value={caregiverNotes.length} tone="amber" />
-              </div>
-              <div className="mt-4 space-y-3">
-                {caregiverNotes.length ? caregiverNotes.map((note) => (
-                  <div key={note.id} className="rounded-2xl border border-slate-200 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-slate-900">{note.caregiver?.displayName || "Caregiver"}</p>
-                        <p className="mt-1 text-xs text-slate-400">{formatDateTime(note.updatedAt || note.createdAt)}</p>
-                      </div>
-                      <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">Caregiver note</span>
-                    </div>
-                    <p className="mt-3 text-sm text-slate-700">{note.note}</p>
-                  </div>
-                )) : <p className="text-sm text-slate-500">No caregiver notes recorded yet. Once a caregiver is linked, their notes will appear here automatically.</p>}
-              </div>
-            </div>
-            <div className="rounded-3xl bg-gradient-to-br from-white to-orange-50 p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Caregiver concerns</h3>
-                  <p className="mt-1 text-sm text-slate-500">Recent concern alerts sent by linked caregivers in this patient context.</p>
-                </div>
-                <InfoPill label="Recent" value={caregiverConcerns.length} tone="amber" />
-              </div>
-              {caregiverConcernsError ? (
-                <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{caregiverConcernsError}</div>
-              ) : null}
-              <div className="mt-4 space-y-3">
-                {caregiverConcernsLoading ? (
-                  <p className="text-sm text-slate-500">Loading caregiver concerns...</p>
-                ) : caregiverConcerns.length ? caregiverConcerns.map((item) => (
-                  <div key={item.id} className="rounded-2xl border border-slate-200 bg-white/90 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-slate-900">{item.caregiverName}</p>
-                        <p className="mt-1 text-xs text-slate-400">{formatDateTime(item.sentAt)}</p>
-                      </div>
-                      <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-700">Care concern</span>
-                    </div>
-                    <p className="mt-3 text-sm text-slate-800">{item.concern}</p>
-                    {item.context ? <p className="mt-2 text-xs text-slate-500">Context: {item.context}</p> : null}
-                  </div>
-                )) : (
-                  <p className="text-sm text-slate-500">No caregiver concerns have been sent for this patient yet. Linked caregivers can send one from their Care Concern page when escalation is needed.</p>
-                )}
-              </div>
-            </div>
-            <div className="rounded-3xl bg-gradient-to-br from-white to-cyan-50 p-5 shadow-sm">
-              <h3 className="text-lg font-semibold text-slate-900">Doctor notes for caregivers</h3>
-              <p className="mt-1 text-sm text-slate-500">Share practical guidance with the linked caregiver in this patient's context.</p>
-              {caregivers.length ? (
-                <>
-                  <form onSubmit={handleSaveDoctorCaregiverNote} className="mt-4 space-y-3">
-                    <label className="block text-sm font-medium text-slate-700">
-                      Caregiver
-                      <select
-                        value={doctorCaregiverNoteForm.caregiverId}
-                        onChange={(event) => setDoctorCaregiverNoteForm((current) => ({ ...current, caregiverId: event.target.value }))}
-                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                      >
-                        <option value="">Select caregiver</option>
-                        {caregivers.map((entry) => (
-                          <option key={entry.caregiverId} value={entry.caregiverId}>
-                            {entry.caregiver?.displayName || entry.caregiver?.email || "Caregiver"}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="block text-sm font-medium text-slate-700">
-                      Note
-                      <textarea
-                        value={doctorCaregiverNoteForm.note}
-                        onChange={(event) => setDoctorCaregiverNoteForm((current) => ({ ...current, note: event.target.value }))}
-                        rows={3}
-                        placeholder="Example: Please reinforce evening glucose checks and remind the patient to bring their BP log to the next visit."
-                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                      />
-                    </label>
-                    {doctorCaregiverNoteMessage ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{doctorCaregiverNoteMessage}</div> : null}
-                    <button type="submit" className="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-700">
-                      Save caregiver note
-                    </button>
-                  </form>
-                  <div className="mt-4 space-y-3">
-                    {doctorCaregiverNotes.length ? doctorCaregiverNotes.map((note) => (
-                      <div key={note.id} className="rounded-2xl border border-slate-200 p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-semibold text-slate-900">{note.caregiverName}</p>
-                            <p className="mt-1 text-xs text-slate-400">{formatDateTime(note.createdAt)}</p>
-                          </div>
-                          <span className="rounded-full bg-cyan-100 px-3 py-1 text-xs font-semibold text-cyan-700">Doctor to caregiver</span>
-                        </div>
-                        <p className="mt-3 text-sm text-slate-700">{note.note}</p>
-                      </div>
-                    )) : <p className="text-sm text-slate-500">No doctor-to-caregiver notes yet. Use the form above to leave the first caregiver-facing instruction.</p>}
-                  </div>
-                </>
-              ) : (
-                <p className="mt-4 text-sm text-slate-500">Link a caregiver to this patient before adding caregiver-directed notes.</p>
-              )}
             </div>
             <div className="rounded-3xl bg-gradient-to-br from-white to-sky-50 p-5 shadow-sm xl:col-span-2">
               <div className="flex flex-wrap items-start justify-between gap-4">
