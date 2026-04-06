@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import { apiUrl, authHeaders, getUser } from "../api/http";
 import { getMyAppointments } from "../api/appointments";
+import { getConversationMessages, getConversations } from "../api/messaging";
 import { getCaregiverReminders, getCaregiverPatientSymptoms, getCareNotes } from "../api/caregiver";
 import {
   formatDoseTime,
@@ -49,6 +50,58 @@ function getOwnerId(record) {
 
 function canUsePermission(permissions, key) {
   return Boolean(permissions?.[key]);
+}
+
+function lastSeenStorageKey(userId) {
+  return `healio:messages:lastSeenByConversation:${userId || "unknown"}`;
+}
+
+function readLastSeenMap(userId) {
+  if (!userId || typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(lastSeenStorageKey(userId));
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function countUnreadMessages(conversations, currentUserId) {
+  if (!currentUserId || !Array.isArray(conversations) || conversations.length === 0) return 0;
+
+  const lastSeenMap = readLastSeenMap(currentUserId);
+  const candidateConversations = conversations.filter((conversation) => {
+    const lastMessage = conversation?.lastMessage;
+    if (!lastMessage?.sentAt) return false;
+    if (lastMessage.sender?.id === currentUserId) return false;
+
+    const seenAt = lastSeenMap[conversation.id];
+    return !seenAt || new Date(lastMessage.sentAt).getTime() > new Date(seenAt).getTime();
+  });
+
+  if (!candidateConversations.length) return 0;
+
+  const messageResults = await Promise.allSettled(
+    candidateConversations.map((conversation) => getConversationMessages(conversation.id))
+  );
+
+  let unreadTotal = 0;
+  messageResults.forEach((result, index) => {
+    if (result.status !== "fulfilled") return;
+
+    const conversationId = candidateConversations[index]?.id;
+    const seenAt = lastSeenMap[conversationId];
+    const seenTime = seenAt ? new Date(seenAt).getTime() : 0;
+
+    unreadTotal += (result.value.messages || []).filter((message) => {
+      if (!message?.sentAt) return false;
+      if (message.sender?.id === currentUserId) return false;
+      return new Date(message.sentAt).getTime() > seenTime;
+    }).length;
+  });
+
+  return unreadTotal;
 }
 
 function getDoseDateForToday(timeString, now = new Date()) {
@@ -114,6 +167,7 @@ export default function DashboardCaregiver() {
   const [caregiverNotes, setCaregiverNotes] = useState([]);
   const [doctorClinicalNotes, setDoctorClinicalNotes] = useState([]);
   const [doctorTreatmentPlans, setDoctorTreatmentPlans] = useState([]);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const [isScopeModalOpen, setIsScopeModalOpen] = useState(false);
 
   const activePatientRecord = useMemo(
@@ -181,7 +235,7 @@ export default function DashboardCaregiver() {
 
     async function loadCaregiverDashboard() {
       try {
-        const [patientsRes, appointmentsData, medicationsRes, symptomsRes] = await Promise.all([
+        const [patientsRes, appointmentsData, medicationsRes, symptomsRes, conversationsData] = await Promise.all([
           fetch(`${apiUrl}/api/caregivers/patients`, {
             headers: { "Content-Type": "application/json", ...authHeaders() },
           }).then(async (res) => {
@@ -196,6 +250,7 @@ export default function DashboardCaregiver() {
           fetch(`${apiUrl}/api/symptoms`, {
             headers: { "Content-Type": "application/json", ...authHeaders() },
           }).then((res) => (res.ok ? res.json() : [])),
+          getConversations().catch(() => ({ conversations: [] })),
         ]);
 
         if (cancelled) return;
@@ -208,6 +263,7 @@ export default function DashboardCaregiver() {
         setAppointments(appointmentsData.appointments || []);
         setMedications(Array.isArray(medicationsRes) ? medicationsRes : []);
         setSymptoms(Array.isArray(symptomsRes) ? symptomsRes : []);
+        setUnreadMessageCount(await countUnreadMessages(conversationsData.conversations || [], currentUserId));
       } catch (error) {
         if (cancelled) return;
         console.error(error);
@@ -219,6 +275,7 @@ export default function DashboardCaregiver() {
         setReminders([]);
         setCaregiverSymptoms([]);
         setCaregiverNotes([]);
+        setUnreadMessageCount(0);
       }
     }
 
@@ -226,7 +283,7 @@ export default function DashboardCaregiver() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [currentUserId]);
 
   useEffect(() => {
     if (!activePatientId) {
@@ -357,13 +414,16 @@ export default function DashboardCaregiver() {
             <p className="text-sm text-slate-600">
               Caregiver access is patient-permission scoped for <span className="font-semibold text-slate-800">{activePatientLabel}</span>.
             </p>
-            <button
-              type="button"
-              onClick={() => setIsScopeModalOpen(true)}
-              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              Role boundaries
-            </button>
+            <div className="flex items-center gap-2">
+              <MiniPill label="Unread messages" value={unreadMessageCount} tone="sky" />
+              <button
+                type="button"
+                onClick={() => setIsScopeModalOpen(true)}
+                className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Role boundaries
+              </button>
+            </div>
           </div>
         </section>
 
@@ -606,6 +666,12 @@ export default function DashboardCaregiver() {
                     label: "My patients",
                     href: "/caregiver-patients",
                     style: "bg-teal-100 text-teal-700",
+                    enabled: true,
+                  },
+                  {
+                    label: unreadMessageCount > 0 ? `Messages (${unreadMessageCount} unread)` : "Messages",
+                    href: "/caregiverMessages",
+                    style: "bg-sky-100 text-sky-700",
                     enabled: true,
                   },
                   {

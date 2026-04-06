@@ -28,6 +28,37 @@ function participantLabel(participant) {
   return participant?.displayName || participant?.email || "Caregiver";
 }
 
+function lastSeenStorageKey(userId) {
+  return `healio:messages:lastSeenByConversation:${userId || "unknown"}`;
+}
+
+function readLastSeenMap(userId) {
+  if (!userId || typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(lastSeenStorageKey(userId));
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeLastSeenMap(userId, map) {
+  if (!userId || typeof window === "undefined") return;
+  try {
+    localStorage.setItem(lastSeenStorageKey(userId), JSON.stringify(map));
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+function markConversationAsSeen(userId, conversationId, sentAt) {
+  if (!userId || !conversationId) return;
+  const map = readLastSeenMap(userId);
+  map[conversationId] = sentAt || new Date().toISOString();
+  writeLastSeenMap(userId, map);
+}
+
 export default function PatientMessages() {
   const user = getUser();
   const currentUserId = user?.id;
@@ -133,7 +164,10 @@ export default function PatientMessages() {
         setSendError("");
         const data = await getConversationMessages(selectedConversationId);
         if (!cancelled) {
-          setMessages(data.messages || []);
+          const loadedMessages = data.messages || [];
+          setMessages(loadedMessages);
+          const latestMessage = loadedMessages[loadedMessages.length - 1] || null;
+          markConversationAsSeen(currentUserId, selectedConversationId, latestMessage?.sentAt || new Date().toISOString());
         }
       } catch (err) {
         if (!cancelled) {
@@ -225,6 +259,7 @@ export default function PatientMessages() {
     try {
       const data = await sendConversationMessage(selectedConversationId, trimmedMessage);
       setMessages((current) => [...current, data.data]);
+      markConversationAsSeen(currentUserId, selectedConversationId, data.data?.sentAt || new Date().toISOString());
       setDraftMessage("");
       await loadConversations();
     } catch (err) {
