@@ -1,7 +1,7 @@
 import { apiUrl, authHeaders, getUser } from "../api/http";
 import Navbar from "../components/Navbar";
 import { useState, useEffect } from "react";
-import { getCaregiverLinkRequests, reviewCaregiverLinkRequest } from "../api/links";
+import { useNavigate } from "react-router-dom";
 import userMale from "../assets/userMale.png"
 import userFemale from "../assets/userFemale.png"
 
@@ -69,6 +69,7 @@ function FormInput({ label, type = "text", value, onChange, isEditing, options }
 }
 
 export default function ProfileCaregiver(){
+  const navigate = useNavigate();
     const [isEditing, setIsEditing] = useState(false);
 
     //personal info
@@ -80,9 +81,6 @@ export default function ProfileCaregiver(){
   //caregiver info
   const[relationshipToPatient, setRelationshipToPatient] = useState("");
   const[supportNotes, setSupportNotes] = useState("");
-  const [pendingRequests, setPendingRequests] = useState([]);
-  const [activePatients, setActivePatients] = useState([]);
-  const [requestError, setRequestError] = useState("");
 
     //contact info
     const[email, setEmail] = useState("");
@@ -95,29 +93,9 @@ export default function ProfileCaregiver(){
       setEmail(storedUser?.email || "");
     }
 
-    async function loadCaregiverLinks() {
-      try {
-        const [requestsRes, patientsRes] = await Promise.all([
-          getCaregiverLinkRequests(),
-          fetch(`${apiUrl}/api/caregivers/patients`, {
-            headers: { "Content-Type": "application/json", ...authHeaders() },
-          }).then(async (res) => {
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data.message || "Failed to load linked patients.");
-            return data;
-          }),
-        ]);
-        setPendingRequests(requestsRes.requests || []);
-        setActivePatients(patientsRes.patients || []);
-      } catch (err) {
-        console.error("Failed to load caregiver links", err);
-      }
-    }
-
     useEffect(() => {
   (async () => {
     try {
-      await loadCaregiverLinks();
       const res = await fetch(`${apiUrl}/api/profile`, {
         headers: { "Content-Type": "application/json", ...authHeaders() },
       });
@@ -152,17 +130,6 @@ export default function ProfileCaregiver(){
     }
   })();
 }, []);
-
-    async function handleReviewRequest(patientId, status) {
-      setRequestError("");
-      try {
-        await reviewCaregiverLinkRequest(patientId, status);
-        await loadCaregiverLinks();
-      } catch (err) {
-        setRequestError(err.message || "Failed to review request.");
-      }
-    }
-
 
     async function handleSave() {
   try {
@@ -316,142 +283,17 @@ export default function ProfileCaregiver(){
             </section>
 
             <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
-              <div className="flex items-center justify-between gap-3 mb-5">
-                <div>
-                  <h2 className="text-xl font-semibold text-slate-800">Patient Link Requests</h2>
-                  <p className="mt-1 text-sm text-slate-500">Patients who have invited you to be part of their care team. Review their request and what they've granted you access to.</p>
-                </div>
-                {pendingRequests.length > 0 ? (
-                  <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
-                    {pendingRequests.length} pending
-                  </span>
-                ) : null}
-              </div>
-              {requestError ? <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{requestError}</div> : null}
-              <div className="space-y-4">
-                {pendingRequests.length > 0 ? pendingRequests.map((request) => {
-                  const name = request.patient?.displayName || request.patient?.email || "Patient";
-                  const email = request.patient?.email || "";
-                  const initials = [request.patient?.firstName, request.patient?.lastName]
-                    .filter(Boolean)
-                    .map((n) => n[0].toUpperCase())
-                    .join("") || (email ? email[0].toUpperCase() : "?");
-                  const requestedAt = request.createdAt
-                    ? new Date(request.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-                    : null;
-
-                  const PERMISSION_LABELS = {
-                    canViewMedications: "View medications",
-                    canViewSymptoms: "View symptoms",
-                    canViewAppointments: "View appointments",
-                    canMessageDoctor: "Doctor contact info",
-                    canReceiveReminders: "Receive reminders",
-                  };
-                  const grantedPerms = request.permissions
-                    ? Object.entries(request.permissions).filter(([, v]) => Boolean(v))
-                    : [];
-                  const deniedPerms = request.permissions
-                    ? Object.entries(request.permissions).filter(([, v]) => !Boolean(v))
-                    : [];
-
-                  return (
-                    <div key={request.patientId} className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-
-                      {/* Top row: identity + actions */}
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="flex items-start gap-4">
-                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-base font-bold text-emerald-700">
-                            {initials}
-                          </div>
-                          <div>
-                            <p className="font-semibold text-slate-900">{name}</p>
-                            {email && name !== email ? (
-                              <p className="text-sm text-slate-500">{email}</p>
-                            ) : null}
-                            <div className="mt-2 flex flex-wrap items-center gap-2">
-                              <span className="rounded-full bg-white border border-slate-200 px-2.5 py-1 text-xs text-slate-600">
-                                Role: Patient
-                              </span>
-                              {requestedAt ? (
-                                <span className="rounded-full bg-white border border-slate-200 px-2.5 py-1 text-xs text-slate-600">
-                                  Requested {requestedAt}
-                                </span>
-                              ) : null}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex shrink-0 gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleReviewRequest(request.patientId, "active")}
-                            className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-600"
-                          >
-                            Approve
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleReviewRequest(request.patientId, "rejected")}
-                            className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-100"
-                          >
-                            Reject
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Permissions granted by patient */}
-                      {request.permissions ? (
-                        <div className="mt-4 border-t border-slate-200 pt-4">
-                          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Access granted by patient
-                          </p>
-                          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                            {Object.entries(PERMISSION_LABELS).map(([key, label]) => {
-                              const granted = Boolean(request.permissions[key]);
-                              return (
-                                <div
-                                  key={key}
-                                  className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm ${
-                                    granted
-                                      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                                      : "border-slate-200 bg-white text-slate-400"
-                                  }`}
-                                >
-                                  <span className={`text-base leading-none ${granted ? "text-emerald-500" : "text-slate-300"}`}>
-                                    {granted ? "✓" : "✗"}
-                                  </span>
-                                  <span className={granted ? "font-medium" : ""}>{label}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                          {grantedPerms.length === 0 ? (
-                            <p className="mt-2 text-xs text-slate-500">No permissions granted.</p>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                }) : (
-                  <div className="rounded-2xl border border-dashed border-slate-200 px-6 py-8 text-center text-sm text-slate-500">
-                    No pending patient requests.
-                  </div>
-                )}
-              </div>
-            </section>
-
-            <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
-              <h2 className="text-xl font-semibold text-slate-800 mb-4">Patients Under Care</h2>
-              <div className="space-y-2">
-                {activePatients.length > 0 ? activePatients.map(({ patient, permissions }) => (
-                  <div key={patient.id} className="rounded-xl border border-slate-200 px-3 py-2">
-                    <p className="font-medium text-slate-800">{patient.email}</p>
-                    <p className="text-sm text-slate-500">
-                      Permissions: {Object.entries(permissions).filter(([, value]) => Boolean(value)).map(([key]) => key).join(", ") || "None"}
-                    </p>
-                  </div>
-                )) : <p className="text-sm text-slate-500">No active patients linked yet.</p>}
-              </div>
+              <h2 className="text-xl font-semibold text-slate-800 mb-2">Patient links and permissions</h2>
+              <p className="text-sm text-slate-500">
+                Manage invitations, active patients, and permission details in one place.
+              </p>
+              <button
+                type="button"
+                onClick={() => navigate("/caregiver-patients")}
+                className="mt-4 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-600"
+              >
+                Open My Patients
+              </button>
             </section>
           </div>
           </main>

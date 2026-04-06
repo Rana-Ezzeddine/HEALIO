@@ -8,6 +8,10 @@ import {
   getMedicationAdherenceHistory,
   getMyPatients,
 } from "../api/caregiver";
+import {
+  resolveActiveCaregiverPatientId,
+  setActiveCaregiverPatientId,
+} from "../utils/caregiverPatientContext";
 
 const SUPPORT_ACTIONS = ["assisted", "missed", "refused"];
 
@@ -27,7 +31,7 @@ function ActionBadge({ action }) {
 export default function CaregiverMedications() {
   const [searchParams] = useSearchParams();
   const [patients, setPatients] = useState([]);
-  const [patientId, setPatientId] = useState(searchParams.get("patientId") || "");
+  const [patientId, setPatientId] = useState("");
   const [medications, setMedications] = useState([]);
   const [permission, setPermission] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -37,17 +41,31 @@ export default function CaregiverMedications() {
   const [historyLoadingMap, setHistoryLoadingMap] = useState({});
 
   useEffect(() => {
+    let cancelled = false;
+
     getMyPatients().then((data) => {
+      if (cancelled) return;
       const pts = data.patients || [];
       setPatients(pts);
-      if (!patientId && pts.length > 0) {
-        setPatientId(pts[0].patient.id);
-      }
-      if (patientId) {
-        const entry = pts.find((p) => p.patient.id === patientId);
+
+      const fromQuery = searchParams.get("patientId") || "";
+      const resolvedId =
+        fromQuery && pts.some((entry) => entry?.patient?.id === fromQuery)
+          ? fromQuery
+          : resolveActiveCaregiverPatientId(pts);
+
+      setPatientId(resolvedId);
+      setActiveCaregiverPatientId(resolvedId);
+
+      if (resolvedId) {
+        const entry = pts.find((p) => p.patient.id === resolvedId);
         setPermission(entry?.permissions?.canViewMedications ?? false);
       }
     });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -60,7 +78,7 @@ export default function CaregiverMedications() {
       .then((data) => setMedications(data.medications || []))
       .catch(() => setMedications([]))
       .finally(() => setLoading(false));
-  }, [patientId]);
+  }, [patientId, patients]);
 
   const handleSupportAction = async (medicationId, action) => {
     try {
@@ -110,12 +128,16 @@ export default function CaregiverMedications() {
         {patients.length > 1 && (
           <select
             value={patientId}
-            onChange={(e) => setPatientId(e.target.value)}
+            onChange={(e) => {
+              const nextId = e.target.value;
+              setPatientId(nextId);
+              setActiveCaregiverPatientId(nextId);
+            }}
             className="mb-6 rounded-xl border border-slate-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
           >
             {patients.map((e) => (
               <option key={e.patient.id} value={e.patient.id}>
-                {e.patient.email}
+                {e.patient.displayName || e.patient.email}
               </option>
             ))}
           </select>

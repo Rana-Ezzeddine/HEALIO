@@ -4,6 +4,7 @@ import { getUser } from "../api/http";
 import { getMyCaregivers } from "../api/links";
 import {
   createConversation,
+  deleteConversation,
   getConversationMessages,
   getConversations,
   sendConversationMessage,
@@ -19,11 +20,43 @@ function formatTimestamp(dateLike) {
 }
 
 function getOtherParticipant(conversation, currentUserId) {
+  if (!conversation) return null;
   return (conversation.participants || []).find((participant) => participant.id !== currentUserId) || null;
 }
 
 function participantLabel(participant) {
   return participant?.displayName || participant?.email || "Caregiver";
+}
+
+function lastSeenStorageKey(userId) {
+  return `healio:messages:lastSeenByConversation:${userId || "unknown"}`;
+}
+
+function readLastSeenMap(userId) {
+  if (!userId || typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(lastSeenStorageKey(userId));
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeLastSeenMap(userId, map) {
+  if (!userId || typeof window === "undefined") return;
+  try {
+    localStorage.setItem(lastSeenStorageKey(userId), JSON.stringify(map));
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+function markConversationAsSeen(userId, conversationId, sentAt) {
+  if (!userId || !conversationId) return;
+  const map = readLastSeenMap(userId);
+  map[conversationId] = sentAt || new Date().toISOString();
+  writeLastSeenMap(userId, map);
 }
 
 export default function PatientMessages() {
@@ -43,6 +76,9 @@ export default function PatientMessages() {
   const [error, setError] = useState("");
   const [createError, setCreateError] = useState("");
   const [sendError, setSendError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [deletingConversation, setDeletingConversation] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   async function loadConversations() {
     const data = await getConversations();
@@ -128,7 +164,10 @@ export default function PatientMessages() {
         setSendError("");
         const data = await getConversationMessages(selectedConversationId);
         if (!cancelled) {
-          setMessages(data.messages || []);
+          const loadedMessages = data.messages || [];
+          setMessages(loadedMessages);
+          const latestMessage = loadedMessages[loadedMessages.length - 1] || null;
+          markConversationAsSeen(currentUserId, selectedConversationId, latestMessage?.sentAt || new Date().toISOString());
         }
       } catch (err) {
         if (!cancelled) {
@@ -170,6 +209,9 @@ export default function PatientMessages() {
 
   const selectedConversation =
     conversations.find((conversation) => conversation.id === selectedConversationId) || null;
+  const deleteTargetLabel = selectedConversation
+    ? participantLabel(getOtherParticipant(selectedConversation, currentUserId))
+    : "this participant";
 
   async function handleCreateConversation(event) {
     event.preventDefault();
@@ -217,10 +259,35 @@ export default function PatientMessages() {
     try {
       const data = await sendConversationMessage(selectedConversationId, trimmedMessage);
       setMessages((current) => [...current, data.data]);
+      markConversationAsSeen(currentUserId, selectedConversationId, data.data?.sentAt || new Date().toISOString());
       setDraftMessage("");
       await loadConversations();
     } catch (err) {
       setSendError(err.message || "Failed to send message.");
+    }
+  }
+
+  async function handleDeleteConversation() {
+    if (!selectedConversationId || deletingConversation) return;
+    setDeleteError("");
+    setShowDeleteConfirm(true);
+  }
+
+  async function confirmDeleteConversation() {
+    if (!selectedConversationId || deletingConversation) return;
+
+    try {
+      setDeletingConversation(true);
+      setDeleteError("");
+      await deleteConversation(selectedConversationId);
+      setMessages([]);
+      setDraftMessage("");
+      setShowDeleteConfirm(false);
+      await loadConversations();
+    } catch (err) {
+      setDeleteError(err.message || "Failed to delete chat.");
+    } finally {
+      setDeletingConversation(false);
     }
   }
 
@@ -332,10 +399,22 @@ export default function PatientMessages() {
             {selectedConversation ? (
               <>
                 <div className="border-b border-slate-200 pb-3 mb-3 shrink-0">
-                  <h2 className="text-lg font-semibold text-slate-800">
-                    {participantLabel(getOtherParticipant(selectedConversation, currentUserId))}
-                  </h2>
-                  <p className="text-xs text-slate-500">Secure chat</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h2 className="text-lg font-semibold text-slate-800">
+                        {participantLabel(getOtherParticipant(selectedConversation, currentUserId))}
+                      </h2>
+                      <p className="text-xs text-slate-500">Secure chat</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleDeleteConversation}
+                      disabled={deletingConversation}
+                      className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {deletingConversation ? "Deleting..." : "Delete chat"}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto pr-1 space-y-3 min-h-0">
@@ -375,6 +454,7 @@ export default function PatientMessages() {
                 </div>
 
                 {sendError && <p className="mt-3 text-sm text-red-700 shrink-0">{sendError}</p>}
+                {deleteError && <p className="mt-2 text-sm text-red-700 shrink-0">{deleteError}</p>}
 
                 <form onSubmit={handleSendMessage} className="pt-3 mt-3 border-t border-slate-200 flex gap-2 shrink-0">
                   <input
@@ -400,6 +480,34 @@ export default function PatientMessages() {
           </section>
         </div>
       </main>
+
+      {showDeleteConfirm ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-slate-900">Delete chat with {deleteTargetLabel}?</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              This will remove the conversation and all messages for both participants.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteConversation}
+                disabled={deletingConversation}
+                className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {deletingConversation ? "Deleting..." : "Delete chat"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

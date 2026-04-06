@@ -658,6 +658,11 @@ export const getDoctorDashboardOverview = async (req, res) => {
       SELECT
         COUNT(*)::int AS "totalAssignedPatients",
         COALESCE((
+          SELECT COUNT(*)::int
+          FROM appointments ap
+          WHERE ap."doctorId" = :doctorId
+        ), 0) AS "totalAppointmentsCreated",
+        COALESCE((
           SELECT COUNT(DISTINCT s."patientId")::int
           FROM symptoms s
           JOIN assigned a ON a.id = s."patientId"
@@ -783,6 +788,7 @@ export const getDoctorDashboardOverview = async (req, res) => {
 
     const summary = summaryRows[0] || {
       totalAssignedPatients: 0,
+      totalAppointmentsCreated: 0,
       patientsWithSymptomsLast7Days: 0,
       upcomingAppointmentsNext7Days: 0,
       notesAddedLast7Days: 0,

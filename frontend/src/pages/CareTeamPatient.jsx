@@ -10,6 +10,7 @@ import {
   removeCaregiverAssignment,
   updateCaregiverPermissions,
 } from "../api/links";
+import { readSafePrefill, writeSafePrefill } from "../utils/safePrefill";
 
 const PERMISSION_LABELS = {
   canViewMedications: "View medications",
@@ -20,14 +21,20 @@ const PERMISSION_LABELS = {
 };
 
 export default function CareTeamPatient() {
+  const careTeamPrefill = readSafePrefill("care-team", {
+    doctorEmailToLink: "",
+    caregiverEmailToLink: "",
+  });
   const [linkedDoctors, setLinkedDoctors] = useState([]);
   const [linkedCaregivers, setLinkedCaregivers] = useState([]);
   const [doctorRequests, setDoctorRequests] = useState([]);
   const [caregiverRequests, setCaregiverRequests] = useState([]);
-  const [doctorEmailToLink, setDoctorEmailToLink] = useState("");
-  const [caregiverEmailToLink, setCaregiverEmailToLink] = useState("");
+  const [doctorEmailToLink, setDoctorEmailToLink] = useState(careTeamPrefill.doctorEmailToLink || "");
+  const [caregiverEmailToLink, setCaregiverEmailToLink] = useState(careTeamPrefill.caregiverEmailToLink || "");
   const [status, setStatus] = useState({ error: "", success: "" });
   const [loading, setLoading] = useState(true);
+  const [linkingDoctor, setLinkingDoctor] = useState(false);
+  const [linkingCaregiver, setLinkingCaregiver] = useState(false);
 
   async function loadAssignments() {
     setLoading(true);
@@ -54,9 +61,23 @@ export default function CareTeamPatient() {
     loadAssignments();
   }, []);
 
+  useEffect(() => {
+    writeSafePrefill("care-team", {
+      doctorEmailToLink: doctorEmailToLink.trim().toLowerCase(),
+      caregiverEmailToLink: caregiverEmailToLink.trim().toLowerCase(),
+    });
+  }, [caregiverEmailToLink, doctorEmailToLink]);
+
   async function handleLinkDoctor() {
+    const trimmedEmail = doctorEmailToLink.trim().toLowerCase();
+    if (!trimmedEmail) {
+      setStatus({ error: "Enter a doctor email first.", success: "" });
+      return;
+    }
+
     try {
-      await linkDoctorByEmail(doctorEmailToLink.trim());
+      setLinkingDoctor(true);
+      await linkDoctorByEmail(trimmedEmail);
       setDoctorEmailToLink("");
       setStatus({ error: "", success: "Doctor request sent successfully." });
       await loadAssignments();
@@ -66,12 +87,21 @@ export default function CareTeamPatient() {
         return;
       }
       setStatus({ error: error.message || "Failed to link doctor.", success: "" });
+    } finally {
+      setLinkingDoctor(false);
     }
   }
 
   async function handleLinkCaregiver() {
+    const trimmedEmail = caregiverEmailToLink.trim().toLowerCase();
+    if (!trimmedEmail) {
+      setStatus({ error: "Enter a caregiver email first.", success: "" });
+      return;
+    }
+
     try {
-      await linkCaregiverByEmail(caregiverEmailToLink.trim(), {
+      setLinkingCaregiver(true);
+      await linkCaregiverByEmail(trimmedEmail, {
         canViewMedications: true,
         canViewSymptoms: true,
         canViewAppointments: true,
@@ -83,6 +113,8 @@ export default function CareTeamPatient() {
       await loadAssignments();
     } catch (error) {
       setStatus({ error: error.message || "Failed to link caregiver.", success: "" });
+    } finally {
+      setLinkingCaregiver(false);
     }
   }
 
@@ -177,15 +209,22 @@ export default function CareTeamPatient() {
                 type="email"
                 value={doctorEmailToLink}
                 onChange={(event) => setDoctorEmailToLink(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    handleLinkDoctor();
+                  }
+                }}
                 placeholder="doctor@email.com"
                 className="flex-1 rounded-2xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
               <button
                 type="button"
                 onClick={handleLinkDoctor}
-                className="rounded-2xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white hover:bg-sky-600 transition"
+                disabled={loading || linkingDoctor || !doctorEmailToLink.trim()}
+                className="rounded-2xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white hover:bg-sky-600 transition disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Link doctor
+                {linkingDoctor ? "Linking..." : "Link doctor"}
               </button>
             </div>
 
@@ -228,15 +267,22 @@ export default function CareTeamPatient() {
                 type="email"
                 value={caregiverEmailToLink}
                 onChange={(event) => setCaregiverEmailToLink(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    handleLinkCaregiver();
+                  }
+                }}
                 placeholder="caregiver@email.com"
                 className="flex-1 rounded-2xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
               <button
                 type="button"
                 onClick={handleLinkCaregiver}
-                className="rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-600 transition"
+                disabled={loading || linkingCaregiver || !caregiverEmailToLink.trim()}
+                className="rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-600 transition disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Link caregiver
+                {linkingCaregiver ? "Linking..." : "Link caregiver"}
               </button>
             </div>
 

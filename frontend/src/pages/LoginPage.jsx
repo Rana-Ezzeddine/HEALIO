@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { login as loginApi, resendVerification, startSocialAuth } from "../api/auth";
 import { clearSession, setSession } from "../api/http";
 import { getPostAuthRoute } from "../utils/authRouting";
+import { readSafePrefill, writeSafePrefill } from "../utils/safePrefill";
 import logo from "../assets/logo.png";
 
 function GoogleIcon() {
@@ -20,7 +21,7 @@ function GoogleIcon() {
 export default function LoginPage({ embedded = false, onClose, onSwitchToSignup }) {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => readSafePrefill("auth", { email: "" }).email || "");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
@@ -33,6 +34,10 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
       clearSession();
     }
   }, [embedded]);
+
+  useEffect(() => {
+    writeSafePrefill("auth", { email: email.trim().toLowerCase() });
+  }, [email]);
 
   async function handleLogin(e) {
     e.preventDefault();

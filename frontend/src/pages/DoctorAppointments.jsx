@@ -14,6 +14,7 @@ import {
   updateDoctorAvailability,
 } from "../api/appointments";
 import { apiUrl, authHeaders } from "../api/http";
+import { readSafePrefill, writeSafePrefill } from "../utils/safePrefill";
 
 const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const durationOptions = [15, 30, 45, 60];
@@ -95,21 +96,12 @@ function statusLabel(status) {
 function patientLabel(patientRecord) {
   return patientRecord.profile?.displayName || patientRecord.patient?.displayName || patientRecord.patient?.email || patientRecord.email || "Patient";
 }
-function MetricCard({ label, value, hint, tone = "sky" }) {
-  const tones = {
-    sky: "from-sky-500 to-cyan-400",
-    emerald: "from-emerald-500 to-teal-400",
-    amber: "from-amber-500 to-orange-400",
-    rose: "from-rose-500 to-pink-400",
-  };
+function MetricCard({ label, value, hint }) {
   return (
-    <div className="rounded-2xl border border-white/15 bg-white/10 p-3 backdrop-blur-sm">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70">{label}</p>
-      <p className="mt-2 text-2xl font-black text-white">{value}</p>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/15">
-        <div className={`h-full rounded-full bg-gradient-to-r ${tones[tone] || tones.sky}`} style={{ width: "100%" }} />
-      </div>
-      <p className="mt-2 text-[11px] text-white/70">{hint}</p>
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">{label}</p>
+      <p className="mt-2 text-2xl font-black text-slate-900">{value}</p>
+      <p className="mt-2 text-[11px] text-slate-600">{hint}</p>
     </div>
   );
 }
@@ -221,9 +213,20 @@ async function fetchAssignedPatients() {
 
 export default function DoctorAppointments() {
   const location = useLocation();
+  const doctorAppointmentsPrefill = readSafePrefill("doctor-appointments", {
+    duration: getPreferredDuration(),
+    location: "",
+    notes: "",
+    suggestNote: "",
+    availabilityType: "break",
+    availabilityReason: "",
+    availabilityStart: "09:00",
+    availabilityEnd: "17:00",
+  });
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [assignedPatients, setAssignedPatients] = useState([]);
   const [selectedDateKey, setSelectedDateKey] = useState(toDateKey(new Date()));
   const [visibleMonth, setVisibleMonth] = useState(() => {
@@ -243,12 +246,12 @@ export default function DoctorAppointments() {
   const [suggestForm, setSuggestForm] = useState({
     appointmentId: "",
     date: "",
-    duration: getPreferredDuration(),
+    duration: doctorAppointmentsPrefill.duration || getPreferredDuration(),
     timeSlot: "",
-    note: "",
+    note: doctorAppointmentsPrefill.suggestNote || "",
   });
   const [availabilityEntries, setAvailabilityEntries] = useState([]);
-  const [preferredDuration, setPreferredDuration] = useState(getPreferredDuration());
+  const [preferredDuration, setPreferredDuration] = useState(doctorAppointmentsPrefill.duration || getPreferredDuration());
   const [availabilityLoading, setAvailabilityLoading] = useState(true);
   const [availabilityError, setAvailabilityError] = useState("");
   const [availabilitySaving, setAvailabilitySaving] = useState(false);
@@ -256,21 +259,21 @@ export default function DoctorAppointments() {
   const [plannerSelection, setPlannerSelection] = useState({});
   const [editingAvailabilityId, setEditingAvailabilityId] = useState("");
   const [availabilityForm, setAvailabilityForm] = useState({
-    type: "break",
+    type: doctorAppointmentsPrefill.availabilityType || "break",
     dayOfWeek: "1",
     selectedWeekdays: ["1"],
     specificDate: "",
-    startTime: "09:00",
-    endTime: "17:00",
-    reason: "",
+    startTime: doctorAppointmentsPrefill.availabilityStart || "09:00",
+    endTime: doctorAppointmentsPrefill.availabilityEnd || "17:00",
+    reason: doctorAppointmentsPrefill.availabilityReason || "",
   });
   const [form, setForm] = useState({
     patientId: "",
     date: "",
     timeSlot: "",
-    duration: getPreferredDuration(),
-    location: "",
-    notes: "",
+    duration: doctorAppointmentsPrefill.duration || getPreferredDuration(),
+    location: doctorAppointmentsPrefill.location || "",
+    notes: doctorAppointmentsPrefill.notes || "",
   });
 
   const patientNameById = useMemo(() => {
@@ -286,6 +289,7 @@ export default function DoctorAppointments() {
     setLoading(true);
     setAvailabilityLoading(true);
     setError("");
+    setSuccessMessage("");
     setAvailabilityError("");
 
     const [appointmentsResult, patientsResult, availabilityResult] = await Promise.allSettled([
@@ -322,6 +326,28 @@ export default function DoctorAppointments() {
   useEffect(() => {
     loadPageData();
   }, []);
+
+  useEffect(() => {
+    writeSafePrefill("doctor-appointments", {
+      duration: preferredDuration,
+      location: form.location.trim(),
+      notes: form.notes.trim(),
+      suggestNote: suggestForm.note.trim(),
+      availabilityType: availabilityForm.type,
+      availabilityReason: availabilityForm.reason.trim(),
+      availabilityStart: availabilityForm.startTime,
+      availabilityEnd: availabilityForm.endTime,
+    });
+  }, [
+    availabilityForm.endTime,
+    availabilityForm.reason,
+    availabilityForm.startTime,
+    availabilityForm.type,
+    form.location,
+    form.notes,
+    preferredDuration,
+    suggestForm.note,
+  ]);
 
   useEffect(() => {
     if (location.hash !== "#schedule-patient") return;
@@ -384,6 +410,20 @@ export default function DoctorAppointments() {
     };
   }, [form.date, form.duration]);
 
+  useEffect(() => {
+    if (!availableSlots.length) {
+      if (form.timeSlot) {
+        setForm((current) => ({ ...current, timeSlot: "" }));
+      }
+      return;
+    }
+
+    const hasSelectedSlot = availableSlots.some((slot) => slot.startsAt === form.timeSlot);
+    if (!hasSelectedSlot) {
+      setForm((current) => ({ ...current, timeSlot: availableSlots[0].startsAt }));
+    }
+  }, [availableSlots, form.timeSlot]);
+
 
   useEffect(() => {
     let cancelled = false;
@@ -433,6 +473,22 @@ export default function DoctorAppointments() {
       cancelled = true;
     };
   }, [suggestOpenId, suggestForm.date, suggestForm.duration]);
+
+  useEffect(() => {
+    if (!suggestOpenId) return;
+
+    if (!suggestSlots.length) {
+      if (suggestForm.timeSlot) {
+        setSuggestForm((current) => ({ ...current, timeSlot: "" }));
+      }
+      return;
+    }
+
+    const hasSelectedSlot = suggestSlots.some((slot) => slot.startsAt === suggestForm.timeSlot);
+    if (!hasSelectedSlot) {
+      setSuggestForm((current) => ({ ...current, timeSlot: suggestSlots[0].startsAt }));
+    }
+  }, [suggestOpenId, suggestSlots, suggestForm.timeSlot]);
 
   const requestedAppointments = useMemo(() => {
     return appointments
@@ -521,6 +577,7 @@ export default function DoctorAppointments() {
   async function handleScheduleAppointment(event) {
     event.preventDefault();
     setCreateError("");
+    setSuccessMessage("");
 
     if (!form.patientId || !form.timeSlot) {
       setCreateError("Select a patient and an available time slot.");
@@ -557,14 +614,15 @@ export default function DoctorAppointments() {
         patientId: "",
         date: "",
         timeSlot: "",
-        duration: "30",
-        location: "",
-        notes: "",
+        duration: preferredDuration,
+        location: form.location,
+        notes: form.notes,
       });
       setAvailableSlots([]);
       await loadPageData();
       setSelectedDateKey(toDateKey(startsAt));
       setVisibleMonth(new Date(startsAt.getFullYear(), startsAt.getMonth(), 1));
+      setSuccessMessage("Appointment scheduled successfully.");
     } catch (err) {
       setCreateError(err.message || "Failed to create appointment.");
     } finally {
@@ -574,9 +632,11 @@ export default function DoctorAppointments() {
 
   async function handleStatusChange(appointmentId, status) {
     try {
+      setSuccessMessage("");
       setStatusLoadingId(appointmentId);
       await updateAppointmentStatus(appointmentId, status);
       await loadPageData();
+      setSuccessMessage(`Appointment marked as ${statusLabel(status).toLowerCase()}.`);
     } catch (err) {
       setError(err.message || "Failed to update appointment status.");
     } finally {
@@ -586,10 +646,16 @@ export default function DoctorAppointments() {
 
   async function handleReviewRequest(appointmentId, status) {
     try {
+      setSuccessMessage("");
       setStatusLoadingId(appointmentId);
       await reviewAppointmentRequest(appointmentId, status, decisionNotes[appointmentId] || "");
       setDecisionNotes((current) => ({ ...current, [appointmentId]: "" }));
       await loadPageData();
+      setSuccessMessage(
+        status === "scheduled"
+          ? "Request approved and appointment scheduled."
+          : "Request denied successfully."
+      );
     } catch (err) {
       setError(err.message || "Failed to review appointment request.");
     } finally {
@@ -605,7 +671,7 @@ export default function DoctorAppointments() {
       date: defaultDate,
       duration: String(Math.round((new Date(appointment.endsAt) - new Date(appointment.startsAt)) / 60000) || Number(getPreferredDuration())),
       timeSlot: "",
-      note: decisionNotes[appointment.id] || "",
+      note: decisionNotes[appointment.id] || doctorAppointmentsPrefill.suggestNote || "",
     });
     setError("");
   }
@@ -623,6 +689,7 @@ export default function DoctorAppointments() {
     }
 
     try {
+      setSuccessMessage("");
       setSuggestLoadingId(appointment.id);
       const startsAt = new Date(suggestForm.timeSlot);
       const durationMinutes = Number(suggestForm.duration || getPreferredDuration());
@@ -635,6 +702,7 @@ export default function DoctorAppointments() {
       setDecisionNotes((current) => ({ ...current, [appointment.id]: suggestForm.note }));
       closeSuggestSlot();
       await loadPageData();
+      setSuccessMessage("Alternative slot suggested successfully.");
     } catch (err) {
       setError(err.message || "Failed to suggest another slot.");
     } finally {
@@ -650,13 +718,13 @@ export default function DoctorAppointments() {
 
   function resetAvailabilityForm() {
     setAvailabilityForm({
-      type: "break",
+      type: doctorAppointmentsPrefill.availabilityType || "break",
       dayOfWeek: "1",
       selectedWeekdays: [],
       specificDate: "",
-      startTime: "09:00",
-      endTime: "17:00",
-      reason: "",
+      startTime: doctorAppointmentsPrefill.availabilityStart || "09:00",
+      endTime: doctorAppointmentsPrefill.availabilityEnd || "17:00",
+      reason: doctorAppointmentsPrefill.availabilityReason || "",
     });
     setEditingAvailabilityId("");
   }
@@ -685,6 +753,7 @@ export default function DoctorAppointments() {
   async function handleSubmitAvailability(event) {
     event.preventDefault();
     setAvailabilityError("");
+    setSuccessMessage("");
 
     if (availabilityForm.endTime <= availabilityForm.startTime) {
       setAvailabilityError("End time must be after start time.");
@@ -739,6 +808,7 @@ export default function DoctorAppointments() {
       }
       resetAvailabilityForm();
       await loadPageData();
+      setSuccessMessage(editingAvailabilityId ? "Availability updated." : "Availability saved.");
     } catch (err) {
       setAvailabilityError(err.message || "Failed to save availability.");
     } finally {
@@ -748,6 +818,7 @@ export default function DoctorAppointments() {
 
   async function handleDeleteAvailability(id) {
     try {
+      setSuccessMessage("");
       setAvailabilitySaving(true);
       setAvailabilityError("");
       await deleteDoctorAvailability(id);
@@ -755,6 +826,7 @@ export default function DoctorAppointments() {
         resetAvailabilityForm();
       }
       await loadPageData();
+      setSuccessMessage("Availability entry removed.");
     } catch (err) {
       setAvailabilityError(err.message || "Failed to delete availability.");
     } finally {
@@ -771,6 +843,7 @@ export default function DoctorAppointments() {
     }
 
     try {
+      setSuccessMessage("");
       setPlannerSaving(true);
       setAvailabilityError("");
       const existingWorkHours = availabilityByType.workHours || [];
@@ -789,6 +862,7 @@ export default function DoctorAppointments() {
         )
       );
       await loadPageData();
+      setSuccessMessage("Weekly planner saved successfully.");
     } catch (err) {
       setAvailabilityError(err.message || "Failed to save weekly planner.");
     } finally {
@@ -819,10 +893,10 @@ export default function DoctorAppointments() {
               </div>
             </div>
             <div className="grid gap-2 sm:grid-cols-2 xl:w-[360px]">
-              <MetricCard label="Requests" value={requestedAppointments.length} hint="Awaiting review" tone="amber" />
-              <MetricCard label="Scheduled" value={scheduledCount} hint="Confirmed visits" tone="emerald" />
-              <MetricCard label="Completed" value={completedCount} hint="Closed visits" tone="sky" />
-              <MetricCard label="Cancelled" value={cancelledCount} hint="Dropped or denied" tone="rose" />
+              <MetricCard label="Requests" value={requestedAppointments.length} hint="Awaiting review" />
+              <MetricCard label="Scheduled" value={scheduledCount} hint="Confirmed visits" />
+              <MetricCard label="Completed" value={completedCount} hint="Closed visits" />
+              <MetricCard label="Cancelled" value={cancelledCount} hint="Dropped or denied" />
             </div>
           </div>
         </section>
@@ -833,7 +907,13 @@ export default function DoctorAppointments() {
           </div>
         )}
 
-        <section className="mb-6 rounded-3xl bg-gradient-to-br from-white to-amber-50 p-6 shadow">
+        {successMessage && (
+          <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            {successMessage}
+          </div>
+        )}
+
+        <section className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-4">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>

@@ -7,6 +7,10 @@ import {
   caregiverLogSymptom,
   getMyPatients,
 } from "../api/caregiver";
+import {
+  resolveActiveCaregiverPatientId,
+  setActiveCaregiverPatientId,
+} from "../utils/caregiverPatientContext";
 
 const PRESET_SYMPTOMS = ["Headache", "Nausea", "Fever", "Fatigue", "Cough", "Dizziness"];
 
@@ -70,7 +74,15 @@ export default function CaregiverSymptoms() {
     getMyPatients().then((data) => {
       const pts = data.patients || [];
       setPatients(pts);
-      if (!patientId && pts.length > 0) setPatientId(pts[0].patient.id);
+
+      const fromQuery = searchParams.get("patientId") || "";
+      const resolvedId =
+        fromQuery && pts.some((entry) => entry?.patient?.id === fromQuery)
+          ? fromQuery
+          : resolveActiveCaregiverPatientId(pts);
+
+      setPatientId(resolvedId);
+      setActiveCaregiverPatientId(resolvedId);
     });
   }, []);
 
@@ -181,12 +193,16 @@ export default function CaregiverSymptoms() {
             <div className="relative max-w-sm overflow-hidden rounded-full border border-slate-200 bg-white shadow-sm">
               <select
                 value={patientId}
-                onChange={(e) => setPatientId(e.target.value)}
+                onChange={(e) => {
+                  const nextId = e.target.value;
+                  setPatientId(nextId);
+                  setActiveCaregiverPatientId(nextId);
+                }}
                 className="w-full appearance-none bg-transparent px-5 py-3 pr-12 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-cyan-500"
               >
                 {patients.map((e) => (
                   <option key={e.patient.id} value={e.patient.id}>
-                    {e.patient.email}
+                    {e.patient.displayName || e.patient.email}
                   </option>
                 ))}
               </select>
