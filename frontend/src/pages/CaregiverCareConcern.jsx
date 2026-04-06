@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
 import { getCaregiverPatientAppointments, getMyPatients } from "../api/caregiver";
+import {
+  resolveActiveCaregiverPatientId,
+  setActiveCaregiverPatientId,
+} from "../utils/caregiverPatientContext";
 
 export default function CaregiverCareConcern() {
   const [patients, setPatients] = useState([]);
@@ -13,9 +17,10 @@ export default function CaregiverCareConcern() {
       .then((data) => {
         const pts = data.patients || [];
         setPatients(pts);
-        if (pts.length > 0) {
-          setPatientId(pts[0].patient.id);
-        }
+
+        const resolvedId = resolveActiveCaregiverPatientId(pts);
+        setPatientId(resolvedId);
+        setActiveCaregiverPatientId(resolvedId);
       })
       .catch((err) => setMessage(err.message || "Failed to load linked patients."));
   }, []);
@@ -69,12 +74,16 @@ export default function CaregiverCareConcern() {
         {patients.length > 1 && (
           <select
             value={patientId}
-            onChange={(e) => setPatientId(e.target.value)}
+            onChange={(e) => {
+              const nextId = e.target.value;
+              setPatientId(nextId);
+              setActiveCaregiverPatientId(nextId);
+            }}
             className="mb-6 rounded-xl border border-slate-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
           >
             {patients.map((e) => (
               <option key={e.patient.id} value={e.patient.id}>
-                {e.patient.email}
+                {e.patient.displayName || e.patient.email}
               </option>
             ))}
           </select>
