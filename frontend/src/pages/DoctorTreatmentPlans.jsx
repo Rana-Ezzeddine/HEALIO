@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import { apiUrl, authHeaders } from "../api/http";
 import { rememberDoctorPatientTab } from "../utils/doctorPatientTabs";
+import { formatDoseTime, getNextMedicationDose, getScheduleTimes, isActiveMedication } from "../utils/medicationSchedule";
 import {
   formatListInput,
   formatListOutput,
@@ -26,6 +27,25 @@ const planStatusPill = {
   archived: "bg-slate-200 text-slate-700",
 };
 
+function parseScheduleInput(value) {
+  const list = Array.isArray(value) ? value : String(value || "").split(",");
+  const times = list.map((item) => String(item).trim()).filter(Boolean);
+  return { times };
+}
+
+function formatScheduleInput(scheduleJson, frequency) {
+  return getScheduleTimes({ scheduleJson, frequency });
+}
+
+function getMedicationStatus(medication) {
+  return isActiveMedication(medication) ? "Active" : "Inactive";
+}
+
+function formatDate(value) {
+  if (!value) return "Not recorded";
+  return new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
 export default function DoctorTreatmentPlans() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -36,6 +56,20 @@ export default function DoctorTreatmentPlans() {
   const [savedPlans, setSavedPlans] = useState([]);
   const [patientOverview, setPatientOverview] = useState(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [medicationFormOpen, setMedicationFormOpen] = useState(false);
+  const [savingMedication, setSavingMedication] = useState(false);
+  const [editingMedicationId, setEditingMedicationId] = useState(null);
+  const [medicationError, setMedicationError] = useState("");
+  const [medicationForm, setMedicationForm] = useState({
+    name: "",
+    doseAmount: "",
+    doseUnit: "mg",
+    frequency: "Once daily",
+    scheduleTimes: [],
+    startDate: "",
+    endDate: "",
+    notes: "",
+  });
   const [form, setForm] = useState({
     planTitle: "",
     targetConditions: "",
@@ -57,6 +91,12 @@ export default function DoctorTreatmentPlans() {
   });
 
   const selectedPatientId = searchParams.get("patientId") || "";
+
+  useEffect(() => {
+    if (!selectedPatientId) {
+      navigate("/doctor-patients", { replace: true });
+    }
+  }, [navigate, selectedPatientId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,13 +171,28 @@ export default function DoctorTreatmentPlans() {
     if (!selectedPatientId) return null;
     return assignedPatients.find((record) => (record.patient?.id || record.id) === selectedPatientId) || null;
   }, [assignedPatients, selectedPatientId]);
+  const medications = patientOverview?.medications || [];
+  const activeMedications = medications.filter((item) => isActiveMedication(item));
+  const nextMedicationDose = getNextMedicationDose(activeMedications);
+
+  async function refreshPatientOverview(currentPatientId = selectedPatientId) {
+    if (!currentPatientId) {
+      setPatientOverview(null);
+      return;
+    }
+    const response = await fetch(`${apiUrl}/api/doctors/patients/${currentPatientId}/overview`, {
+      headers: { ...authHeaders() },
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || "Failed to load patient overview.");
+    setPatientOverview(data);
+  }
 
   function updateField(key, value) {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
   function fillFromPatient(kind) {
-    const profile = patientOverview?.patientProfile;
     if (kind === "medications") {
       updateField(
         "medications",
@@ -168,6 +223,120 @@ export default function DoctorTreatmentPlans() {
       reviewCadence: "",
       patientSafeSummary: "",
     });
+  }
+
+  function openMedicationForm(medication = null) {
+    if (medication) {
+      setEditingMedicationId(medication.id);
+      setMedicationForm({
+        name: medication.name || "",
+        doseAmount: medication.doseAmount != null ? String(medication.doseAmount) : "",
+        doseUnit: medication.doseUnit || "mg",
+        frequency: medication.frequency || "Once daily",
+        scheduleTimes: formatScheduleInput(medication.scheduleJson, medication.frequency) || ["08:00"],
+        startDate: medication.startDate || "",
+        endDate: medication.endDate || "",
+        notes: medication.notes || "",
+      });
+    } else {
+      setEditingMedicationId(null);
+      setMedicationForm({
+        name: "",
+        doseAmount: "",
+        doseUnit: "mg",
+        frequency: "Once daily",
+        scheduleTimes: [],
+        startDate: "",
+        endDate: "",
+        notes: "",
+      });
+    }
+    setMedicationError("");
+    setMedicationFormOpen(true);
+  }
+
+  async function handleMedicationSubmit(event) {
+    event.preventDefault();
+    if (!selectedPatientId) return;
+    try {
+      setSavingMedication(true);
+      setMedicationError("");
+      const trimmedAmount = String(medicationForm.doseAmount || "").trim();
+      if (!trimmedAmount || Number.isNaN(Number(trimmedAmount)) || Number(trimmedAmount) <= 0) {
+        throw new Error("Dosage amount must be a positive number.");
+      }
+      const validTimes = (medicationForm.scheduleTimes || []).map((time) => String(time || "").trim()).filter(Boolean);
+      const dosage = `${trimmedAmount} ${medicationForm.doseUnit}`.trim();
+      const response = await fetch(`${apiUrl}/api/medications${editingMedicationId ? `/${editingMedicationId}` : ""}`, {
+        method: editingMedicationId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          patientId: selectedPatientId,
+          name: medicationForm.name,
+          dosage,
+          doseAmount: Number(trimmedAmount),
+          doseUnit: medicationForm.doseUnit,
+          frequency: medicationForm.frequency,
+          scheduleJson: validTimes.length ? parseScheduleInput(validTimes) : null,
+          startDate: medicationForm.startDate || null,
+          endDate: medicationForm.endDate || null,
+          notes: medicationForm.notes || null,
+          adherenceHistory: [],
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || data?.message || "Failed to save medication.");
+      }
+      await refreshPatientOverview(selectedPatientId);
+      fillFromPatient("medications");
+      setMedicationFormOpen(false);
+      setEditingMedicationId(null);
+    } catch (err) {
+      setMedicationError(err.message || "Failed to save medication.");
+    } finally {
+      setSavingMedication(false);
+    }
+  }
+
+  async function handleMedicationDelete(medicationId) {
+    if (!window.confirm("Remove this medication from the patient's treatment list?")) return;
+    try {
+      setMedicationError("");
+      const response = await fetch(`${apiUrl}/api/medications/${medicationId}?patientId=${encodeURIComponent(selectedPatientId)}`, {
+        method: "DELETE",
+        headers: { ...authHeaders() },
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error || data?.message || "Failed to delete medication.");
+      }
+      await refreshPatientOverview(selectedPatientId);
+      fillFromPatient("medications");
+    } catch (err) {
+      setMedicationError(err.message || "Failed to delete medication.");
+    }
+  }
+
+  function updateMedicationTime(index, value) {
+    setMedicationForm((current) => ({
+      ...current,
+      scheduleTimes: current.scheduleTimes.map((time, timeIndex) => (timeIndex === index ? value : time)),
+    }));
+  }
+
+  function addMedicationTime() {
+    setMedicationForm((current) => ({
+      ...current,
+      scheduleTimes: [...current.scheduleTimes, "12:00"],
+    }));
+  }
+
+  function removeMedicationTime(index) {
+    setMedicationForm((current) => ({
+      ...current,
+      scheduleTimes: current.scheduleTimes.filter((_, timeIndex) => timeIndex !== index),
+    }));
   }
 
   function handleSavePlan(event) {
@@ -220,13 +389,6 @@ export default function DoctorTreatmentPlans() {
           <div className="mt-5 flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={() => navigate("/doctor-clinical-notes")}
-              className="rounded-xl bg-white/20 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/30"
-            >
-              Open clinical notes
-            </button>
-            <button
-              type="button"
               onClick={() => navigate("/doctorAppointments")}
               className="rounded-xl bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25"
             >
@@ -237,11 +399,7 @@ export default function DoctorTreatmentPlans() {
 
         <section className="mt-6">
           <div className="space-y-6">
-            {!selectedPatientId ? (
-              <section className="rounded-3xl border border-dashed border-slate-200 bg-white p-8 text-sm text-slate-500 shadow-sm">
-                Open a patient from the patients page first. Treatment plans are scoped through patient context now.
-              </section>
-            ) : (
+            {!selectedPatientId ? null : (
               <>
                 <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                   <div className="flex flex-wrap items-start justify-between gap-4">
@@ -280,7 +438,6 @@ export default function DoctorTreatmentPlans() {
                   </div>
 
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <button type="button" onClick={() => fillFromPatient("medications")} className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-200">Import medications</button>
                     <button type="button" onClick={() => setShowAdvanced((current) => !current)} className="rounded-full bg-violet-100 px-3 py-1.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-200">
                       {showAdvanced ? "Hide advanced details" : "Add more detail"}
                     </button>
@@ -315,10 +472,140 @@ export default function DoctorTreatmentPlans() {
                         <span className="text-sm font-semibold text-slate-700">Treatment goals</span>
                         <textarea value={form.treatmentGoals} onChange={(event) => updateField("treatmentGoals", event.target.value)} rows={4} placeholder="One goal per line" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
                       </label>
-                      <label className="space-y-2">
-                        <span className="text-sm font-semibold text-slate-700">Medication strategy</span>
-                        <textarea value={form.medications} onChange={(event) => updateField("medications", event.target.value)} rows={4} placeholder="One medication or change per line" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-                      </label>
+                      <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                          <div>
+                            <span className="text-sm font-semibold text-slate-700">Medication strategy</span>
+                            <p className="mt-1 text-xs text-slate-500">Set the treatment medications here instead of entering a free-text summary.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => openMedicationForm()}
+                            className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
+                          >
+                            Add medication
+                          </button>
+                        </div>
+                        {medicationError ? <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{medicationError}</div> : null}
+
+                        {medicationFormOpen ? (
+                          <form onSubmit={handleMedicationSubmit} className="rounded-3xl border border-slate-200 bg-white p-4">
+                            <div className="grid gap-4 md:grid-cols-2">
+                              <label className="text-sm font-medium text-slate-700">
+                                Medication name
+                                <input value={medicationForm.name} onChange={(event) => setMedicationForm((current) => ({ ...current, name: event.target.value }))} required className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100" placeholder="Metformin" />
+                              </label>
+                              <label className="text-sm font-medium text-slate-700">
+                                Dosage
+                                <div className="mt-1 grid grid-cols-[minmax(0,1fr)_120px] gap-2">
+                                  <input type="number" min="0" step="0.1" value={medicationForm.doseAmount} onChange={(event) => setMedicationForm((current) => ({ ...current, doseAmount: event.target.value }))} required className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100" placeholder="500" />
+                                  <select value={medicationForm.doseUnit} onChange={(event) => setMedicationForm((current) => ({ ...current, doseUnit: event.target.value }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100">
+                                    <option value="mg">mg</option>
+                                    <option value="mcg">mcg</option>
+                                    <option value="g">g</option>
+                                    <option value="mL">mL</option>
+                                    <option value="tablet(s)">tablet(s)</option>
+                                    <option value="capsule(s)">capsule(s)</option>
+                                    <option value="drop(s)">drop(s)</option>
+                                    <option value="unit(s)">unit(s)</option>
+                                    <option value="puff(s)">puff(s)</option>
+                                  </select>
+                                </div>
+                              </label>
+                              <label className="text-sm font-medium text-slate-700">
+                                Frequency
+                                <select value={medicationForm.frequency} onChange={(event) => {
+                                  const frequency = event.target.value;
+                                  const suggestedTimes = frequency === "Twice daily" ? ["08:00", "20:00"] : frequency === "Three times daily" ? ["08:00", "14:00", "20:00"] : frequency === "Every 8 hours" ? ["06:00", "14:00", "22:00"] : ["08:00"];
+                                  setMedicationForm((current) => ({
+                                    ...current,
+                                    frequency,
+                                    scheduleTimes:
+                                      current.scheduleTimes.length === 0
+                                        ? []
+                                        : current.scheduleTimes.every((time) => ["08:00", "20:00", "14:00", "06:00", "22:00"].includes(time))
+                                          ? suggestedTimes
+                                          : current.scheduleTimes,
+                                  }));
+                                }} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100">
+                                  <option>Once daily</option>
+                                  <option>Twice daily</option>
+                                  <option>Three times daily</option>
+                                  <option>Every 8 hours</option>
+                                  <option>Weekly</option>
+                                  <option>As needed</option>
+                                  <option>Custom</option>
+                                </select>
+                              </label>
+                              <label className="text-sm font-medium text-slate-700">
+                                Dosing times
+                                <div className="mt-1 space-y-2">
+                                  {medicationForm.scheduleTimes.map((time, index) => (
+                                    <div key={`${index}-${time}`} className="flex items-center gap-2">
+                                      <input type="time" value={time} onChange={(event) => updateMedicationTime(index, event.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100" />
+                                      {medicationForm.scheduleTimes.length > 0 ? (
+                                        <button type="button" onClick={() => removeMedicationTime(index)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50">
+                                          Remove
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  ))}
+                                  {medicationForm.scheduleTimes.length === 0 ? (
+                                    <p className="text-xs text-slate-500">No dosing times set.</p>
+                                  ) : null}
+                                  <button type="button" onClick={addMedicationTime} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50">
+                                    Add time
+                                  </button>
+                                </div>
+                              </label>
+                              <label className="text-sm font-medium text-slate-700">
+                                Start date
+                                <input type="date" value={medicationForm.startDate} onChange={(event) => setMedicationForm((current) => ({ ...current, startDate: event.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100" />
+                              </label>
+                              <label className="text-sm font-medium text-slate-700">
+                                End date
+                                <input type="date" value={medicationForm.endDate} onChange={(event) => setMedicationForm((current) => ({ ...current, endDate: event.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100" />
+                              </label>
+                            </div>
+                            <label className="mt-4 block text-sm font-medium text-slate-700">
+                              Notes / instructions
+                              <textarea value={medicationForm.notes} onChange={(event) => setMedicationForm((current) => ({ ...current, notes: event.target.value }))} rows={3} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100" placeholder="Take after food, monitor dizziness, stop if rash develops." />
+                            </label>
+                            <div className="mt-4 flex flex-wrap gap-3">
+                              <button type="submit" disabled={savingMedication} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400">
+                                {savingMedication ? "Saving..." : editingMedicationId ? "Update medication" : "Save medication"}
+                              </button>
+                              <button type="button" onClick={() => { setMedicationFormOpen(false); setEditingMedicationId(null); setMedicationError(""); }} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
+                                Cancel
+                              </button>
+                            </div>
+                          </form>
+                        ) : null}
+
+                        <div className="space-y-3">
+                          {medications.length ? medications.map((medication) => (
+                            <div key={medication.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-base font-semibold text-slate-900">{medication.name}</p>
+                                  <p className="mt-1 text-sm text-slate-600">{medication.dosage} • {medication.frequency}</p>
+                                  <p className="mt-1 text-sm text-slate-500">
+                                    {getScheduleTimes(medication).join(", ")}
+                                    {medication.startDate ? ` • Starts ${formatDate(medication.startDate)}` : ""}
+                                    {medication.endDate ? ` • Ends ${formatDate(medication.endDate)}` : ""}
+                                  </p>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getMedicationStatus(medication) === "Active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-700"}`}>{getMedicationStatus(medication)}</span>
+                                  <button type="button" onClick={() => openMedicationForm(medication)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50">Edit</button>
+                                  <button type="button" onClick={() => handleMedicationDelete(medication.id)} className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700">Delete</button>
+                                </div>
+                              </div>
+                              {medication.notes ? <p className="mt-2 text-sm text-slate-500">{medication.notes}</p> : null}
+                            </div>
+                          )) : <p className="text-sm text-slate-500">No medications assigned yet. Add the first medication here to make it part of this treatment plan.</p>}
+                        </div>
+                      </div>
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-2">

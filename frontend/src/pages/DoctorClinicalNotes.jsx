@@ -58,6 +58,12 @@ export default function DoctorClinicalNotes() {
   const selectedPatientId = searchParams.get("patientId") || "";
 
   useEffect(() => {
+    if (!selectedPatientId) {
+      navigate("/doctor-patients", { replace: true });
+    }
+  }, [navigate, selectedPatientId]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function loadAssignedPatients() {
@@ -236,11 +242,7 @@ export default function DoctorClinicalNotes() {
 
         <section className="mt-6">
           <div className="space-y-6">
-            {!selectedPatientId ? (
-              <section className="rounded-3xl border border-dashed border-slate-200 bg-white p-8 text-sm text-slate-500 shadow-sm">
-                Open a patient from the patients page first. Clinical notes are scoped through patient context now.
-              </section>
-            ) : (
+            {!selectedPatientId ? null : (
               <>
                 <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                   <div className="flex flex-wrap items-start justify-between gap-4">

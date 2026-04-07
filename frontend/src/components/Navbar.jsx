@@ -108,8 +108,6 @@ export default function Navbar({ onLogin, onSignup }) {
   const isCaregiverNotes = path.toLowerCase().startsWith("/caregivernotes");
   const isDoctorPatients = path.toLowerCase().startsWith("/doctor-patients");
   const isDoctorLinkRequests = path.toLowerCase().startsWith("/doctor-patients/requests");
-  const isDoctorClinicalNotes = path.toLowerCase().startsWith("/doctor-clinical-notes");
-  const isDoctorTreatmentPlans = path.toLowerCase().startsWith("/doctor-treatment-plans");
   const isHealthSummary = path.toLowerCase().startsWith("/healthsummary");
   const isPatientMessages = path.toLowerCase().startsWith("/patientmessages");
   const isPatientNotifications = path.toLowerCase().startsWith("/patient-notifications");
@@ -152,14 +150,12 @@ export default function Navbar({ onLogin, onSignup }) {
       : [
         { label: "Appointments", href: "/doctorAppointments", active: isDoctorAppointments, isDanger: false },
         { label: "Link Requests", href: "/doctor-patients/requests", active: isDoctorLinkRequests, isDanger: false },
-        { label: "Clinical Notes", href: "/doctor-clinical-notes", active: isDoctorClinicalNotes, isDanger: false },
-        { label: "Treatment Plans", href: "/doctor-treatment-plans", active: isDoctorTreatmentPlans, isDanger: false },
         { label: "Profile", href: "/profileDoctor", active: isProfile, isDanger: false },
       ]
     : [];
   const isDoctorMoreActive = doctorApprovalHeld
     ? doctorMoreNavItems.some((item) => item.active)
-    : isDoctorAppointments || isDoctorLinkRequests || isDoctorClinicalNotes || isDoctorTreatmentPlans || isProfile;
+    : isDoctorAppointments || isDoctorLinkRequests || isProfile;
 
   useEffect(() => {
     if (!showLogoutConfirm) return;
