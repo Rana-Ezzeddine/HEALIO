@@ -240,7 +240,7 @@ function getTransporter() {
   transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port,
-    secure: port === 465,
+    // secure: port === 465,
     auth: process.env.SMTP_USER
       ? {
           user: process.env.SMTP_USER,
@@ -248,6 +248,15 @@ function getTransporter() {
         }
       : undefined,
   });
+
+//   transporter = nodemailer.createTransport({
+//     host: 'smtp.ethereal.email',
+//     port: 587,
+//     auth: {
+//         user: 'otilia.terry@ethereal.email',
+//         pass: 'wtxUcffNdTwctyykdj'
+//     }
+// });
 
   return transporter;
 }
