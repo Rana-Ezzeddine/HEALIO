@@ -4,7 +4,7 @@ import Availability from "../models/Availability.js";
 import User from "../models/User.js";
 import DoctorPatientAssignment from "../models/DoctorPatientAssignment.js";
 import PatientProfile from "../models/PatientProfile.js";
-import { DOCTOR_APPROVAL_STATUS } from "../lib/doctorApproval.js";
+import { DOCTOR_APPROVAL_STATUS, isApprovedDoctorUser } from "../lib/doctorApproval.js";
 import NotificationService from "../services/notificationService.js";
 import ContextService from "../services/ContextService.js";
 import ReminderSchedulerService from "../services/reminderSchedulerService.js";
@@ -32,6 +32,37 @@ function parseRange(req) {
   return { from, to };
 }
 
+function toLocalDateKey(dateLike) {
+  const date = new Date(dateLike);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+async function ensureAvailabilityTableReady() {
+  try {
+    await Availability.sequelize.getQueryInterface().describeTable(Availability.getTableName());
+  } catch (error) {
+    if (error?.original?.code === "42P01" || /does not exist/i.test(error?.message || "")) {
+      await Availability.sync();
+      return;
+    }
+    throw error;
+  }
+}
+
+async function ensureAppointmentRequestSourceColumnReady() {
+  const queryInterface = Appointment.sequelize.getQueryInterface();
+  const table = await queryInterface.describeTable(Appointment.getTableName());
+  if (!table.requestSource) {
+    await queryInterface.addColumn(Appointment.getTableName(), "requestSource", {
+      type: Appointment.sequelize.Sequelize.STRING,
+      allowNull: true,
+    });
+  }
+}
+
 async function validateDoctorPatientLink(doctorId, patientId) {
   const assignment = await DoctorPatientAssignment.findOne({
     where: { doctorId, patientId, status: "active" },
@@ -55,6 +86,8 @@ async function buildDoctorAvailability({
   to,
   slotMinutes,
 }) {
+  await ensureAvailabilityTableReady();
+
   const [availabilities, appointments] = await Promise.all([
     Availability.findAll({
       where: {
@@ -84,10 +117,11 @@ async function buildDoctorAvailability({
 
   const slots = [];
   const cursor = new Date(from);
+  cursor.setHours(0, 0, 0, 0);
 
   while (cursor < to) {
     const dayOfWeek = cursor.getDay();
-    const dateStr = cursor.toISOString().split('T')[0];
+    const dateStr = toLocalDateKey(cursor);
     
     // Find work hours for this day of week
     const todayWorkHours = workHours.filter(wh => wh.dayOfWeek === dayOfWeek);
@@ -146,11 +180,13 @@ async function buildDoctorAvailability({
 }
 
 async function ensureDoctorUser(doctorId) {
-  const doctor = await User.findByPk(doctorId);
+  const doctor = await User.findByPk(doctorId, {
+    attributes: ["id", "email", "role", "doctorApprovalStatus"],
+  });
   if (!doctor || doctor.role !== "doctor") {
     throw new Error("Invalid doctorId");
   }
-  if (doctor.doctorApprovalStatus !== DOCTOR_APPROVAL_STATUS.APPROVED) {
+  if (!isApprovedDoctorUser(doctor)) {
     throw new Error("Doctor is not currently available");
   }
 }
@@ -238,6 +274,7 @@ export async function getDoctorSchedule(req, res) {
 
 export async function createAppointment(req, res) {
   try {
+    await ensureAppointmentRequestSourceColumnReady();
     const doctorId = req.user.id;
     const { patientId, startsAt, endsAt, location, notes } = req.body || {};
 
@@ -280,11 +317,15 @@ export async function createAppointment(req, res) {
           ? location.trim() || preFill.defaultLocation || null
           : preFill.defaultLocation || null,
       notes: typeof notes === "string" ? notes.trim() || null : null,
-      status: "scheduled",
+      status: "requested",
+      requestSource: "doctor",
     });
 
-    await ReminderSchedulerService.scheduleAppointmentReminder(created);
-    await NotificationService.notifyAppointmentUpdate(patientId, created.id, "A new appointment has been scheduled by your doctor.");
+    await NotificationService.notifyAppointmentUpdate(
+      patientId,
+      created.id,
+      "Your doctor proposed a new appointment request for your review."
+    );
 
     return res.status(201).json(created);
   } catch (err) {
@@ -295,6 +336,7 @@ export async function createAppointment(req, res) {
 
 export async function createAppointmentRequest(req, res) {
   try {
+    await ensureAppointmentRequestSourceColumnReady();
     const patientId = req.user.id;
     const { doctorId, startsAt, endsAt, location, notes } = req.body || {};
 
@@ -361,6 +403,7 @@ export async function createAppointmentRequest(req, res) {
           : preFill.defaultLocation || null,
       notes: typeof notes === "string" ? notes.trim() || null : null,
       status: "requested",
+      requestSource: "patient",
     });
 
     await NotificationService.createWithContext(
@@ -390,16 +433,15 @@ export async function getRequestableDoctors(req, res) {
     }
 
     const doctors = await patient.getDoctors({
-      where: { doctorApprovalStatus: DOCTOR_APPROVAL_STATUS.APPROVED },
-      attributes: ["id", "email"],
+      attributes: ["id", "email", "role", "doctorApprovalStatus"],
       include: [{ model: PatientProfile, as: "patientProfile", attributes: ["firstName", "lastName"] }],
       joinTableAttributes: [],
       through: { where: { status: "active" } },
     });
 
     return res.json({
-      count: doctors.length,
-      doctors: doctors.map((doctor) => ({
+      count: doctors.filter((doctor) => isApprovedDoctorUser(doctor)).length,
+      doctors: doctors.filter((doctor) => isApprovedDoctorUser(doctor)).map((doctor) => ({
         id: doctor.id,
         email: doctor.email,
         displayName: buildDisplayName(
@@ -467,7 +509,9 @@ export async function updateAppointment(req, res) {
 
 export async function updateAppointmentStatus(req, res) {
   try {
-    const doctorId = req.user.id;
+    await ensureAppointmentRequestSourceColumnReady();
+    const actorId = req.user.id;
+    const actorRole = req.user.role;
     const { id } = req.params;
     const { status, notes } = req.body || {};
     const allowed = new Set(["requested", "scheduled", "cancelled", "completed", "denied"]);
@@ -478,16 +522,48 @@ export async function updateAppointmentStatus(req, res) {
       });
     }
 
-    const appt = await Appointment.findOne({
-      where: { id, doctorId },
-    });
+    const appt = await Appointment.findOne({ where: { id } });
     if (!appt) {
       return res.status(404).json({ message: "Appointment not found" });
     }
 
-    const transitions = {
-      requested: new Set(["scheduled", "denied", "cancelled"]),
-      scheduled: new Set(["completed", "cancelled"]),
+    const requestSource = appt.requestSource || "patient";
+    const isDoctorActor = actorRole === "doctor" && appt.doctorId === actorId;
+    const isPatientActor = actorRole === "patient" && appt.patientId === actorId;
+    if (!isDoctorActor && !isPatientActor) {
+      return res.status(403).json({ message: "You are not allowed to update this appointment." });
+    }
+
+    if (appt.status === "requested") {
+      if (requestSource === "patient" && !isDoctorActor) {
+        return res.status(403).json({ message: "Only the doctor can review a patient-created appointment request." });
+      }
+      if (requestSource === "doctor" && !isPatientActor) {
+        return res.status(403).json({ message: "Only the patient can review a doctor-created appointment request." });
+      }
+    }
+
+    const transitionsByRole = {
+      doctor: {
+        requested: new Set(["scheduled", "denied", "cancelled"]),
+        scheduled: new Set(["completed", "cancelled"]),
+        completed: new Set(),
+        cancelled: new Set(),
+        denied: new Set(),
+      },
+      patient: {
+        requested: new Set(["scheduled", "denied", "cancelled"]),
+        scheduled: new Set(["cancelled"]),
+        completed: new Set(),
+        cancelled: new Set(),
+        denied: new Set(),
+      },
+    };
+
+    const transitionRole = isDoctorActor ? "doctor" : "patient";
+    const transitions = transitionsByRole[transitionRole] || {
+      requested: new Set(),
+      scheduled: new Set(),
       completed: new Set(),
       cancelled: new Set(),
       denied: new Set(),
@@ -500,7 +576,7 @@ export async function updateAppointmentStatus(req, res) {
     }
 
     if (status === "scheduled") {
-      const conflict = await hasDoctorConflict(doctorId, appt.startsAt, appt.endsAt, appt.id);
+      const conflict = await hasDoctorConflict(appt.doctorId, appt.startsAt, appt.endsAt, appt.id);
       if (conflict) {
         return res.status(409).json({
           message: "Doctor is no longer available in this time window (schedule conflict)",
@@ -525,7 +601,11 @@ export async function updateAppointmentStatus(req, res) {
       });
     }
 
-    await NotificationService.notifyAppointmentUpdate(appt.patientId, appt.id, `Your appointment status has been updated to ${status}.`);
+    if (isDoctorActor) {
+      await NotificationService.notifyAppointmentUpdate(appt.patientId, appt.id, `Your appointment status has been updated to ${status}.`);
+    } else if (isPatientActor) {
+      await NotificationService.notifyAppointmentUpdate(appt.doctorId, appt.id, `A patient has updated the appointment status to ${status}.`);
+    }
 
     return res.json(appt);
   } catch (err) {
@@ -676,6 +756,7 @@ export async function getPatientDoctorAvailability(req, res) {
 
 export async function getMyAppointments(req, res) {
   try {
+    await ensureAppointmentRequestSourceColumnReady();
     const userId = req.user.id;
     const role = req.user.role;
     const where = role === "doctor" ? { doctorId: userId } : { patientId: userId };
@@ -707,6 +788,7 @@ export async function getMyAppointments(req, res) {
         startsAt: a.startsAt,
         endsAt: a.endsAt,
         status: a.status,
+        requestSource: a.requestSource || null,
         location: a.location,
         notes: a.notes,
         doctor: a.doctor

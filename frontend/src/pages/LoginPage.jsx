@@ -5,6 +5,7 @@ import { login as loginApi, resendVerification, startSocialAuth } from "../api/a
 import { clearSession, setSession } from "../api/http";
 import { getPostAuthRoute } from "../utils/authRouting";
 import { readSafePrefill, writeSafePrefill } from "../utils/safePrefill";
+import { queuePatientOnboarding } from "../utils/patientOnboarding";
 import logo from "../assets/logo.png";
 
 function GoogleIcon() {
@@ -50,6 +51,7 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
       const { token, user } = await loginApi(email, password);
 
       setSession({ token, user });
+      queuePatientOnboarding(user);
       navigate(getPostAuthRoute(user), { replace: true });
 
       if (embedded) onClose?.();

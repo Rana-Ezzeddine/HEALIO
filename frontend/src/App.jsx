@@ -32,6 +32,7 @@ import SupportPage from "./pages/SupportPage";
 import PrivacyPage from "./pages/PrivacyPage";
 import TermsPage from "./pages/TermsPage";
 import ProtectedRoute from "./components/ProtectedRoute";
+import RouteErrorBoundary from "./components/RouteErrorBoundary";
 
 import DoctorApprovedRoute from "./components/DoctorApprovedRoute";
 import DoctorApprovalStatusPage from "./pages/DoctorApprovalStatusPage";
@@ -142,7 +143,11 @@ function RoutedApp() {
         <Route
           path="/doctor-review"
           element={
+<<<<<<< HEAD
             <ProtectedRoute allowedRoles={["admin"]}>
+=======
+            <ProtectedRoute>
+>>>>>>> origin/main
               <DoctorReviewPage />
             </ProtectedRoute>
           }
@@ -187,7 +192,9 @@ function RoutedApp() {
           path="/dashboardCaregiver"
           element={
             <ProtectedRoute allowedRoles={["caregiver"]}>
-              <DashboardCaregiver />
+              <RouteErrorBoundary>
+                <DashboardCaregiver />
+              </RouteErrorBoundary>
             </ProtectedRoute>
           }
         />
@@ -219,7 +226,9 @@ function RoutedApp() {
           path="/medication"
           element={
             <ProtectedRoute allowedRoles={["patient"]}>
-              <Medication />
+              <RouteErrorBoundary>
+                <Medication />
+              </RouteErrorBoundary>
             </ProtectedRoute>
           }
         />
@@ -351,7 +360,9 @@ function RoutedApp() {
           path="/caregiverMessages"
           element={
             <ProtectedRoute allowedRoles={["caregiver"]}>
-              <CaregiverMessages />
+              <RouteErrorBoundary>
+                <CaregiverMessages />
+              </RouteErrorBoundary>
             </ProtectedRoute>
           }
         />

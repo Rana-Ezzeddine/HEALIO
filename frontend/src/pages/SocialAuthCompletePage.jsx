@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { clearSession, setSession } from "../api/http";
 import { getPostAuthRoute } from "../utils/authRouting";
+import { queuePatientOnboarding } from "../utils/patientOnboarding";
 
 function parseUser(rawUser) {
   if (!rawUser) return null;
@@ -66,6 +67,7 @@ export default function SocialAuthCompletePage() {
     }
 
     setSession({ token: initialResult.token, user: initialResult.user });
+    queuePatientOnboarding(initialResult.user);
     localStorage.setItem("healio:auth-sync", String(Date.now()));
 
     navigate(getPostAuthRoute(initialResult.user), { replace: true });

@@ -6,6 +6,7 @@ import {
   getPatientDoctorAvailability,
   getMyAppointments,
   getRequestableDoctors,
+  updateAppointmentStatus,
 } from "../api/appointments";
 import { readSafePrefill, writeSafePrefill } from "../utils/safePrefill";
 
@@ -52,7 +53,7 @@ export default function PatientAppointments() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [requestError, setRequestError] = useState("");
-  const [requestSuccess, setRequestSuccess] = useState("");
+  const [requestInfo, setRequestInfo] = useState("");
   const [requestLoading, setRequestLoading] = useState(false);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [availableSlots, setAvailableSlots] = useState([]);
@@ -109,6 +110,7 @@ export default function PatientAppointments() {
       try {
         setSlotsLoading(true);
         setRequestError("");
+        setRequestInfo("");
 
         const dayStart = new Date(`${form.date}T00:00:00`);
         const dayEnd = new Date(dayStart);
@@ -171,11 +173,31 @@ export default function PatientAppointments() {
     () => appointments.filter((appointment) => appointment.status === "denied").length,
     [appointments]
   );
+  const selectedDoctor = requestableDoctors.find((doctor) => doctor.id === form.doctorId) || null;
+  const selectedSlotParts = form.timeSlot ? formatDateTimeParts(form.timeSlot) : null;
+
+  async function handlePatientDecision(appointmentId, status) {
+    try {
+      setError("");
+      setRequestError("");
+      await updateAppointmentStatus(appointmentId, status);
+      await loadAppointmentsPage();
+      setRequestInfo(
+        status === "scheduled"
+          ? "Appointment request accepted."
+          : status === "denied"
+            ? "Appointment request declined."
+            : "Appointment updated."
+      );
+    } catch (err) {
+      setError(err.message || "Failed to update appointment.");
+    }
+  }
 
   async function handleRequestAppointment(event) {
     event.preventDefault();
     setRequestError("");
-    setRequestSuccess("");
+    setRequestInfo("");
 
     if (!form.doctorId || !form.date || !form.timeSlot) {
       setRequestError("Select doctor, date, and an available time slot.");
@@ -204,6 +226,34 @@ export default function PatientAppointments() {
 
     try {
       setRequestLoading(true);
+      setRequestInfo("Re-checking slot availability before sending your request...");
+
+      const dayStart = new Date(`${form.date}T00:00:00`);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayEnd.getDate() + 1);
+      const refreshedAvailability = await getPatientDoctorAvailability({
+        doctorId: form.doctorId,
+        from: dayStart.toISOString(),
+        to: dayEnd.toISOString(),
+        slotMinutes: durationMinutes,
+      });
+
+      const refreshedSlots = refreshedAvailability.slots || [];
+      const stillAvailable = refreshedSlots.some((slot) => {
+        return (
+          new Date(slot.startsAt).getTime() === startsAt.getTime() &&
+          new Date(slot.endsAt).getTime() === endsAt.getTime()
+        );
+      });
+
+      if (!stillAvailable) {
+        setAvailableSlots(refreshedSlots.filter((slot) => new Date(slot.startsAt).getTime() > Date.now()));
+        setForm((current) => ({ ...current, timeSlot: "" }));
+        setRequestInfo("");
+        setRequestError("That slot was taken or changed during confirmation. Please choose another available time.");
+        return;
+      }
+
       await createAppointmentRequest({
         doctorId: form.doctorId,
         startsAt: startsAt.toISOString(),
@@ -214,11 +264,17 @@ export default function PatientAppointments() {
 
       setForm((current) => ({
         ...current,
+        doctorId: "",
+        date: "",
         timeSlot: "",
+        duration: "30",
+        location: "",
+        notes: "",
       }));
+      setRequestInfo("Appointment request submitted after a final slot re-check.");
       await loadAppointmentsPage();
-      setRequestSuccess("Appointment request sent successfully. You will see doctor response in status updates.");
     } catch (err) {
+      setRequestInfo("");
       setRequestError(err.message || "Failed to submit appointment request.");
     } finally {
       setRequestLoading(false);
@@ -268,6 +324,22 @@ export default function PatientAppointments() {
             >
               Open updates & communication
             </button>
+          </div>
+
+          <div className="mb-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
+            <p className="font-semibold">Why only linked doctors appear here</p>
+            <p className="mt-1">
+              Appointment requests are limited to doctors already linked to your patient account. That restriction keeps scheduling, treatment context, and secure communication tied to an active doctor-patient relationship.
+            </p>
+            {requestableDoctors.length === 0 ? (
+              <p className="mt-2">
+                No linked doctors are available yet. Open your care team page first, connect a doctor, then return here to request a visit.
+              </p>
+            ) : (
+              <p className="mt-2">
+                You currently have {requestableDoctors.length} linked doctor{requestableDoctors.length === 1 ? "" : "s"} available for requests.
+              </p>
+            )}
           </div>
 
           <form onSubmit={handleRequestAppointment} className="grid grid-cols-1 md:grid-cols-6 gap-3">
@@ -334,6 +406,10 @@ export default function PatientAppointments() {
               ))}
             </select>
 
+            <div className="md:col-span-6 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              Available slots come from the doctor&apos;s configured schedule, then the system removes break periods, blocked times, and bookings that already occupy the same window.
+            </div>
+
             <input
               type="text"
               placeholder="Location"
@@ -359,10 +435,28 @@ export default function PatientAppointments() {
             />
           </form>
 
+          {selectedDoctor && selectedSlotParts ? (
+            <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+              <p className="font-semibold">Confirmation preview</p>
+              <p className="mt-1">
+                You are requesting {selectedDoctor.displayName} on {selectedSlotParts.date} at {selectedSlotParts.time} for {form.duration} minutes.
+              </p>
+              <p className="mt-2">
+                When you submit, the system re-checks the slot one more time before creating the request.
+              </p>
+            </div>
+          ) : null}
+
           {requestableDoctors.length === 0 && (
             <p className="mt-3 text-sm text-amber-700">
-              No assigned doctors found for this patient account. Link a doctor from Care Team first, then request an appointment here.
+              No linked doctors found for this patient account. Use care team management first.
             </p>
+          )}
+
+          {requestableDoctors.length > 0 && (
+            <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              Appointment slots are shared live. If another booking or request reaches the same slot first, that option can disappear before you confirm your request.
+            </div>
           )}
 
           {requestError && (
@@ -370,10 +464,9 @@ export default function PatientAppointments() {
               {requestError}
             </div>
           )}
-
-          {requestSuccess && (
+          {requestInfo && !requestError && (
             <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-              {requestSuccess}
+              {requestInfo}
             </div>
           )}
         </section>
@@ -406,12 +499,13 @@ export default function PatientAppointments() {
                   <th className="py-3 px-4">Location</th>
                   <th className="py-3 px-4">Notes</th>
                   <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="py-6 px-4 text-center text-slate-500">
+                    <td colSpan={7} className="py-6 px-4 text-center text-slate-500">
                       Loading appointments...
                     </td>
                   </tr>
@@ -433,12 +527,34 @@ export default function PatientAppointments() {
                             {statusLabel(appointment.status)}
                           </span>
                         </td>
+                        <td className="py-3 px-4">
+                          {appointment.status === "requested" && appointment.requestSource === "doctor" ? (
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handlePatientDecision(appointment.id, "scheduled")}
+                                className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600"
+                              >
+                                Accept
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handlePatientDecision(appointment.id, "denied")}
+                                className="rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-600"
+                              >
+                                Decline
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })
                 ) : (
                   <tr>
-                    <td colSpan={6} className="py-6 px-4 text-center text-slate-500">
+                    <td colSpan={7} className="py-6 px-4 text-center text-slate-500">
                       No appointments found. Send your first request above after selecting a linked doctor.
                     </td>
                   </tr>
