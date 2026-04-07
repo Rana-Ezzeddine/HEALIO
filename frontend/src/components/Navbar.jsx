@@ -74,12 +74,8 @@ export default function Navbar({ onLogin, onSignup }) {
   const userRole = user?.role?.toLowerCase() || null;
   const isReviewer = isReviewerUser(user);
   const isDoctor = userRole === "doctor";
-<<<<<<< HEAD
   const isPatient = userRole === "patient";
   const isAdmin = userRole === "admin";
-=======
-  const isPatient = userRole === "patient" && !isReviewer;
->>>>>>> origin/main
   const doctorApprovalHeld = needsDoctorApprovalHold(user);
   const dashboardPathByRole = {
     doctor: "/dashboardDoctor",
