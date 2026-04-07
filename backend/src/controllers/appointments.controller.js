@@ -213,6 +213,7 @@ function buildDisplayName(email, firstName, lastName) {
 
 export async function getDoctorSchedule(req, res) {
   try {
+    await ensureAppointmentRequestSourceColumnReady();
     const doctorId = req.user.id;
     const { from, to } = parseRange(req);
     const includeCancelled = String(req.query.includeCancelled || "false").toLowerCase() === "true";
