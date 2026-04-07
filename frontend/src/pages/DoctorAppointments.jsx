@@ -492,7 +492,7 @@ export default function DoctorAppointments() {
 
   const requestedAppointments = useMemo(() => {
     return appointments
-      .filter((appointment) => appointment.status === "requested")
+      .filter((appointment) => appointment.status === "requested" && appointment.requestSource !== "doctor")
       .sort((left, right) => new Date(left.startsAt) - new Date(right.startsAt));
   }, [appointments]);
 
@@ -622,9 +622,9 @@ export default function DoctorAppointments() {
       await loadPageData();
       setSelectedDateKey(toDateKey(startsAt));
       setVisibleMonth(new Date(startsAt.getFullYear(), startsAt.getMonth(), 1));
-      setSuccessMessage("Appointment scheduled successfully.");
+      setSuccessMessage("Appointment request sent to the patient.");
     } catch (err) {
-      setCreateError(err.message || "Failed to create appointment.");
+      setCreateError(err.message || "Failed to send appointment request.");
     } finally {
       setCreateLoading(false);
     }
@@ -1095,7 +1095,7 @@ export default function DoctorAppointments() {
               })
             ) : (
               <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
-                No pending requests. Check back later or use the scheduling form below to create an appointment for an assigned patient.
+                No pending requests. Check back later or use the request form below to propose an appointment to an assigned patient.
               </div>
             )}
           </div>
@@ -1104,9 +1104,9 @@ export default function DoctorAppointments() {
         <section id="schedule-patient" className="mb-6 rounded-3xl bg-gradient-to-br from-white to-cyan-50 p-6 shadow">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h2 className="text-xl font-semibold text-slate-800 mb-1">Schedule For Assigned Patient</h2>
+              <h2 className="text-xl font-semibold text-slate-800 mb-1">Request For Assigned Patient</h2>
               <p className="text-sm text-slate-500 mb-4">
-                Create a scheduled appointment directly for an assigned patient using your live availability.
+                Send an appointment request to an assigned patient using your live availability.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -1200,7 +1200,7 @@ export default function DoctorAppointments() {
               disabled={createLoading || assignedPatients.length === 0}
               className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 transition disabled:opacity-70"
             >
-              {createLoading ? "Scheduling..." : "Schedule"}
+              {createLoading ? "Sending..." : "Send Request"}
             </button>
 
             <textarea

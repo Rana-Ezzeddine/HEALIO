@@ -50,6 +50,10 @@ const Appointment = sequelize.define('Appointment', {
     allowNull: false,
     defaultValue: 'scheduled'
   },
+  requestSource: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
   notes: {
     type: DataTypes.TEXT,
     allowNull: true

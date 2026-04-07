@@ -5,7 +5,7 @@ import { apiUrl, authHeaders, getUser } from "../api/http";
 import { getMyAppointments } from "../api/appointments";
 import { getConversationMessages, getConversations } from "../api/messaging";
 import { getDoctorLinkRequests, getMyCaregivers, getMyDoctors } from "../api/links";
-import { buildPatientSetupChecklist } from "../utils/patientSetup";
+import { buildPatientSetupChecklist, getProfileCompletion } from "../utils/patientSetup";
 import {
   clearQueuedPatientOnboarding,
   clearDismissedPatientOnboarding,
@@ -27,6 +27,64 @@ function formatAppointmentTime(dateLike) {
 
 function doctorName(appointment) {
   return appointment.doctor?.displayName || appointment.doctor?.email || "Doctor";
+}
+
+function getValidDate(value) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatRecentUpdateTime(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+
+  const minutesAgo = Math.round((Date.now() - date.getTime()) / (1000 * 60));
+  if (minutesAgo < 1) return "Just now";
+  if (minutesAgo < 60) return `${minutesAgo} min ago`;
+  if (minutesAgo < 24 * 60) return `${Math.round(minutesAgo / 60)} hr ago`;
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function recentUpdateStyle(title) {
+  const normalized = String(title || "").toLowerCase();
+
+  if (normalized.includes("emergency")) {
+    return {
+      dot: "bg-rose-500",
+      pill: "bg-rose-100 text-rose-700",
+      label: "Emergency",
+    };
+  }
+
+  if (normalized.includes("appointment")) {
+    return {
+      dot: "bg-emerald-500",
+      pill: "bg-emerald-100 text-emerald-700",
+      label: "Appointment",
+    };
+  }
+
+  if (normalized.includes("symptom")) {
+    return {
+      dot: "bg-amber-500",
+      pill: "bg-amber-100 text-amber-700",
+      label: "Symptom",
+    };
+  }
+
+  if (normalized.includes("medication")) {
+    return {
+      dot: "bg-indigo-500",
+      pill: "bg-indigo-100 text-indigo-700",
+      label: "Medication",
+    };
+  }
+
+  return {
+    dot: "bg-sky-500",
+    pill: "bg-sky-100 text-sky-700",
+    label: "Profile",
+  };
 }
 
 function DashboardCard({ title, mainText, subText, navPage }) {
@@ -115,7 +173,6 @@ export default function DashboardPatient() {
   const [caregiverCount, setCaregiverCount] = useState(0);
   const [pendingDoctorRequestCount, setPendingDoctorRequestCount] = useState(0);
   const [isNewPatientGreeting, setIsNewPatientGreeting] = useState(false);
-  const [activityLogs, setActivityLogs] = useState([]);
   const [reloadKey, setReloadKey] = useState(0);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
@@ -184,9 +241,6 @@ export default function DashboardPatient() {
         getMyDoctors(),
         getMyCaregivers(),
         getDoctorLinkRequests(),
-        fetch(`${apiUrl}/api/audit/logs?limit=5`, {
-          headers: { "Content-Type": "application/json", ...authHeaders() },
-        }).then((res) => (res.ok ? res.json() : { rows: [] })),
       ]);
 
       if (cancelled) return;
@@ -200,7 +254,6 @@ export default function DashboardPatient() {
         doctorsResult,
         caregiversResult,
         doctorRequestsResult,
-        activityResult,
       ] = results;
 
       setAppointments(
@@ -234,9 +287,6 @@ export default function DashboardPatient() {
       );
       setPendingDoctorRequestCount(
         doctorRequestsResult.status === "fulfilled" ? (doctorRequestsResult.value.requests || []).length : 0
-      );
-      setActivityLogs(
-        activityResult.status === "fulfilled" ? activityResult.value.rows || [] : []
       );
     }
 
@@ -276,8 +326,7 @@ export default function DashboardPatient() {
 
   const requestedAppointments = appointments.filter((item) => item.status === "requested").length;
   const setupIncomplete = checklist.doneCount < checklist.totalCount;
-  const profileCompletion = checklist.profileStatus;
-  const profileMissingPreview = profileCompletion.missing.slice(0, 3);
+  const profileCompletion = useMemo(() => getProfileCompletion(profile), [profile]);
   const setupProgressPercent = Math.round((checklist.doneCount / checklist.totalCount) * 100);
   const appointmentPreview = upcomingAppointments.slice(0, 2);
   const remainingAppointmentCount = Math.max(upcomingAppointments.length - appointmentPreview.length, 0);
@@ -326,9 +375,9 @@ export default function DashboardPatient() {
     checklist.profileStatus.missing.length > 0
       ? {
           key: "profile",
-          title: "Profile still missing details",
-          body: `${checklist.profileStatus.missing.length} item${checklist.profileStatus.missing.length === 1 ? "" : "s"} should be filled for stronger reminders and emergency access.`,
-          action: "Complete profile",
+          title: "Profile details still missing",
+          body: `${profileCompletion.missing.length} profile item${profileCompletion.missing.length === 1 ? "" : "s"} still need to be filled.`,
+          action: "Open profile",
           href: "/profilePatient",
           tone: "border-sky-200 bg-sky-50 text-sky-800",
         }
@@ -355,13 +404,15 @@ export default function DashboardPatient() {
       : null,
   ].filter(Boolean);
   const healthSummary = useMemo(() => {
-    const latestSymptom = symptoms[0] || null;
-    const latestMedication = medications[0] || null;
+    const latestSymptom = [...symptoms]
+      .sort((left, right) => new Date(right.loggedAt || right.createdAt || 0) - new Date(left.loggedAt || left.createdAt || 0))[0] || null;
+    const latestMedication = [...medications]
+      .sort((left, right) => new Date(right.updatedAt || right.createdAt || 0) - new Date(left.updatedAt || left.createdAt || 0))[0] || null;
     const recentAppointment = upcomingAppointments[0] || null;
-    const profileMissing = checklist.profileStatus.missing.map((item) => item.label);
 
     return {
-      profileCompletion: checklist.profileStatus.percent,
+      profileCompletion: profileCompletion.percent,
+      profileMissing: profileCompletion.missing.map((item) => item.label),
       linkedPeople: doctorCount + caregiverCount,
       activeMedicationCount: activeMedications.length,
       totalMedicationCount: medications.length,
@@ -372,21 +423,71 @@ export default function DashboardPatient() {
       recentAppointment,
       conversationCount,
       latestMedication,
-      profileMissing,
     };
   }, [
     activeMedications.length,
     appointments.length,
     caregiverCount,
-    checklist.profileStatus.missing,
-    checklist.profileStatus.percent,
     conversationCount,
     doctorCount,
     medications,
+    profileCompletion.percent,
     requestedAppointments,
     symptoms,
     upcomingAppointments,
   ]);
+  const recentUpdates = useMemo(() => {
+    const updates = [];
+    const profileUpdatedAt = getValidDate(profile?.updatedAt);
+    const emergencyUpdatedAt = getValidDate(profile?.emergencyStatusUpdatedAt);
+    const latestMedicationAt = getValidDate(healthSummary.latestMedication?.updatedAt || healthSummary.latestMedication?.createdAt);
+    const latestSymptomAt = getValidDate(healthSummary.latestSymptom?.loggedAt || healthSummary.latestSymptom?.createdAt);
+    const nextAppointmentAt = getValidDate(healthSummary.recentAppointment?.updatedAt || healthSummary.recentAppointment?.createdAt || healthSummary.recentAppointment?.startsAt);
+
+    if (profileUpdatedAt) {
+      updates.push({
+        key: `profile-${profileUpdatedAt.toISOString()}`,
+        title: "Profile updated",
+        time: profileUpdatedAt,
+      });
+    }
+
+    if (emergencyUpdatedAt) {
+      updates.push({
+        key: `emergency-${emergencyUpdatedAt.toISOString()}`,
+        title: profile?.emergencyStatus ? "Emergency status activated" : "Emergency status cleared",
+        time: emergencyUpdatedAt,
+      });
+    }
+
+    if (latestMedicationAt && healthSummary.latestMedication?.name) {
+      updates.push({
+        key: `medication-${healthSummary.latestMedication.id || latestMedicationAt.toISOString()}`,
+        title: `Medication tracked: ${healthSummary.latestMedication.name}`,
+        time: latestMedicationAt,
+      });
+    }
+
+    if (latestSymptomAt) {
+      updates.push({
+        key: `symptom-${healthSummary.latestSymptom?.id || latestSymptomAt.toISOString()}`,
+        title: `Symptom logged: ${healthSummary.latestSymptom?.name || healthSummary.latestSymptom?.symptom || "Symptom entry"}`,
+        time: latestSymptomAt,
+      });
+    }
+
+    if (nextAppointmentAt && healthSummary.recentAppointment) {
+      updates.push({
+        key: `appointment-${healthSummary.recentAppointment.id || nextAppointmentAt.toISOString()}`,
+        title: healthSummary.recentAppointment.status === "requested" ? "Appointment request submitted" : "Appointment scheduled",
+        time: nextAppointmentAt,
+      });
+    }
+
+    return updates
+      .sort((left, right) => right.time - left.time)
+      .slice(0, 4);
+  }, [healthSummary, profile?.emergencyStatus, profile?.updatedAt, profile?.emergencyStatusUpdatedAt]);
   const shouldAutoOpenOnboarding =
     setupIncomplete && isPatientOnboardingQueued(user) && !isPatientOnboardingDismissed(user);
   const showOnboardingModal = setupIncomplete && (isOnboardingOpen || shouldAutoOpenOnboarding);
@@ -469,78 +570,46 @@ export default function DashboardPatient() {
     popup.print();
   }
 
-  function formatActivityAction(action) {
-    return String(action || "activity")
-      .replace(/\./g, " ")
-      .replace(/\b\w/g, (char) => char.toUpperCase());
-  }
-
   const quickActions = [
     {
-      key: "setup",
-      label: setupIncomplete ? "Resume setup" : "Review setup",
-      description: setupIncomplete
-        ? `Continue with step ${nextSetupStepNumber}: ${nextSetupTask?.label || "profile setup"}.`
-        : "All onboarding essentials are completed.",
-      badge: `${checklist.doneCount}/${checklist.totalCount} done`,
-      style: "bg-sky-100 text-sky-700",
-      onClick: () => (setupIncomplete ? setIsOnboardingOpen(true) : navigate("/profilePatient")),
-    },
-    {
       key: "profile",
-      label: "Update profile",
-      description: `${checklist.profileStatus.percent}% complete across identity, health, and emergency details.`,
+      label: "Profile",
+      description: "View or update",
       badge: `${checklist.profileStatus.percent}%`,
       style: "bg-cyan-100 text-cyan-700",
       onClick: () => navigate("/profilePatient"),
     },
     {
-      key: "care-team",
-      label: "Manage care team",
-      description: "Keep your linked doctors and caregivers aligned with your treatment journey.",
-      badge: `${doctorCount + caregiverCount} linked`,
-      style: "bg-teal-100 text-teal-700",
-      onClick: () => navigate("/care-team"),
-    },
-    {
       key: "medications",
-      label: "Manage medications",
-      description: activeMedications.length > 0 ? "Review active treatment and upcoming doses." : "Add your first medication and reminder schedule.",
+      label: "Medication",
+      description: "Track treatment",
       badge: `${activeMedications.length} active`,
       style: "bg-indigo-100 text-indigo-700",
       onClick: () => navigate("/medication"),
     },
     {
       key: "symptoms",
-      label: "Track symptoms",
-      description: symptoms.length > 0 ? "Log updates and review how your symptoms are trending." : "Start your symptom history with the first entry.",
+      label: "Symptoms",
+      description: "Log and review",
       badge: `${symptoms.length} logged`,
       style: "bg-amber-100 text-amber-700",
       onClick: () => navigate("/symptoms"),
     },
     {
       key: "appointments",
-      label: "Handle appointments",
-      description: requestedAppointments > 0 ? "Follow pending requests and upcoming visits in one place." : "Request or review visits with your linked doctors.",
+      label: "Appointments",
+      description: "Requests and visits",
       badge: `${upcomingAppointments.length} open`,
       style: "bg-emerald-100 text-emerald-700",
       onClick: () => navigate("/patientAppointments"),
     },
     {
       key: "messages",
-      label: "Open messages",
-      description: unreadMessageCount > 0 ? "Review new caregiver communication and care coordination updates." : "Open secure caregiver communication.",
+      label: "Messages",
+      description: "Open chat",
       badge: `${unreadMessageCount} unread`,
       style: "bg-fuchsia-100 text-fuchsia-700",
       onClick: () => navigate("/patientMessages"),
-    },
-    {
-      key: "emergency",
-      label: "Emergency status",
-      description: "Trigger urgent visibility for your care team when something cannot wait.",
-      badge: "Urgent access",
-      style: "bg-rose-100 text-rose-700",
-      onClick: () => navigate("/emergency"),
     },
   ];
 
@@ -788,63 +857,33 @@ export default function DashboardPatient() {
           </div>
 
           <div className="space-y-6">
-            <section className="rounded-3xl border border-sky-100 bg-white p-6 shadow-sm">
+            <section className="rounded-3xl border border-sky-100 bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-xl font-semibold text-slate-900">Profile completion guidance</h2>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Your profile is {profileCompletion.percent}% complete. Fill missing details to improve appointment readiness and emergency access.
-                  </p>
+                  <h2 className="text-lg font-semibold text-slate-900">Profile status</h2>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => navigate("/profilePatient")}
-                  className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                >
-                  Complete profile
-                </button>
-              </div>
-
-              <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-100">
-                <div className="h-full rounded-full bg-gradient-to-r from-sky-500 to-cyan-400" style={{ width: `${profileCompletion.percent}%` }} />
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                {profileCompletion.missing.length > 0 ? (
-                  profileMissingPreview.map((item) => (
-                    <span key={item.key} className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
-                      Missing: {item.label}
-                    </span>
-                  ))
-                ) : (
-                  <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-                    Profile is complete
-                  </span>
-                )}
-                {profileCompletion.missing.length > profileMissingPreview.length ? (
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                    +{profileCompletion.missing.length - profileMissingPreview.length} more missing
-                  </span>
+                {!profileCompletion.complete ? (
+                  <button
+                    type="button"
+                    onClick={() => navigate("/profilePatient")}
+                    className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Open profile
+                  </button>
                 ) : null}
               </div>
 
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Symptoms logged</p>
-                  <p className="mt-1 text-lg font-bold text-slate-900">{symptoms.length}</p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Appointment requests</p>
-                  <p className="mt-1 text-lg font-bold text-slate-900">{requestedAppointments}</p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Doctor-link pending</p>
-                  <p className="mt-1 text-lg font-bold text-slate-900">{pendingDoctorRequestCount}</p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Unread messages</p>
-                  <p className="mt-1 text-lg font-bold text-slate-900">{unreadMessageCount}</p>
-                </div>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-full rounded-full bg-gradient-to-r from-sky-500 to-cyan-400" style={{ width: `${profileCompletion.percent}%` }} />
+              </div>
+
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                  profileCompletion.complete ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                }`}>
+                  {profileCompletion.complete ? "Profile complete" : `${profileCompletion.missing.length} missing`}
+                </span>
+                <p className="text-sm font-semibold text-slate-700">{profileCompletion.percent}% complete</p>
               </div>
             </section>
 
@@ -950,30 +989,24 @@ export default function DashboardPatient() {
               </div>
             </section>
 
-            <section className="rounded-3xl bg-white p-6 shadow-sm">
+            <section className="rounded-3xl bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-xl font-semibold text-slate-900">Quick actions</h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Move through setup, daily management, communication, and urgent support from one panel.
-                  </p>
+                  <h2 className="text-lg font-semibold text-slate-900">Quick actions</h2>
                 </div>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                  {quickActions.length} actions
-                </span>
               </div>
-              <div className="mt-4 grid gap-3">
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 {quickActions.map((action) => (
                   <button
                     key={action.key}
                     type="button"
                     onClick={action.onClick}
-                    className="rounded-2xl border border-slate-200 px-4 py-4 text-left transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-sm"
+                    className="rounded-2xl border border-slate-200 px-4 py-3 text-left transition hover:border-slate-300 hover:shadow-sm"
                   >
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-sm font-semibold text-slate-900">{action.label}</p>
-                        <p className="mt-1 text-sm text-slate-600">{action.description}</p>
+                        <p className="mt-0.5 text-xs text-slate-500">{action.description}</p>
                       </div>
                       <span className={`rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap ${action.style}`}>
                         {action.badge}
@@ -983,13 +1016,10 @@ export default function DashboardPatient() {
                 ))}
               </div>
             </section>
-            <section className="rounded-3xl bg-white p-6 shadow-sm">
+            <section className="rounded-3xl bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-xl font-semibold text-slate-900">Health summary</h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    A single snapshot across profile completion, treatment, symptoms, appointments, and communication.
-                  </p>
+                  <h2 className="text-lg font-semibold text-slate-900">Health summary</h2>
                 </div>
                 <button
                   type="button"
@@ -1004,19 +1034,11 @@ export default function DashboardPatient() {
                 <div className="rounded-2xl bg-slate-50 p-4">
                   <p className="text-xs uppercase tracking-wide text-slate-500">Profile</p>
                   <p className="mt-1 text-lg font-semibold text-slate-900">{healthSummary.profileCompletion}% complete</p>
-                  <p className="mt-2 text-sm text-slate-600">
-                    {healthSummary.profileMissing.length > 0
-                      ? `Still missing: ${healthSummary.profileMissing.join(", ")}.`
-                      : "Core profile details are in place."}
-                  </p>
                 </div>
                 <div className="rounded-2xl bg-slate-50 p-4">
                   <p className="text-xs uppercase tracking-wide text-slate-500">Care team and communication</p>
                   <p className="mt-1 text-lg font-semibold text-slate-900">
                     {healthSummary.linkedPeople} linked, {healthSummary.conversationCount} chats
-                  </p>
-                  <p className="mt-2 text-sm text-slate-600">
-                    {doctorCount} doctor{doctorCount === 1 ? "" : "s"} and {caregiverCount} caregiver{caregiverCount === 1 ? "" : "s"} currently tied to your care flow.
                   </p>
                 </div>
                 <div className="rounded-2xl bg-slate-50 p-4">
@@ -1024,62 +1046,55 @@ export default function DashboardPatient() {
                   <p className="mt-1 text-lg font-semibold text-slate-900">
                     {healthSummary.activeMedicationCount} active meds, {healthSummary.symptomCount} symptom logs
                   </p>
-                  <p className="mt-2 text-sm text-slate-600">
-                    {healthSummary.latestMedication
-                      ? `Latest medication tracked: ${healthSummary.latestMedication.name}.`
-                      : "No medications tracked yet."}{" "}
-                    {healthSummary.latestSymptom
-                      ? `Latest symptom: ${healthSummary.latestSymptom.name || healthSummary.latestSymptom.symptom || "Logged symptom"}.`
-                      : "No symptoms logged yet."}
-                  </p>
                 </div>
                 <div className="rounded-2xl bg-slate-50 p-4">
                   <p className="text-xs uppercase tracking-wide text-slate-500">Appointments and updates</p>
                   <p className="mt-1 text-lg font-semibold text-slate-900">
                     {healthSummary.appointmentCount} total, {healthSummary.requestedAppointments} pending
                   </p>
-                  <p className="mt-2 text-sm text-slate-600">
-                    {healthSummary.recentAppointment
-                      ? `Next appointment window: ${formatAppointmentDate(healthSummary.recentAppointment.startsAt)} at ${formatAppointmentTime(healthSummary.recentAppointment.startsAt)}.`
-                      : "No appointment requests or bookings recorded yet."}
-                  </p>
                 </div>
               </div>
             </section>
 
-            <section className="rounded-3xl bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-semibold text-slate-900">Journey summary</h2>
-              <div className="mt-4 space-y-3 text-sm text-slate-600">
-                <p>Symptoms logged: <span className="font-semibold text-slate-900">{symptoms.length}</span></p>
-                <p>Appointment requests pending: <span className="font-semibold text-slate-900">{requestedAppointments}</span></p>
-                <p>Profile completion: <span className="font-semibold text-slate-900">{checklist.profileStatus.percent}%</span></p>
-                <p>Missing profile items: <span className="font-semibold text-slate-900">{checklist.profileStatus.missing.length}</span></p>
-              </div>
-            </section>
-
-            <section className="rounded-3xl bg-white p-6 shadow-sm">
+            <section className="rounded-3xl bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-xl font-semibold text-slate-900">Recent activity</h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    A patient-facing history of recent updates across your account and care workflows.
-                  </p>
+                  <h2 className="text-lg font-semibold text-slate-900">Recent updates</h2>
+                  <p className="mt-1 text-sm text-slate-500">A quick timeline of your latest care activity.</p>
                 </div>
               </div>
 
               <div className="mt-4 space-y-3">
-                {activityLogs.length > 0 ? (
-                  activityLogs.map((log) => (
-                    <div key={log.id} className="rounded-2xl border border-slate-200 p-4">
-                      <p className="font-semibold text-slate-900">{formatActivityAction(log.action)}</p>
-                      <p className="mt-1 text-sm text-slate-500">
-                        {new Date(log.createdAt).toLocaleString()}
-                      </p>
-                    </div>
-                  ))
+                {recentUpdates.length > 0 ? (
+                  recentUpdates.map((item) => {
+                    const style = recentUpdateStyle(item.title);
+
+                    return (
+                      <div key={item.key} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                        <div className="flex items-start gap-3">
+                          <div className="flex flex-col items-center pt-1">
+                            <span className={`h-2.5 w-2.5 rounded-full ${style.dot}`} />
+                            <span className="mt-2 h-8 w-px bg-slate-200 last:hidden" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${style.pill}`}>
+                                {style.label}
+                              </span>
+                              <span className="text-xs font-medium text-slate-500">
+                                {formatRecentUpdateTime(item.time)}
+                              </span>
+                            </div>
+                            <p className="mt-2 font-semibold text-slate-900">{item.title}</p>
+                            <p className="mt-1 text-xs text-slate-500">{item.time.toLocaleString()}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
                 ) : (
                   <p className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
-                    No recent activity history is available yet.
+                    No recent updates yet.
                   </p>
                 )}
               </div>

@@ -6,6 +6,7 @@ import {
   getPatientDoctorAvailability,
   getMyAppointments,
   getRequestableDoctors,
+  updateAppointmentStatus,
 } from "../api/appointments";
 import { readSafePrefill, writeSafePrefill } from "../utils/safePrefill";
 
@@ -174,6 +175,24 @@ export default function PatientAppointments() {
   );
   const selectedDoctor = requestableDoctors.find((doctor) => doctor.id === form.doctorId) || null;
   const selectedSlotParts = form.timeSlot ? formatDateTimeParts(form.timeSlot) : null;
+
+  async function handlePatientDecision(appointmentId, status) {
+    try {
+      setError("");
+      setRequestError("");
+      await updateAppointmentStatus(appointmentId, status);
+      await loadAppointmentsPage();
+      setRequestInfo(
+        status === "scheduled"
+          ? "Appointment request accepted."
+          : status === "denied"
+            ? "Appointment request declined."
+            : "Appointment updated."
+      );
+    } catch (err) {
+      setError(err.message || "Failed to update appointment.");
+    }
+  }
 
   async function handleRequestAppointment(event) {
     event.preventDefault();
@@ -480,12 +499,13 @@ export default function PatientAppointments() {
                   <th className="py-3 px-4">Location</th>
                   <th className="py-3 px-4">Notes</th>
                   <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="py-6 px-4 text-center text-slate-500">
+                    <td colSpan={7} className="py-6 px-4 text-center text-slate-500">
                       Loading appointments...
                     </td>
                   </tr>
@@ -507,12 +527,34 @@ export default function PatientAppointments() {
                             {statusLabel(appointment.status)}
                           </span>
                         </td>
+                        <td className="py-3 px-4">
+                          {appointment.status === "requested" && appointment.requestSource === "doctor" ? (
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handlePatientDecision(appointment.id, "scheduled")}
+                                className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600"
+                              >
+                                Accept
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handlePatientDecision(appointment.id, "denied")}
+                                className="rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-600"
+                              >
+                                Decline
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })
                 ) : (
                   <tr>
-                    <td colSpan={6} className="py-6 px-4 text-center text-slate-500">
+                    <td colSpan={7} className="py-6 px-4 text-center text-slate-500">
                       No appointments found. Send your first request above after selecting a linked doctor.
                     </td>
                   </tr>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Navbar from "../components/Navbar";
-import { Activity, CalendarDays, Check, Filter, HeartPulse, Plus, Sparkles, X } from "lucide-react";
-import { createSymptom, filterSymptoms, getSymptoms } from "../api/symptoms";
+import { Activity, CalendarDays, Check, Filter, HeartPulse, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { createSymptom, deleteSymptom, filterSymptoms, getSymptoms } from "../api/symptoms";
 
 const PRESET_SYMPTOMS = ["Headache", "Nausea", "Fever", "Fatigue", "Cough", "Dizziness"];
 
@@ -70,7 +70,7 @@ export default function Symptoms() {
   const [currentDate, setCurrentDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [filters, setFilters] = useState({
     symptomName: "",
-    severity: "",
+    severityBands: [],
     startDate: "",
     endDate: "",
     sortOrder: "DESC",
@@ -90,12 +90,11 @@ export default function Symptoms() {
     setLoading(true);
     try {
       const hasAdvancedFilters = Boolean(
-        nextFilters.symptomName || nextFilters.severity || nextFilters.startDate || nextFilters.endDate
+        nextFilters.symptomName || nextFilters.startDate || nextFilters.endDate
       );
       const data = hasAdvancedFilters
         ? await filterSymptoms({
             symptomName: nextFilters.symptomName,
-            severity: nextFilters.severity,
             startDate: nextFilters.startDate,
             endDate: nextFilters.endDate,
             sortBy: "loggedAt",
@@ -106,16 +105,34 @@ export default function Symptoms() {
         : await getSymptoms();
 
       const source = Array.isArray(data) ? data : data.symptoms || [];
-      setLogs(
-        source.map((item) => ({
+      let nextLogs = source.map((item) => ({
           id: item.id,
           date: item.loggedAt,
           symptom: item.name,
           severity: item.severity,
           notes: item.notes,
           loggedBy: item.loggedBy,
-        }))
+        }));
+
+      if (Array.isArray(nextFilters.severityBands) && nextFilters.severityBands.length > 0) {
+        nextLogs = nextLogs.filter((item) => {
+          const severity = item.severity ?? 0;
+          return nextFilters.severityBands.some((band) => {
+            if (band === "mild") return severity <= 3;
+            if (band === "moderate") return severity >= 4 && severity <= 6;
+            if (band === "high") return severity >= 7;
+            return false;
+          });
+        });
+      }
+
+      nextLogs.sort((left, right) =>
+        nextFilters.sortOrder === "ASC"
+          ? new Date(left.date) - new Date(right.date)
+          : new Date(right.date) - new Date(left.date)
       );
+
+      setLogs(nextLogs);
       setError("");
     } catch (loadError) {
       setError(loadError.message || "Failed to load symptoms.");
@@ -199,10 +216,6 @@ export default function Symptoms() {
     return "Average severity is steady across the latest tracked days.";
   }, [trendItems]);
 
-  async function applyFilters() {
-    await loadSymptoms(filters);
-  }
-
   async function handleSave() {
     const selectedSymptom = currentSymptom === "__custom__" ? customSymptom.trim() : currentSymptom;
     if (!selectedSymptom) {
@@ -243,6 +256,26 @@ export default function Symptoms() {
     } catch (saveError) {
       alert(saveError.message || "Failed to save symptom.");
     }
+  }
+
+  async function handleDelete(logId) {
+    if (!window.confirm("Delete this symptom log?")) return;
+
+    try {
+      await deleteSymptom(logId);
+      setLogs((current) => current.filter((item) => item.id !== logId));
+    } catch (deleteError) {
+      alert(deleteError.message || "Failed to delete symptom.");
+    }
+  }
+
+  function toggleSeverityBand(band) {
+    setFilters((current) => ({
+      ...current,
+      severityBands: current.severityBands.includes(band)
+        ? current.severityBands.filter((item) => item !== band)
+        : [...current.severityBands, band],
+    }));
   }
 
   return (
@@ -306,18 +339,26 @@ export default function Symptoms() {
                 placeholder="Search symptom name"
                 className="rounded-2xl border border-slate-300 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
-              <select
-                value={filters.severity}
-                onChange={(event) => setFilters((current) => ({ ...current, severity: event.target.value }))}
-                className="rounded-2xl border border-slate-300 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-500"
-              >
-                <option value="">All severity levels</option>
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((level) => (
-                  <option key={level} value={level}>
-                    Severity {level}
-                  </option>
-                ))}
-              </select>
+              <div className="rounded-2xl border border-slate-300 px-4 py-3">
+                <p className="text-sm font-medium text-slate-700">Severity</p>
+                <div className="mt-3 flex flex-wrap gap-3">
+                  {[
+                    { key: "mild", label: "Mild" },
+                    { key: "moderate", label: "Moderate" },
+                    { key: "high", label: "High" },
+                  ].map((item) => (
+                    <label key={item.key} className="inline-flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={filters.severityBands.includes(item.key)}
+                        onChange={() => toggleSeverityBand(item.key)}
+                        className="h-4 w-4 rounded border-slate-300 text-sky-500 focus:ring-sky-500"
+                      />
+                      {item.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
               <div className="flex flex-wrap gap-2">
                 {[
                   { label: "High only", value: "7" },
@@ -331,7 +372,11 @@ export default function Symptoms() {
                     onClick={() =>
                       setFilters((current) => ({
                         ...current,
-                        ...(preset.value ? { severity: preset.value } : {}),
+                        ...(preset.value
+                          ? {
+                              severityBands: preset.value === "7" ? ["high"] : ["moderate", "high"],
+                            }
+                          : {}),
                         ...(preset.sortOrder ? { sortOrder: preset.sortOrder } : {}),
                       }))
                     }
@@ -346,14 +391,20 @@ export default function Symptoms() {
                   type="date"
                   value={filters.startDate}
                   onChange={(event) => setFilters((current) => ({ ...current, startDate: event.target.value }))}
+                  aria-label="From date"
                   className="rounded-2xl border border-slate-300 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-500"
                 />
                 <input
                   type="date"
                   value={filters.endDate}
                   onChange={(event) => setFilters((current) => ({ ...current, endDate: event.target.value }))}
+                  aria-label="To date"
                   className="rounded-2xl border border-slate-300 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-500"
                 />
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-xs font-medium text-slate-500">
+                <span>From date</span>
+                <span>To date</span>
               </div>
               <select
                 value={filters.sortOrder}
@@ -363,26 +414,16 @@ export default function Symptoms() {
                 <option value="DESC">Newest first</option>
                 <option value="ASC">Oldest first</option>
               </select>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={applyFilters}
-                  className="flex-1 rounded-2xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white hover:bg-sky-600 transition"
-                >
-                  Apply filters
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const reset = { symptomName: "", severity: "", startDate: "", endDate: "", sortOrder: "DESC" };
-                    setFilters(reset);
-                    loadSymptoms(reset);
-                  }}
-                  className="flex-1 rounded-2xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
-                >
-                  Reset
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const reset = { symptomName: "", severityBands: [], startDate: "", endDate: "", sortOrder: "DESC" };
+                  setFilters(reset);
+                }}
+                className="rounded-2xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
+              >
+                Reset filters
+              </button>
             </div>
           </section>
 
@@ -533,6 +574,16 @@ export default function Symptoms() {
                   </div>
 
                   {log.notes ? <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{log.notes}</p> : null}
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(log.id)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
+                    >
+                      <Trash2 size={14} />
+                      Delete log
+                    </button>
+                  </div>
                 </div>
               );
             })

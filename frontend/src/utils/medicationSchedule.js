@@ -90,6 +90,7 @@ function nextDateFromTime(now, timeString) {
 }
 
 export function formatDoseTime(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "Time unavailable";
   return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 

@@ -30,29 +30,15 @@ function getMedicationWarnings(medication) {
 
   if (diffDays < 0) warnings.push("Medication end date already passed.");
   else if (diffDays <= 3) warnings.push(`Ends in ${diffDays} day${diffDays === 1 ? "" : "s"}.`);
-  else if (diffDays <= 7) warnings.push(`Refill or review soon: ends in ${diffDays} days.`);
+  else if (diffDays <= 7) warnings.push(`End date coming up in ${diffDays} days.`);
 
   return warnings;
 }
 
-function getMedicationAttentionState(medication) {
-  const nextDose = getNextDoseForMedication(medication);
-  const warnings = getMedicationWarnings(medication);
-  const hasSchedule = getScheduleTimes(medication).length > 0;
-
-  return {
-    medication,
-    nextDose,
-    warnings,
-    needsReminderSetup:
-      medication.reminderEnabled !== false &&
-      (!hasSchedule || medication.reminderLeadMinutes == null),
-    reminderOff: medication.reminderEnabled === false,
-  };
-}
-
 function getLatestAdherenceStatus(medication) {
-  const entry = Array.isArray(medication.adherenceHistory) ? medication.adherenceHistory[0] : null;
+  const entry = Array.isArray(medication.adherenceHistory)
+    ? medication.adherenceHistory.find((item) => item && typeof item === "object")
+    : null;
   return entry?.status || null;
 }
 
@@ -72,34 +58,78 @@ function getAdherenceTone(status) {
   return "bg-slate-100 text-slate-700";
 }
 
-function summarizeAdherence(medications) {
-  const counts = { taken: 0, missed: 0, skipped: 0, delayed: 0 };
-  for (const medication of medications) {
-    const history = Array.isArray(medication.adherenceHistory) ? medication.adherenceHistory : [];
-    for (const entry of history) {
-      if (counts[entry.status] != null) {
-        counts[entry.status] += 1;
-      }
-    }
-  }
-  return counts;
-}
-
-function getRecentAdherenceEntries(medications) {
-  return medications
-    .flatMap((medication) =>
-      (Array.isArray(medication.adherenceHistory) ? medication.adherenceHistory : []).map((entry, index) => ({
-        key: `${medication.id}-${entry.recordedAt || index}-${entry.status}`,
-        medicationName: medication.name,
-        ...entry,
-      }))
-    )
-    .sort((left, right) => new Date(right.recordedAt || right.scheduledFor) - new Date(left.recordedAt || left.scheduledFor))
-    .slice(0, 8);
-}
-
 function getNextDoseForMedication(medication) {
   return getNextMedicationDose([medication]);
+}
+
+function getDoseKey(dateLike) {
+  const parsed = new Date(dateLike);
+  if (Number.isNaN(parsed.getTime())) return "";
+  parsed.setSeconds(0, 0);
+  return parsed.toISOString();
+}
+
+function hasLoggedDose(medication, doseAt) {
+  const doseKey = getDoseKey(doseAt);
+  return (Array.isArray(medication.adherenceHistory) ? medication.adherenceHistory : [])
+    .filter((entry) => entry && typeof entry === "object")
+    .some((entry) => getDoseKey(entry.scheduledFor) === doseKey);
+}
+
+function buildDoseCandidate(baseDate, timeString) {
+  const [hourString, minuteString] = String(timeString || "").split(":");
+  const hour = Number(hourString);
+  const minute = Number(minuteString);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) return null;
+
+  const candidate = new Date(baseDate);
+  candidate.setHours(hour, minute, 0, 0);
+  return candidate;
+}
+
+function formatRecordedDateTime(value) {
+  const parsed = value ? new Date(value) : null;
+  if (!parsed || Number.isNaN(parsed.getTime())) return "Time unavailable";
+  return parsed.toLocaleString();
+}
+
+function getActionableDose(medication, now = new Date()) {
+  if (!isActiveMedication(medication, now)) return null;
+
+  const scheduleTimes = getScheduleTimes(medication);
+  const leadMinutes = medication.reminderLeadMinutes ?? 30;
+  const candidates = [];
+
+  for (let dayOffset = 0; dayOffset <= 1; dayOffset += 1) {
+    const baseDate = new Date(now);
+    baseDate.setDate(baseDate.getDate() + dayOffset);
+
+    for (const time of scheduleTimes) {
+      const candidate = buildDoseCandidate(baseDate, time);
+      if (!candidate) continue;
+
+      const windowStart = candidate.getTime() - leadMinutes * 60 * 1000;
+      const windowEnd = candidate.getTime() + 2 * 60 * 60 * 1000;
+      if (now.getTime() < windowStart || now.getTime() > windowEnd) continue;
+      if (hasLoggedDose(medication, candidate)) continue;
+
+      candidates.push(candidate);
+    }
+  }
+
+  candidates.sort((left, right) => left - right);
+  return candidates[0] || null;
+}
+
+function getMedicationHistoryEntries(medication) {
+  return (Array.isArray(medication.adherenceHistory) ? medication.adherenceHistory : [])
+    .filter((entry) => entry && typeof entry === "object")
+    .map((entry, index) => ({
+      key: `${medication.id}-${entry.recordedAt || entry.scheduledFor || index}-${entry.status}`,
+      ...entry,
+    }))
+    .sort((left, right) => new Date(right.recordedAt || right.scheduledFor) - new Date(left.recordedAt || left.scheduledFor))
+    .slice(0, 10);
 }
 
 export default function MedicationManager() {
@@ -114,6 +144,7 @@ export default function MedicationManager() {
   const [sortOrder, setSortOrder] = useState("DESC");
   const [filterOptions, setFilterOptions] = useState({ doctors: [], frequencies: [] });
   const [error, setError] = useState("");
+  const [expandedHistoryMedicationId, setExpandedHistoryMedicationId] = useState("");
   const [formData, setFormData] = useState({
     name: "",
     dosage: "",
@@ -131,8 +162,8 @@ export default function MedicationManager() {
     try {
       const data = await getMedicationFilterOptions();
       setFilterOptions({
-        doctors: data.doctors || [],
-        frequencies: data.frequencies || [],
+        doctors: Array.isArray(data.doctors) ? data.doctors : [],
+        frequencies: Array.isArray(data.frequencies) ? data.frequencies : [],
       });
     } catch (loadError) {
       console.error(loadError);
@@ -149,7 +180,7 @@ export default function MedicationManager() {
         sortBy,
         sortOrder,
       });
-      setMedications(data.medications || []);
+      setMedications(Array.isArray(data.medications) ? data.medications : []);
       setError("");
     } catch (loadError) {
       console.error(loadError);
@@ -169,6 +200,11 @@ export default function MedicationManager() {
 
     return () => window.clearTimeout(timeoutId);
   }, [fetchMedications]);
+
+  const medicationList = useMemo(
+    () => (Array.isArray(medications) ? medications.filter((item) => item && typeof item === "object") : []),
+    [medications]
+  );
 
   function openModal(medication = null) {
     if (medication) {
@@ -263,18 +299,11 @@ export default function MedicationManager() {
   }
 
   async function logAdherence(medication, status) {
-    const scheduledFor = getNextDoseForMedication(medication)?.at?.toISOString() || new Date().toISOString();
-    const delayMinutes =
-      status === "delayed" ? Number(window.prompt("Delay by how many minutes?", "30") || "0") : undefined;
-    const notesPrompt =
-      status === "missed"
-        ? "Why was this dose missed? (optional)"
-        : status === "skipped"
-        ? "Why was this dose skipped? (optional)"
-        : status === "delayed"
-        ? "Add a note for this delayed dose. (optional)"
-        : "Add a note for this dose. (optional)";
-    const notes = window.prompt(notesPrompt, "") || "";
+    const actionableDose = getActionableDose(medication, new Date());
+    if (!actionableDose) {
+      alert("No dose to log right now.");
+      return;
+    }
 
     try {
       const response = await fetch(`${apiUrl}/api/medications/${medication.id}/adherence`, {
@@ -282,9 +311,9 @@ export default function MedicationManager() {
         headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({
           status,
-          scheduledFor,
-          delayMinutes,
-          notes,
+          scheduledFor: actionableDose.toISOString(),
+          delayMinutes: status === "delayed" ? 30 : undefined,
+          notes: "",
         }),
       });
 
@@ -299,50 +328,27 @@ export default function MedicationManager() {
     }
   }
 
-  const nextDose = useMemo(() => getNextMedicationDose(medications), [medications]);
+  const nextDose = useMemo(() => getNextMedicationDose(medicationList), [medicationList]);
   const nextDoseText = nextDose
     ? `${nextDose.medication?.name || "Medication"} at ${formatDoseTime(nextDose.at)}`
     : "No upcoming doses";
 
   const dueSoon = useMemo(() => {
     const now = new Date();
-    return medications
+    return medicationList
       .filter((medication) => isActiveMedication(medication, now))
-      .map((medication) => ({ medication, dose: getNextDoseForMedication(medication) }))
-      .filter((item) => item.dose && item.dose.at.getTime() - now.getTime() <= (item.medication.reminderLeadMinutes ?? 30) * 60 * 1000)
+      .map((medication) => ({ medication, dose: getActionableDose(medication, now) }))
+      .filter((item) => item.dose)
       .slice(0, 3);
-  }, [medications]);
+  }, [medicationList]);
 
   const warnings = useMemo(
     () =>
-      medications
+      medicationList
         .flatMap((medication) => getMedicationWarnings(medication).map((warning) => ({ medication, warning })))
         .slice(0, 5),
-    [medications]
+    [medicationList]
   );
-  const adherenceSummary = useMemo(() => summarizeAdherence(medications), [medications]);
-  const recentAdherenceEntries = useMemo(() => getRecentAdherenceEntries(medications), [medications]);
-  const medicationAttention = useMemo(
-    () => medications.map((medication) => getMedicationAttentionState(medication)),
-    [medications]
-  );
-  const reminderSetupNeeded = useMemo(
-    () => medicationAttention.filter((item) => item.needsReminderSetup).slice(0, 4),
-    [medicationAttention]
-  );
-  const reminderScheduleActive = useMemo(
-    () =>
-      medicationAttention
-        .filter((item) => !item.reminderOff && item.nextDose)
-        .sort((left, right) => left.nextDose.at - right.nextDose.at)
-        .slice(0, 4),
-    [medicationAttention]
-  );
-  const refillAttention = useMemo(
-    () => medicationAttention.filter((item) => item.warnings.length > 0).slice(0, 4),
-    [medicationAttention]
-  );
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-indigo-50 p-6">
       <Navbar />
@@ -356,7 +362,7 @@ export default function MedicationManager() {
                 <h1 className="text-3xl font-bold text-slate-900">Medication Management</h1>
               </div>
               <p className="mt-2 text-sm text-slate-600">
-                Track medications, log taken or missed doses, and keep reminders and end-date warnings visible.
+                Track medications, log doses, and keep reminders and end-date warnings visible.
               </p>
             </div>
             <button
@@ -386,24 +392,10 @@ export default function MedicationManager() {
               <p className="mt-2 text-sm text-slate-600">Visible from each medication schedule.</p>
             </div>
             <div className="rounded-3xl bg-rose-50 p-5">
-              <p className="text-sm text-slate-600">Warnings</p>
+              <p className="text-sm text-slate-600">End-date warnings</p>
               <p className="mt-1 text-2xl font-bold text-slate-900">{warnings.length}</p>
-              <p className="mt-2 text-sm text-slate-600">Refill and end-date issues needing attention.</p>
+              <p className="mt-2 text-sm text-slate-600">Shown within 7 days of the medication end date.</p>
             </div>
-          </div>
-
-          <div className="mt-4 grid gap-3 md:grid-cols-4">
-            {[
-              { key: "taken", label: "Taken", value: adherenceSummary.taken, tone: "bg-emerald-50 text-emerald-700" },
-              { key: "missed", label: "Missed", value: adherenceSummary.missed, tone: "bg-rose-50 text-rose-700" },
-              { key: "skipped", label: "Skipped", value: adherenceSummary.skipped, tone: "bg-amber-50 text-amber-700" },
-              { key: "delayed", label: "Delayed", value: adherenceSummary.delayed, tone: "bg-indigo-50 text-indigo-700" },
-            ].map((item) => (
-              <div key={item.key} className={`rounded-3xl p-5 ${item.tone}`}>
-                <p className="text-sm">{item.label} doses</p>
-                <p className="mt-1 text-2xl font-bold">{item.value}</p>
-              </div>
-            ))}
           </div>
         </section>
 
@@ -440,7 +432,7 @@ export default function MedicationManager() {
           </div>
 
           <div className="rounded-3xl bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-slate-900">End-date and refill warnings</h2>
+            <h2 className="text-xl font-semibold text-slate-900">End-date warnings</h2>
             <div className="mt-4 space-y-3">
               {warnings.length > 0 ? (
                 warnings.map(({ medication, warning }) => (
@@ -458,142 +450,10 @@ export default function MedicationManager() {
                 ))
               ) : (
                 <p className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
-                  No refill or end-date warnings right now.
+                  No end-date warnings right now.
                 </p>
               )}
             </div>
-          </div>
-        </section>
-
-        <section className="mt-6 grid gap-6 lg:grid-cols-3">
-          <div className="rounded-3xl bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-slate-900">Reminder setup workflow</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Medications that need reminder settings or clearer schedule configuration.
-            </p>
-            <div className="mt-4 space-y-3">
-              {reminderSetupNeeded.length > 0 ? (
-                reminderSetupNeeded.map(({ medication }) => (
-                  <button
-                    key={medication.id}
-                    type="button"
-                    onClick={() => openModal(medication)}
-                    className="w-full rounded-2xl border border-sky-200 bg-sky-50 p-4 text-left transition hover:border-sky-300"
-                  >
-                    <p className="font-semibold text-slate-900">{medication.name}</p>
-                    <p className="mt-1 text-sm text-slate-600">
-                      Add or review schedule times and reminder lead minutes for this treatment.
-                    </p>
-                  </button>
-                ))
-              ) : (
-                <p className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
-                  No medications are waiting on reminder setup.
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-3xl bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-slate-900">Upcoming reminder workflow</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              The next reminder-driven doses across your active medication list.
-            </p>
-            <div className="mt-4 space-y-3">
-              {reminderScheduleActive.length > 0 ? (
-                reminderScheduleActive.map(({ medication, nextDose }) => (
-                  <button
-                    key={`${medication.id}-${nextDose.at.toISOString()}`}
-                    type="button"
-                    onClick={() => openModal(medication)}
-                    className="w-full rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left transition hover:border-amber-300"
-                  >
-                    <p className="font-semibold text-slate-900">{medication.name}</p>
-                    <p className="mt-1 text-sm text-slate-600">
-                      Next dose at {formatDoseTime(nextDose.at)} with a {medication.reminderLeadMinutes ?? 30}-minute lead.
-                    </p>
-                  </button>
-                ))
-              ) : (
-                <p className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
-                  No reminder-enabled schedules are active yet.
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-3xl bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-slate-900">Refill and end-date workflow</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Treatments that should be reviewed, refilled, or closed out soon.
-            </p>
-            <div className="mt-4 space-y-3">
-              {refillAttention.length > 0 ? (
-                refillAttention.map(({ medication, warnings: medicationWarnings }) => (
-                  <button
-                    key={medication.id}
-                    type="button"
-                    onClick={() => openModal(medication)}
-                    className="w-full rounded-2xl border border-rose-200 bg-rose-50 p-4 text-left transition hover:border-rose-300"
-                  >
-                    <p className="font-semibold text-slate-900">{medication.name}</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {medicationWarnings.map((warning) => (
-                        <span key={warning} className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-rose-700">
-                          {warning}
-                        </span>
-                      ))}
-                    </div>
-                  </button>
-                ))
-              ) : (
-                <p className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
-                  No medications need refill or end-date review right now.
-                </p>
-              )}
-            </div>
-          </div>
-        </section>
-
-        <section className="mt-6 rounded-3xl bg-white p-6 shadow-sm">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold text-slate-900">Adherence history</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Every medication action is tracked as taken, missed, skipped, or delayed.
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-4 space-y-3">
-            {recentAdherenceEntries.length > 0 ? (
-              recentAdherenceEntries.map((entry) => (
-                <div key={entry.key} className="rounded-2xl border border-slate-200 p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-slate-900">{entry.medicationName}</p>
-                      <p className="mt-1 text-sm text-slate-500">
-                        Scheduled for {new Date(entry.scheduledFor).toLocaleString()}
-                      </p>
-                    </div>
-                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getAdherenceTone(entry.status)}`}>
-                      {formatAdherenceLabel(entry.status)}
-                    </span>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-4 text-sm text-slate-600">
-                    <span>Recorded: {new Date(entry.recordedAt || entry.scheduledFor).toLocaleString()}</span>
-                    {entry.delayMinutes != null ? <span>Delay: {entry.delayMinutes} min</span> : null}
-                  </div>
-                  {entry.notes ? (
-                    <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">{entry.notes}</p>
-                  ) : null}
-                </div>
-              ))
-            ) : (
-              <p className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
-                No adherence updates logged yet.
-              </p>
-            )}
           </div>
         </section>
 
@@ -664,15 +524,16 @@ export default function MedicationManager() {
           {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
 
           <div className="mt-6 grid gap-4">
-            {medications.length === 0 ? (
+            {medicationList.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-slate-200 p-10 text-center text-slate-500">
                 No medications found.
               </div>
             ) : (
-              medications.map((medication) => {
+              medicationList.map((medication) => {
                 const latestStatus = getLatestAdherenceStatus(medication);
                 const nextMedicationDose = getNextDoseForMedication(medication);
                 const medicationWarnings = getMedicationWarnings(medication);
+                const actionableDose = getActionableDose(medication);
 
                 return (
                   <div key={medication.id} className="rounded-3xl border border-slate-200 p-5">
@@ -713,19 +574,26 @@ export default function MedicationManager() {
                             ))}
                           </div>
                         ) : null}
+                        {actionableDose ? (
+                          <p className="mt-3 text-sm font-medium text-emerald-700">
+                            Dose ready to log now.
+                          </p>
+                        ) : null}
                       </div>
 
                       <div className="flex flex-wrap gap-2">
-                        {["taken", "missed", "skipped", "delayed"].map((statusValue) => (
-                          <button
-                            key={statusValue}
-                            type="button"
-                            onClick={() => logAdherence(medication, statusValue)}
-                            className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${getAdherenceTone(statusValue)}`}
-                          >
-                            Mark {formatAdherenceLabel(statusValue)}
-                          </button>
-                        ))}
+                        {actionableDose
+                          ? ["taken", "missed", "skipped", "delayed"].map((statusValue) => (
+                              <button
+                                key={statusValue}
+                                type="button"
+                                onClick={() => logAdherence(medication, statusValue)}
+                                className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${getAdherenceTone(statusValue)}`}
+                              >
+                                Mark {formatAdherenceLabel(statusValue)}
+                              </button>
+                            ))
+                          : null}
                         <button
                           type="button"
                           onClick={() => openModal(medication)}
@@ -742,6 +610,45 @@ export default function MedicationManager() {
                         </button>
                       </div>
                     </div>
+                    {getMedicationHistoryEntries(medication).length > 0 ? (
+                      <div className="mt-4 rounded-2xl bg-slate-50 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <h4 className="text-sm font-semibold text-slate-900">Recent adherence</h4>
+                          {getMedicationHistoryEntries(medication).length > 3 ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedHistoryMedicationId((current) =>
+                                  current === medication.id ? "" : medication.id
+                                )
+                              }
+                              className="text-xs font-semibold text-sky-700 transition hover:text-sky-800"
+                            >
+                              {expandedHistoryMedicationId === medication.id ? "Show less" : "See all"}
+                            </button>
+                          ) : null}
+                        </div>
+                        <div className="mt-3 space-y-2">
+                          {getMedicationHistoryEntries(medication)
+                            .slice(0, expandedHistoryMedicationId === medication.id ? 10 : 3)
+                            .map((entry) => (
+                              <div key={entry.key} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                                <div>
+                                  <p className="text-sm font-medium text-slate-900">
+                                    {formatRecordedDateTime(entry.scheduledFor || entry.recordedAt)}
+                                  </p>
+                                  {entry.delayMinutes != null ? (
+                                    <p className="text-xs text-slate-500">Delay: {entry.delayMinutes} min</p>
+                                  ) : null}
+                                </div>
+                                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getAdherenceTone(entry.status)}`}>
+                                  {formatAdherenceLabel(entry.status)}
+                                </span>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 );
               })
@@ -773,6 +680,7 @@ export default function MedicationManager() {
                   </div>
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-slate-700">Dosage</label>
+                    <p className="mb-1.5 text-xs text-slate-500">Amount taken each scheduled time, for example 1 pill or 5 mL.</p>
                     <input
                       type="text"
                       value={formData.dosage}
@@ -783,6 +691,7 @@ export default function MedicationManager() {
                   </div>
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-slate-700">Frequency</label>
+                    <p className="mb-1.5 text-xs text-slate-500">Descriptive pattern, for example twice daily or every 8 hours.</p>
                     <input
                       type="text"
                       value={formData.frequency}
@@ -802,6 +711,7 @@ export default function MedicationManager() {
                   </div>
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-slate-700">Schedule times</label>
+                    <p className="mb-1.5 text-xs text-slate-500">Enter one or more times separated by commas, for example 08:00, 14:00, 20:00.</p>
                     <input
                       type="text"
                       value={formData.scheduleTimes}

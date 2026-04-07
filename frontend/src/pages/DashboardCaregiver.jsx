@@ -155,6 +155,7 @@ const CAREGIVER_PERMISSION_HELP = {
 export default function DashboardCaregiver() {
   const navigate = useNavigate();
   const user = getUser();
+  const currentUserId = user?.id;
   const greetingName = user?.firstName || user?.email || "Caregiver";
 
   const [linkedPatients, setLinkedPatients] = useState([]);

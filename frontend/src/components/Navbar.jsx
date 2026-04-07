@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { clearSession, getUser } from "../api/http";
-import { needsDoctorApprovalHold } from "../utils/authRouting";
+import { isReviewerUser, needsDoctorApprovalHold } from "../utils/authRouting";
 import logo from "../assets/logo.png";
 import DoctorPatientDock from "./doctor/DoctorPatientDock";
 
@@ -72,8 +72,9 @@ export default function Navbar({ onLogin, onSignup }) {
 
   const user = getUser();
   const userRole = user?.role?.toLowerCase() || null;
+  const isReviewer = isReviewerUser(user);
   const isDoctor = userRole === "doctor";
-  const isPatient = userRole === "patient";
+  const isPatient = userRole === "patient" && !isReviewer;
   const doctorApprovalHeld = needsDoctorApprovalHold(user);
   const dashboardPathByRole = {
     doctor: "/dashboardDoctor",
@@ -85,12 +86,13 @@ export default function Navbar({ onLogin, onSignup }) {
     patient: "/profilePatient",
     caregiver: "/profileCaregiver",
   };
-  const dashboardPath = dashboardPathByRole[userRole] || "/dashboardPatient";
+  const dashboardPath = isReviewer ? "/doctor-review" : (dashboardPathByRole[userRole] || "/dashboardPatient");
   const profilePath = profilePathByRole[userRole] || "/profilePatient";
-  const homePath = isDoctor && doctorApprovalHeld ? "/doctor-approval-status" : dashboardPath;
+  const homePath = isReviewer ? "/doctor-review" : (isDoctor && doctorApprovalHeld ? "/doctor-approval-status" : dashboardPath);
 
   const path = location.pathname;
   const isDashboard = path.toLowerCase().startsWith("/dashboard");
+  const isDoctorReview = path.toLowerCase().startsWith("/doctor-review");
   const isProfile = path.toLowerCase().startsWith("/profile");
   const isDoctorApprovalStatus = path.toLowerCase().startsWith("/doctor-approval-status");
   const isMedication = path.toLowerCase().startsWith("/medication");
@@ -290,16 +292,20 @@ export default function Navbar({ onLogin, onSignup }) {
                 <button
                   onClick={() => navigate(homePath)}
                   className={`text-sm font-medium transition ${
-                    isDoctor && doctorApprovalHeld
-                      ? isDoctorApprovalStatus
+                    isReviewer
+                      ? isDoctorReview
                         ? "text-sky-700 font-semibold"
                         : "text-slate-600 hover:text-slate-900"
-                      : isDashboard
-                        ? "text-sky-700 font-semibold"
-                        : "text-slate-600 hover:text-slate-900"
+                      : isDoctor && doctorApprovalHeld
+                        ? isDoctorApprovalStatus
+                          ? "text-sky-700 font-semibold"
+                          : "text-slate-600 hover:text-slate-900"
+                        : isDashboard
+                          ? "text-sky-700 font-semibold"
+                          : "text-slate-600 hover:text-slate-900"
                     }`}
                 >
-                  {isDoctor && doctorApprovalHeld ? "Application Status" : "Dashboard"}
+                  {isReviewer ? "Reviewer Workspace" : isDoctor && doctorApprovalHeld ? "Application Status" : "Dashboard"}
                 </button>
 
                 {isDoctor && !doctorApprovalHeld && (
@@ -514,7 +520,7 @@ export default function Navbar({ onLogin, onSignup }) {
                   </div>
                 )}
 
-                {!isPatient && userRole !== "caregiver" && !isDoctor && (
+                {!isPatient && userRole !== "caregiver" && !isDoctor && !isReviewer && (
                   <button
                     onClick={() => navigate(profilePath)}
                     className={`text-sm font-medium transition ${isProfile ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"

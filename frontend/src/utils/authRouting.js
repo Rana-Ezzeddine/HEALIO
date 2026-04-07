@@ -12,6 +12,15 @@ const dashboardPathByRole = {
   caregiver: "/dashboardCaregiver",
 };
 
+const reviewerEmails = new Set(
+  ["sleimanmohammad14@gmail.com"].map((email) => email.toLowerCase())
+);
+
+export function isReviewerUser(user) {
+  const email = String(user?.email || "").toLowerCase().trim();
+  return Boolean(email) && reviewerEmails.has(email);
+}
+
 export function needsDoctorApprovalHold(user) {
   return (
     Boolean(user) &&
@@ -21,6 +30,10 @@ export function needsDoctorApprovalHold(user) {
 }
 
 export function getPostAuthRoute(user) {
+  if (isReviewerUser(user)) {
+    return "/doctor-review";
+  }
+
   if (needsDoctorApprovalHold(user)) {
     return "/doctor-approval-status";
   }

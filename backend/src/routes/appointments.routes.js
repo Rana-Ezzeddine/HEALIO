@@ -34,6 +34,6 @@ router.post("/", requireRole("doctor"), createAppointment);
 router.post("/requests", requireRole("patient"), createAppointmentRequest);
 router.put("/:id", requireRole("doctor"), updateAppointment);
 router.post("/requests/:id/suggest-slot", requireRole("doctor"), suggestAlternativeSlot);
-router.patch("/:id/status", requireRole("doctor"), updateAppointmentStatus);
+router.patch("/:id/status", requireRole("doctor", "patient"), updateAppointmentStatus);
 
 export default router;
