@@ -363,7 +363,7 @@ export default function LandingPage() {
                   anchorRef={trustAnchorRef}
                   className="landing-reveal landing-delay-1"
                   title="Doctor verification"
-                  text="Doctor accounts can require both email verification and reviewer approval. A license number alone does not automatically unlock doctor access."
+                  text="Doctor accounts can require both email verification and admin approval. A license number alone does not automatically unlock doctor access."
                 />
                 <TrustCard
                   className="landing-reveal landing-delay-2"

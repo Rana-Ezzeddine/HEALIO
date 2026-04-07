@@ -89,7 +89,7 @@ export default function DoctorReviewPage() {
       setSelectedId(nextSelected);
       setNotes(nextApplications.find((item) => item.id === nextSelected)?.notes || "");
     } catch (err) {
-      setError(err?.status === 403 ? "Reviewer access is required for this page." : err?.message || "Failed to load doctor applications.");
+      setError(err?.status === 403 ? "Admin access is required for this page." : err?.message || "Failed to load doctor applications.");
       setApplications([]);
       setSelectedId("");
       setNotes("");
@@ -120,7 +120,7 @@ export default function DoctorReviewPage() {
       return;
     }
     if (decision === "reject" && !notes.trim()) {
-      setRejectNotesWarning("Adding reviewer notes is strongly encouraged when rejecting an application.");
+      setRejectNotesWarning("Adding admin review notes is strongly encouraged when rejecting an application.");
     } else {
       setRejectNotesWarning("");
     }
@@ -147,10 +147,10 @@ export default function DoctorReviewPage() {
         <div className="rounded-[2rem] border border-white/70 bg-white/85 p-8 shadow-[0_35px_80px_-45px_rgba(15,23,42,0.35)] backdrop-blur-md">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-sky-500">Reviewer workspace</p>
+              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-sky-500">Admin workspace</p>
               <h1 className="mt-3 text-4xl font-black tracking-tight text-slate-900">Doctor Applications</h1>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600">
-                Review pending doctor applications, capture reviewer notes, and decide whether to approve, reject, or request more information.
+                Review pending doctor applications, capture admin review notes, and decide whether to approve, reject, or request more information.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -274,7 +274,7 @@ export default function DoctorReviewPage() {
                       value={notes}
                       onChange={(event) => setNotes(event.target.value)}
                       rows={6}
-                      placeholder="Add reviewer notes, approval rationale, or the information needed from the doctor."
+                      placeholder="Add admin review notes, approval rationale, or the information needed from the doctor."
                       className="mt-4 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
                     />
                     {rejectNotesWarning ? (
@@ -285,7 +285,7 @@ export default function DoctorReviewPage() {
                   <div className="mt-4 rounded-3xl border border-slate-200 bg-white px-5 py-4">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Reviewer notes history</p>
                     {notesHistory.length === 0 ? (
-                      <p className="mt-3 text-sm text-slate-500">No reviewer notes history yet.</p>
+                      <p className="mt-3 text-sm text-slate-500">No review notes history yet.</p>
                     ) : (
                       <div className="mt-3 space-y-3">
                         {notesHistory.map((entry, index) => (

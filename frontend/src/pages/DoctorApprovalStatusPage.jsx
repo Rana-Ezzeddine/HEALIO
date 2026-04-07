@@ -31,7 +31,7 @@ function statusMessage(application) {
     return "Verify your email first. Once verified, your doctor application can move into review.";
   }
   if (application.requestedMoreInfo) {
-    return "A reviewer requested more information before approval can continue.";
+    return "An admin requested more information before approval can continue.";
   }
   return "Your application is in review. Doctor product features stay locked until approval is granted.";
 }

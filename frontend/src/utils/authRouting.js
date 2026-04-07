@@ -10,6 +10,7 @@ const dashboardPathByRole = {
   doctor: "/dashboardDoctor",
   patient: "/dashboardPatient",
   caregiver: "/dashboardCaregiver",
+  admin: "/admin-access",
 };
 
 export function needsDoctorApprovalHold(user) {

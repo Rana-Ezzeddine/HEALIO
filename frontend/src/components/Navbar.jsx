@@ -37,11 +37,13 @@ export default function Navbar({ onLogin, onSignup }) {
   const userRole = user?.role?.toLowerCase() || null;
   const isDoctor = userRole === "doctor";
   const isPatient = userRole === "patient";
+  const isAdmin = userRole === "admin";
   const doctorApprovalHeld = needsDoctorApprovalHold(user);
   const dashboardPathByRole = {
     doctor: "/dashboardDoctor",
     patient: "/dashboardPatient",
     caregiver: "/dashboardCaregiver",
+    admin: "/admin-access",
   };
   const profilePathByRole = {
     doctor: "/profileDoctor",
@@ -66,6 +68,7 @@ export default function Navbar({ onLogin, onSignup }) {
   const isCaregiverAppointments = path.toLowerCase().startsWith("/caregiverappointments");
   const isCaregiverNotes = path.toLowerCase().startsWith("/caregivernotes");
   const isDoctorPatients = path.toLowerCase().startsWith("/doctor-patients");
+  const isDoctorReview = path.toLowerCase().startsWith("/doctor-review");
   const isHealthSummary = path.toLowerCase().startsWith("/healthsummary");
   const isPatientMessages = path.toLowerCase().startsWith("/patientmessages");
   const isPatientNotifications = path.toLowerCase().startsWith("/patient-notifications");
@@ -235,6 +238,28 @@ export default function Navbar({ onLogin, onSignup }) {
                     Patients
                   </button>
                 )}
+                {isAdmin && (
+                  <button
+                    onClick={() => navigate("/doctor-review")}
+                    className={`text-sm font-medium transition ${
+                      isDoctorReview ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Doctor Approvals
+                  </button>
+                )}
+                {isAdmin && (
+                  <button
+                    onClick={() => navigate("/admin-access")}
+                    className={`text-sm font-medium transition ${
+                      path.toLowerCase().startsWith("/admin-access")
+                        ? "text-sky-700 font-semibold"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Admin Access
+                  </button>
+                )}
                 {isPatient && (
                   <button
                     onClick={() => navigate("/patientAppointments")}
@@ -348,7 +373,7 @@ export default function Navbar({ onLogin, onSignup }) {
                   </div>
                 )}
 
-                {!isPatient && (
+                {!isPatient && !isReviewer && (
                   <button
                     onClick={() => navigate(profilePath)}
                     className={`text-sm font-medium transition ${isProfile ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"

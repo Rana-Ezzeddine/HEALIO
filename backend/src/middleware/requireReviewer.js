@@ -6,6 +6,16 @@ function parseCsv(value) {
 }
 
 export default function requireReviewer(req, res, next) {
+  if (req.user?.role === 'reviewer' || req.user?.role === 'admin') {
+    req.reviewer = {
+      type: 'role',
+      userId: req.user.id,
+      email: req.user.email,
+      role: req.user.role,
+    };
+    return next();
+  }
+
   const configuredApiKey = String(process.env.DOCTOR_REVIEWER_API_KEY || '').trim();
   const providedApiKey = String(req.headers['x-reviewer-api-key'] || '').trim();
 

@@ -2,7 +2,7 @@ import express from "express";
 import requireUser from "../middleware/requireUser.js";
 import requireVerified from "../middleware/requireVerified.js";
 import requireDoctorProductAccessIfDoctor from "../middleware/requireDoctorProductAccessIfDoctor.js";
-import requireReviewer from "../middleware/requireReviewer.js";
+import requireAdmin from "../middleware/requireAdmin.js";
 import {
   assignPatientToDoctor,
   getAiUrgencyPatients,
@@ -66,7 +66,7 @@ router.get("/patients/:patientId/ai-summary", requireUser, requireVerified, requ
 
 router.get("/application-status", requireUser, requireVerified, getDoctorApplicationStatus);
 
-router.get("/review/applications", requireUser, requireVerified, requireReviewer, listDoctorApplications);
-router.patch("/review/applications/:doctorId", requireUser, requireVerified, requireReviewer, reviewDoctorApplication);
+router.get("/review/applications", requireUser, requireVerified, requireAdmin, listDoctorApplications);
+router.patch("/review/applications/:doctorId", requireUser, requireVerified, requireAdmin, reviewDoctorApplication);
 
 export default router;

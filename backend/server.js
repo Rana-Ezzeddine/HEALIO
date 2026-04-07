@@ -58,6 +58,7 @@ import caregiverInviteRoutes from './src/routes/caregiverInvite.routes.js';
 import caregiverActionsRoutes from './src/routes/caregiverActions.routes.js';
 import historyRoutes from './src/routes/history.js';
 import externalRoutes from './src/routes/external.routes.js';
+import adminRoutes from "./src/routes/admin.routes.js";
 import ReminderService from './src/services/reminderService.js';
 
 
@@ -139,6 +140,7 @@ app.use('/api/caregiver-invites', caregiverInviteRoutes);
 app.use('/api/caregiver-actions', caregiverActionsRoutes);
 app.use('/api/history', historyRoutes);
 app.use('/api/v1/external', externalRoutes);
+app.use("/api/admin", adminRoutes);
 /////////////////////////////////////////////////
 // 404 Handler
 /////////////////////////////////////////////////

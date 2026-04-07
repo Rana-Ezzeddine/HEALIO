@@ -36,6 +36,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import DoctorApprovedRoute from "./components/DoctorApprovedRoute";
 import DoctorApprovalStatusPage from "./pages/DoctorApprovalStatusPage";
 import DoctorReviewPage from "./pages/DoctorReviewPage";
+import AdminReviewerManagementPage from "./pages/AdminReviewerManagementPage";
 import DoctorPatients from "./pages/DoctorPatients";
 import DoctorLinkRequests from "./pages/DoctorLinkRequests";
 import DoctorPatientDetail from "./pages/DoctorPatientDetail";
@@ -142,8 +143,16 @@ function RoutedApp() {
         <Route
           path="/doctor-review"
           element={
-            <ProtectedRoute allowedRoles={["reviewer", "admin"]}>
+            <ProtectedRoute allowedRoles={["admin"]}>
               <DoctorReviewPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin-access"
+          element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <AdminReviewerManagementPage />
             </ProtectedRoute>
           }
         />

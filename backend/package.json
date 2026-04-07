@@ -13,6 +13,8 @@
     "db:migrate:undo:all": "sequelize-cli db:migrate:undo:all",
     "db:seed": "sequelize-cli db:seed:all",
     "db:reset": "sequelize-cli db:migrate:undo:all && sequelize-cli db:migrate",
+    "admin:create": "node src/scripts/create-admin.js",
+    "user:set-role": "node src/scripts/set-user-role.js",
     "test:integration": "NODE_ENV=test node --test tests/integration/**/*.test.js",
     "test:e2e": "NODE_ENV=test node --test tests/e2e/**/*.test.js",
     "test:sprint3": "npm run test:integration && npm run test:e2e"
