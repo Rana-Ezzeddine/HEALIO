@@ -44,7 +44,6 @@ import DoctorClinicalNotes from "./pages/DoctorClinicalNotes";
 import DoctorTreatmentPlans from "./pages/DoctorTreatmentPlans";
 import CaregiverPatients from "./pages/CaregiverPatients";
 import { getPostAuthRoute } from "./utils/authRouting";
-import CaregiverOnboarding from "./pages/CaregiverOnboarding";
 import CareTeam from "./pages/CareTeam";
 import CaregiverMyPatients from "./pages/CaregiverMyPatients";
 import CareNotes from "./pages/CareNotes";
@@ -219,7 +218,7 @@ function RoutedApp() {
         <Route
           path="/medication"
           element={
-            <ProtectedRoute allowedRoles={["patient", "caregiver"]}>
+            <ProtectedRoute allowedRoles={["patient"]}>
               <Medication />
             </ProtectedRoute>
           }
@@ -336,10 +335,6 @@ function RoutedApp() {
             </ProtectedRoute>
           }
         />
-
-
-        <Route path="/caregiverOnboarding" element={<ProtectedRoute allowedRoles={["caregiver"]}><CaregiverOnboarding /></ProtectedRoute>} />
-        
         <Route path="/careTeam" element={<ProtectedRoute allowedRoles={["patient"]}><CareTeam /></ProtectedRoute>} />
         <Route path="/caregiverMyPatients" element={<ProtectedRoute allowedRoles={["caregiver"]}><CaregiverMyPatients /></ProtectedRoute>} />
         <Route path="/careNotes" element={<ProtectedRoute allowedRoles={["caregiver"]}><CareNotes /></ProtectedRoute>} />

@@ -135,11 +135,6 @@ export default function CaregiverAppointments() {
     [scopedAppointments]
   );
 
-  const requestedCount = useMemo(
-    () => scopedAppointments.filter((item) => item.status === "requested").length,
-    [scopedAppointments]
-  );
-
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
@@ -219,24 +214,6 @@ export default function CaregiverAppointments() {
           </section>
         ) : (
           <>
-            <section className="mt-6 grid gap-4 sm:grid-cols-3">
-              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total in scope</p>
-                <p className="mt-2 text-3xl font-black text-slate-900">{scopedAppointments.length}</p>
-                <p className="mt-1 text-sm text-slate-500">Across all statuses</p>
-              </div>
-              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Upcoming</p>
-                <p className="mt-2 text-3xl font-black text-slate-900">{upcomingAppointments.length}</p>
-                <p className="mt-1 text-sm text-slate-500">Future visits and requests</p>
-              </div>
-              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Requested</p>
-                <p className="mt-2 text-3xl font-black text-slate-900">{requestedCount}</p>
-                <p className="mt-1 text-sm text-slate-500">Pending scheduling decisions</p>
-              </div>
-            </section>
-
             <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div>

@@ -7,6 +7,7 @@ import {
     createConversation,
     getConversationMessages,
     sendMessage,
+    deleteConversation,
 } from "../controllers/messaging.controller.js";
 
 const router = express.Router();
@@ -17,6 +18,7 @@ router.use(requireDoctorProductAccessIfDoctor);
 
 router.get("/", getConversations);
 router.post("/", createConversation);
+router.delete("/:id", deleteConversation);
 router.get("/:id/messages", getConversationMessages);
 router.post("/:id/messages", sendMessage);
 

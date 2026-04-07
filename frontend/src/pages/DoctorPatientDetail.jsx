@@ -5,11 +5,9 @@ import { apiUrl, authHeaders } from "../api/http";
 import { rememberDoctorPatientTab } from "../utils/doctorPatientTabs";
 import {
   formatListOutput,
-  getDoctorCaregiverNotes,
   getDoctorEmergencyReview,
   getPatientClinicalNotes,
   getPatientTreatmentPlans,
-  saveDoctorCaregiverNote,
   saveDoctorEmergencyReview,
 } from "../utils/doctorPatientRecords";
 import { formatDoseTime, getNextMedicationDose, getScheduleTimes, isActiveMedication } from "../utils/medicationSchedule";
@@ -36,6 +34,41 @@ function formatField(value) {
   if (Array.isArray(value)) return value.filter(Boolean).join(", ") || "Not recorded";
   if (typeof value === "object") return [value.name, value.relationship, value.phoneNumber].filter(Boolean).join(" • ") || "Not recorded";
   return String(value).trim() || "Not recorded";
+}
+function formatEmergencyContact(value) {
+  if (!value) return "Not recorded";
+
+  let contact = value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return "Not recorded";
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      try {
+        contact = JSON.parse(trimmed);
+      } catch {
+        return trimmed;
+      }
+    } else {
+      return trimmed;
+    }
+  }
+
+  if (Array.isArray(contact)) {
+    return contact
+      .map((entry) => formatEmergencyContact(entry))
+      .filter(Boolean)
+      .join("; ") || "Not recorded";
+  }
+
+  if (contact && typeof contact === "object") {
+    const name = contact.name || contact.fullName || contact.contactName;
+    const relationship = contact.relationship || contact.relation;
+    const phone = contact.phoneNumber || contact.phone || contact.number;
+    const parts = [name, relationship, phone].filter(Boolean);
+    if (parts.length) return parts.join(" • ");
+  }
+
+  return formatField(contact);
 }
 function parseScheduleInput(value) {
   const list = Array.isArray(value) ? value : String(value || "").split(",");
@@ -116,9 +149,6 @@ export default function DoctorPatientDetail() {
   const [savingMedication, setSavingMedication] = useState(false);
   const [editingMedicationId, setEditingMedicationId] = useState(null);
   const [medicationError, setMedicationError] = useState("");
-  const [doctorCaregiverNotes, setDoctorCaregiverNotes] = useState([]);
-  const [doctorCaregiverNoteForm, setDoctorCaregiverNoteForm] = useState({ caregiverId: "", note: "" });
-  const [doctorCaregiverNoteMessage, setDoctorCaregiverNoteMessage] = useState("");
   const [emergencyReview, setEmergencyReview] = useState(null);
   const [emergencyReviewForm, setEmergencyReviewForm] = useState({ disposition: "monitoring", note: "" });
   const [emergencyReviewMessage, setEmergencyReviewMessage] = useState("");
@@ -154,7 +184,6 @@ export default function DoctorPatientDetail() {
     rememberDoctorPatientTab({ id: currentPatientId, name: patientDisplayName(overview) });
     setLocalNotes(getPatientClinicalNotes(currentPatientId));
     setLocalPlans(getPatientTreatmentPlans(currentPatientId));
-    setDoctorCaregiverNotes(getDoctorCaregiverNotes(currentPatientId));
     setEmergencyReview(getDoctorEmergencyReview(currentPatientId));
     setCommunicationConversationId("");
     setCommunicationMessages([]);
@@ -219,7 +248,6 @@ export default function DoctorPatientDetail() {
   const diagnoses = overview?.diagnoses || [];
   const appointments = overview?.appointmentsAsPatient || [];
   const caregivers = overview?.caregivers || [];
-  const caregiverNotes = overview?.caregiverNotes || [];
   const currentUserId = reqUserId();
   const activeMedications = medications.filter((item) => isActiveMedication(item));
   const nextMedicationDose = getNextMedicationDose(activeMedications);
@@ -388,27 +416,6 @@ export default function DoctorPatientDetail() {
     });
   }
 
-  function handleSaveDoctorCaregiverNote(event) {
-    event.preventDefault();
-    const caregiverId = doctorCaregiverNoteForm.caregiverId;
-    const note = doctorCaregiverNoteForm.note.trim();
-    if (!caregiverId || !note) {
-      setDoctorCaregiverNoteMessage("Choose a caregiver and add a note.");
-      return;
-    }
-    const caregiverEntry = caregivers.find((entry) => entry.caregiverId === caregiverId);
-    const next = saveDoctorCaregiverNote(patientId, {
-      id: crypto.randomUUID(),
-      caregiverId,
-      caregiverName: caregiverEntry?.caregiver?.displayName || caregiverEntry?.caregiver?.email || "Caregiver",
-      createdAt: new Date().toISOString(),
-      note,
-    });
-    setDoctorCaregiverNotes(next);
-    setDoctorCaregiverNoteForm({ caregiverId: "", note: "" });
-    setDoctorCaregiverNoteMessage("Doctor-to-caregiver note saved.");
-  }
-
   function handleSaveEmergencyReview(event) {
     event.preventDefault();
     const note = emergencyReviewForm.note.trim();
@@ -520,7 +527,7 @@ export default function DoctorPatientDetail() {
                   ["Blood type", formatField(profile?.bloodType)],
                   ["Allergies", formatField(profile?.allergies)],
                   ["Medical conditions", formatField(profile?.medicalConditions)],
-                  ["Emergency contact", formatField(profile?.emergencyContact)],
+                  ["Emergency contact", formatEmergencyContact(profile?.emergencyContact)],
                 ].map(([label, value]) => (
                   <div key={label} className="rounded-2xl border border-slate-200 bg-white/80 p-4">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">{label}</p>
@@ -548,7 +555,7 @@ export default function DoctorPatientDetail() {
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Emergency contact</p>
-                  <p className="mt-2 text-sm font-semibold text-slate-900">{formatField(profile?.emergencyContact)}</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">{formatEmergencyContact(profile?.emergencyContact)}</p>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Latest symptom event</p>
@@ -592,7 +599,7 @@ export default function DoctorPatientDetail() {
                 </form>
               ) : (
                 <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                  No active emergency alert. This panel stays ready for the next escalation.
+                  No active emergency alert. Review symptoms and recent activity above, and return here if the patient is escalated.
                 </div>
               )}
               {emergencyReview ? (
@@ -626,7 +633,7 @@ export default function DoctorPatientDetail() {
                 <div className="mt-4 grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
                   <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-cyan-700">Clinical snapshot</p>
-                    <p className="mt-3 text-sm leading-6 text-slate-700">{aiSummary.clinicalSnapshot || "No summary generated."}</p>
+                    <p className="mt-3 text-sm leading-6 text-slate-700">{aiSummary.clinicalSnapshot || "No summary generated. Refresh the summary after more patient data is recorded to get a richer snapshot."}</p>
                     <p className="mt-3 text-xs text-slate-400">Generated {formatDateTime(aiSummary.generatedAt)} • {aiSummary.model}</p>
                   </div>
                   <div className="grid gap-4">
@@ -635,7 +642,7 @@ export default function DoctorPatientDetail() {
                       <div className="mt-3 space-y-2">
                         {aiSummary.careRisks?.length ? aiSummary.careRisks.map((item, index) => (
                           <div key={`${index}-${item}`} className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">{item}</div>
-                        )) : <p className="text-sm text-slate-500">No flagged risks in summary.</p>}
+                        )) : <p className="text-sm text-slate-500">No flagged risks in summary. Continue routine monitoring and refresh after new clinical events if needed.</p>}
                       </div>
                     </div>
                     <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
@@ -643,7 +650,7 @@ export default function DoctorPatientDetail() {
                       <div className="mt-3 space-y-2">
                         {aiSummary.followUpFocus?.length ? aiSummary.followUpFocus.map((item, index) => (
                           <div key={`${index}-${item}`} className="rounded-xl bg-sky-50 px-3 py-2 text-sm text-sky-900">{item}</div>
-                        )) : <p className="text-sm text-slate-500">No follow-up focus items generated.</p>}
+                        )) : <p className="text-sm text-slate-500">No follow-up focus items generated. Add notes, medications, or diagnoses, then refresh if you want a more directed follow-up summary.</p>}
                       </div>
                     </div>
                   </div>
@@ -669,14 +676,14 @@ export default function DoctorPatientDetail() {
                     <p className="mt-1 text-sm text-slate-500">{appointment.location || 'Location pending'}</p>
                     <p className="mt-1 text-sm text-slate-500">{appointment.notes || 'No notes.'}</p>
                   </div>
-                )) : <p className="text-sm text-slate-500">No appointment history with this patient yet.</p>}
+                )) : <p className="text-sm text-slate-500">No appointment history with this patient yet. Open Appointments to schedule the first visit for this patient.</p>}
               </div>
             </div>
             <div className="rounded-3xl bg-gradient-to-br from-white to-emerald-50 p-5 shadow-sm">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Care team and caregiver access</h3>
-                  <p className="mt-1 text-sm text-slate-500">Linked caregivers and their current permission envelope.</p>
+                  <h3 className="text-lg font-semibold text-slate-900">Caregiver contact</h3>
+                  <p className="mt-1 text-sm text-slate-500">Linked caregiver contact details for coordination.</p>
                 </div>
                 <InfoPill label="Linked" value={caregivers.length} tone="emerald" />
               </div>
@@ -690,94 +697,9 @@ export default function DoctorPatientDetail() {
                       </div>
                       <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">{entry.status || "active"}</span>
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {Object.entries(entry.permissions || {}).map(([key, allowed]) => (
-                        <span key={key} className={`rounded-full px-3 py-1 text-xs font-semibold ${allowed ? "bg-sky-100 text-sky-700" : "bg-slate-100 text-slate-500"}`}>
-                          {key === "canViewMedications" ? "Medications" : key === "canViewSymptoms" ? "Symptoms" : key === "canViewAppointments" ? "Appointments" : key === "canMessageDoctor" ? "Doctor communication" : key === "canReceiveReminders" ? "Reminders" : key}
-                        </span>
-                      ))}
-                    </div>
                   </div>
-                )) : <p className="text-sm text-slate-500">No active caregiver linked to this patient.</p>}
+                )) : <p className="text-sm text-slate-500">No active caregiver linked to this patient. Ask the patient to add a caregiver if shared support access is needed.</p>}
               </div>
-            </div>
-            <div className="rounded-3xl bg-gradient-to-br from-white to-amber-50 p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Caregiver notes</h3>
-                  <p className="mt-1 text-sm text-slate-500">Support observations written by caregivers for this patient.</p>
-                </div>
-                <InfoPill label="Notes" value={caregiverNotes.length} tone="amber" />
-              </div>
-              <div className="mt-4 space-y-3">
-                {caregiverNotes.length ? caregiverNotes.map((note) => (
-                  <div key={note.id} className="rounded-2xl border border-slate-200 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-slate-900">{note.caregiver?.displayName || "Caregiver"}</p>
-                        <p className="mt-1 text-xs text-slate-400">{formatDateTime(note.updatedAt || note.createdAt)}</p>
-                      </div>
-                      <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">Caregiver note</span>
-                    </div>
-                    <p className="mt-3 text-sm text-slate-700">{note.note}</p>
-                  </div>
-                )) : <p className="text-sm text-slate-500">No caregiver notes recorded yet.</p>}
-              </div>
-            </div>
-            <div className="rounded-3xl bg-gradient-to-br from-white to-cyan-50 p-5 shadow-sm">
-              <h3 className="text-lg font-semibold text-slate-900">Doctor notes for caregivers</h3>
-              <p className="mt-1 text-sm text-slate-500">Share practical guidance with the linked caregiver in this patient's context.</p>
-              {caregivers.length ? (
-                <>
-                  <form onSubmit={handleSaveDoctorCaregiverNote} className="mt-4 space-y-3">
-                    <label className="block text-sm font-medium text-slate-700">
-                      Caregiver
-                      <select
-                        value={doctorCaregiverNoteForm.caregiverId}
-                        onChange={(event) => setDoctorCaregiverNoteForm((current) => ({ ...current, caregiverId: event.target.value }))}
-                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                      >
-                        <option value="">Select caregiver</option>
-                        {caregivers.map((entry) => (
-                          <option key={entry.caregiverId} value={entry.caregiverId}>
-                            {entry.caregiver?.displayName || entry.caregiver?.email || "Caregiver"}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="block text-sm font-medium text-slate-700">
-                      Note
-                      <textarea
-                        value={doctorCaregiverNoteForm.note}
-                        onChange={(event) => setDoctorCaregiverNoteForm((current) => ({ ...current, note: event.target.value }))}
-                        rows={3}
-                        placeholder="Example: Please reinforce evening glucose checks and remind the patient to bring their BP log to the next visit."
-                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                      />
-                    </label>
-                    {doctorCaregiverNoteMessage ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{doctorCaregiverNoteMessage}</div> : null}
-                    <button type="submit" className="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-700">
-                      Save caregiver note
-                    </button>
-                  </form>
-                  <div className="mt-4 space-y-3">
-                    {doctorCaregiverNotes.length ? doctorCaregiverNotes.map((note) => (
-                      <div key={note.id} className="rounded-2xl border border-slate-200 p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-semibold text-slate-900">{note.caregiverName}</p>
-                            <p className="mt-1 text-xs text-slate-400">{formatDateTime(note.createdAt)}</p>
-                          </div>
-                          <span className="rounded-full bg-cyan-100 px-3 py-1 text-xs font-semibold text-cyan-700">Doctor to caregiver</span>
-                        </div>
-                        <p className="mt-3 text-sm text-slate-700">{note.note}</p>
-                      </div>
-                    )) : <p className="text-sm text-slate-500">No doctor-to-caregiver notes yet.</p>}
-                  </div>
-                </>
-              ) : (
-                <p className="mt-4 text-sm text-slate-500">Link a caregiver to this patient before adding caregiver-directed notes.</p>
-              )}
             </div>
             <div className="rounded-3xl bg-gradient-to-br from-white to-sky-50 p-5 shadow-sm xl:col-span-2">
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -819,7 +741,7 @@ export default function DoctorPatientDetail() {
                       })}
                     </div>
                   ) : (
-                    <p className="text-sm text-slate-500">No patient conversation loaded yet. Open it from this panel to send a contextual update.</p>
+                    <p className="text-sm text-slate-500">No patient conversation loaded yet. Click Open patient conversation, then send a contextual update from this panel.</p>
                   )}
                 </div>
                 <form onSubmit={handleSendContextMessage} className="rounded-2xl border border-slate-200 bg-white/90 p-4">
@@ -1026,7 +948,7 @@ export default function DoctorPatientDetail() {
                     </div>
                     {medication.notes ? <p className="mt-2 text-sm text-slate-500">{medication.notes}</p> : null}
                   </div>
-                )) : <p className="text-sm text-slate-500">No medications assigned yet.</p>}
+                )) : <p className="text-sm text-slate-500">No medications assigned yet. Use Add medication to create the patient&apos;s first medication plan.</p>}
               </div>
             </div>
             <div className="rounded-3xl bg-gradient-to-br from-white to-indigo-50 p-5 shadow-sm xl:col-span-2">
@@ -1049,7 +971,7 @@ export default function DoctorPatientDetail() {
                     <p className="text-sm text-slate-700">{note.content}</p>
                     <p className="mt-2 text-xs text-slate-400">{formatDateTime(note.date)}</p>
                   </div>
-                )) : <p className="text-sm text-slate-500">No clinical notes recorded yet.</p>}
+                )) : <p className="text-sm text-slate-500">No clinical notes recorded yet. Use Open notes to add the first structured or freeform clinical note.</p>}
               </div>
             </div>
             <div className="rounded-3xl bg-gradient-to-br from-white to-violet-50 p-5 shadow-sm xl:col-span-2">
@@ -1072,7 +994,7 @@ export default function DoctorPatientDetail() {
                     <div className="flex items-center justify-between gap-3"><p className="font-semibold text-slate-900">{diagnosis.diagnosisText}</p><span className={`rounded-full px-3 py-1 text-xs font-semibold ${diagnosis.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'}`}>{diagnosis.status}</span></div>
                     <p className="mt-2 text-xs text-slate-400">Diagnosed {formatDate(diagnosis.diagnosedAt)}</p>
                   </div>
-                )) : <p className="text-sm text-slate-500">No diagnoses or treatment items recorded yet.</p>}
+                )) : <p className="text-sm text-slate-500">No diagnoses or treatment items recorded yet. Use Open plans to define the patient&apos;s first treatment plan or diagnosis summary.</p>}
               </div>
             </div>
             <div className="rounded-3xl bg-gradient-to-br from-white to-slate-100 p-5 shadow-sm xl:col-span-2">
@@ -1095,7 +1017,7 @@ export default function DoctorPatientDetail() {
                       </div>
                     </div>
                   </div>
-                )) : <p className="text-sm text-slate-500">No recent activity for this patient yet.</p>}
+                )) : <p className="text-sm text-slate-500">No recent activity for this patient yet. After symptoms, appointments, notes, or medications are added, the timeline will populate here.</p>}
               </div>
             </div>
             </div>

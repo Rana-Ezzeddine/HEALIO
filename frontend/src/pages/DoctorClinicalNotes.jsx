@@ -453,7 +453,7 @@ export default function DoctorClinicalNotes() {
                       </div>
                     )) : (
                       <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-sm text-slate-500">
-                        No structured clinical notes saved for this patient yet.
+                        No structured clinical notes saved for this patient yet. Use the note form above to add the first clinical note for this patient.
                       </div>
                     )}
                   </div>

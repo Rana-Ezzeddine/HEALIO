@@ -336,7 +336,7 @@ export default function DoctorCalendar() {
                           <p className="text-xs text-slate-500">appointment{appointmentCount === 1 ? "" : "s"}</p>
                         </>
                       ) : (
-                        <p className="text-xs font-medium text-slate-400">No appointments</p>
+                        <p className="text-xs font-medium text-slate-400">No appointments yet</p>
                       )}
                     </div>
                   </button>
@@ -395,7 +395,7 @@ export default function DoctorCalendar() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5} className="py-6 px-4 text-center text-slate-500">No appointments found for this date.</td>
+                    <td colSpan={5} className="py-6 px-4 text-center text-slate-500">No appointments found for this date. Pick another day or open Appointments to schedule a visit.</td>
                   </tr>
                 )}
               </tbody>

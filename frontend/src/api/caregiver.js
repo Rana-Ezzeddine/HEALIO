@@ -25,6 +25,10 @@ export function getCaregiverDashboard(patientId) {
   return request(`/api/caregivers/patients/${patientId}/dashboard`);
 }
 
+export function getCaregiverPatientHealthData(patientId) {
+  return request(`/api/caregivers/patients/${patientId}/health-data`);
+}
+
 
 export function generateInviteLink() {
   return request("/api/caregiver-invites/generate", { method: "POST" });

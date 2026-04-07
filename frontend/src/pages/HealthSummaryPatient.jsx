@@ -36,28 +36,6 @@ function StatPill({ label, value, tone = "sky" }) {
   );
 }
 
-function ProgressStrip({ label, value, total, tone = "sky" }) {
-  const percent = total > 0 ? Math.max(0, Math.min(100, Math.round((value / total) * 100))) : 0;
-  const tones = {
-    sky: "from-sky-500 to-cyan-400",
-    violet: "from-violet-500 to-fuchsia-400",
-    emerald: "from-emerald-500 to-teal-400",
-    amber: "from-amber-500 to-orange-400",
-  };
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-slate-800">{label}</p>
-        <p className="text-sm font-bold text-slate-900">{value}/{total}</p>
-      </div>
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
-        <div className={`h-full rounded-full bg-gradient-to-r ${tones[tone] || tones.sky}`} style={{ width: `${percent}%` }} />
-      </div>
-      <p className="mt-2 text-xs text-slate-500">{percent}% in focus</p>
-    </div>
-  );
-}
-
 export default function HealthSummaryPatient() {
   const navigate = useNavigate();
   const user = getUser();
@@ -189,7 +167,7 @@ export default function HealthSummaryPatient() {
           </section>
         ) : null}
 
-        <section className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+        <section className="mt-6">
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
@@ -230,30 +208,6 @@ export default function HealthSummaryPatient() {
                   No symptoms logged yet.
                 </div>
               )}
-            </div>
-          </div>
-
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-slate-900">Quick navigation</h2>
-            <p className="mt-1 text-sm text-slate-500">Jump to the care workflow you want to update.</p>
-
-            <div className="mt-4 grid gap-3">
-              {[
-                { label: "Open appointments", href: "/patientAppointments", style: "bg-sky-100 text-sky-700" },
-                { label: "Open medications", href: "/medication", style: "bg-cyan-100 text-cyan-700" },
-                { label: "Open symptoms", href: "/symptoms", style: "bg-amber-100 text-amber-700" },
-                { label: "Open care team", href: "/care-team", style: "bg-indigo-100 text-indigo-700" },
-                { label: "Open updates & communication", href: "/patientMessages", style: "bg-emerald-100 text-emerald-700" },
-              ].map((action) => (
-                <button
-                  key={action.label}
-                  type="button"
-                  onClick={() => navigate(action.href)}
-                  className={`rounded-2xl px-4 py-3 text-left text-sm font-semibold transition hover:opacity-85 ${action.style}`}
-                >
-                  {action.label}
-                </button>
-              ))}
             </div>
           </div>
         </section>
@@ -327,12 +281,6 @@ export default function HealthSummaryPatient() {
               )}
             </div>
           </div>
-        </section>
-
-        <section className="mt-6 grid gap-4 lg:grid-cols-3">
-          <ProgressStrip label="Care team linked" value={doctorCount + caregiverCount} total={Math.max(doctorCount + caregiverCount, 3)} tone="sky" />
-          <ProgressStrip label="Appointments in motion" value={scheduledAppointments.length} total={Math.max(scheduledAppointments.length, 4)} tone="amber" />
-          <ProgressStrip label="Active treatment load" value={activeMedications.length} total={Math.max(activeMedications.length, 5)} tone="violet" />
         </section>
       </main>
     </div>

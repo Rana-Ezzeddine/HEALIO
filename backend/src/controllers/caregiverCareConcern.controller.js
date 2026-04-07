@@ -3,7 +3,57 @@ import ConversationParticipant from '../models/ConversationParticipant.js';
 import Message from '../models/Message.js';
 import CaregiverPatientPermission from '../models/CaregiverPatientPermission.js';
 import DoctorPatientAssignment from '../models/DoctorPatientAssignment.js';
-import User from '../models/User.js';
+import { Op } from 'sequelize';
+
+async function findDirectConversation(caregiverId, doctorId) {
+  const caregiverParticipantRows = await ConversationParticipant.findAll({
+    where: { userId: caregiverId },
+    attributes: ['conversationId'],
+    raw: true,
+  });
+
+  if (caregiverParticipantRows.length === 0) {
+    return null;
+  }
+
+  const caregiverConversationIds = caregiverParticipantRows.map((row) => row.conversationId);
+
+  const sharedRows = await ConversationParticipant.findAll({
+    where: {
+      userId: doctorId,
+      conversationId: { [Op.in]: caregiverConversationIds },
+    },
+    attributes: ['conversationId'],
+    raw: true,
+  });
+
+  if (sharedRows.length === 0) {
+    return null;
+  }
+
+  const sharedConversationIds = sharedRows.map((row) => row.conversationId);
+
+  const candidateConversations = await Conversation.findAll({
+    where: { id: { [Op.in]: sharedConversationIds } },
+    order: [['updatedAt', 'DESC']],
+  });
+
+  for (const conversation of candidateConversations) {
+    const participantRows = await ConversationParticipant.findAll({
+      where: { conversationId: conversation.id },
+      attributes: ['userId'],
+      raw: true,
+    });
+
+    const participantIds = participantRows.map((row) => row.userId);
+    const uniqueIds = new Set(participantIds);
+    if (uniqueIds.size === 2 && uniqueIds.has(caregiverId) && uniqueIds.has(doctorId)) {
+      return conversation;
+    }
+  }
+
+  return candidateConversations[0] || null;
+}
 
 export async function sendCareConcern(req, res) {
   try {
@@ -39,6 +89,7 @@ export async function sendCareConcern(req, res) {
 
     const doctorAssignment = await DoctorPatientAssignment.findOne({
       where: { patientId, status: 'active' },
+      order: [['updatedAt', 'DESC']],
     });
 
     if (!doctorAssignment) {
@@ -49,24 +100,7 @@ export async function sendCareConcern(req, res) {
 
     const doctorId = doctorAssignment.doctorId;
 
-    const existingConversation = await Conversation.findOne({
-      include: [
-        {
-          model: ConversationParticipant,
-          as: 'participants',
-          where: { userId: caregiverId },
-          required: true,
-        },
-      ],
-    }).then(async (conv) => {
-      if (!conv) return null;
-      const hasDoctor = await ConversationParticipant.findOne({
-        where: { conversationId: conv.id, userId: doctorId },
-      });
-      return hasDoctor ? conv : null;
-    });
-
-    let conversation = existingConversation;
+    let conversation = await findDirectConversation(caregiverId, doctorId);
     if (!conversation) {
       conversation = await Conversation.create({});
       await ConversationParticipant.bulkCreate([
@@ -75,13 +109,15 @@ export async function sendCareConcern(req, res) {
       ]);
     }
 
-    const messageBody = JSON.stringify({
-      type: 'care_concern',
-      concern: concernText,
-      context: typeof context === 'string' ? context.trim() : null,
-      patientId,
-      sentByCaregiver: true,
-    });
+    const contextText = typeof context === 'string' ? context.trim() : '';
+    const messageBody = [
+      'Care concern from caregiver',
+      `Patient ID: ${patientId}`,
+      `Concern: ${concernText}`,
+      contextText ? `Context: ${contextText}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
 
     const message = await Message.create({
       conversationId: conversation.id,
@@ -96,7 +132,7 @@ export async function sendCareConcern(req, res) {
         id: message.id,
         type: 'care_concern',
         concern: concernText,
-        context: typeof context === 'string' ? context.trim() : null,
+        context: contextText || null,
         patientId,
         sentAt: message.createdAt,
       },

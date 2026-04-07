@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import { apiUrl, authHeaders, getUser } from "../api/http";
 import { getMyAppointments } from "../api/appointments";
-import { getConversations } from "../api/messaging";
+import { getConversationMessages, getConversations } from "../api/messaging";
 import { getDoctorLinkRequests, getMyCaregivers, getMyDoctors } from "../api/links";
 import { buildPatientSetupChecklist } from "../utils/patientSetup";
 import { formatDoseTime, getNextMedicationDose, isActiveMedication } from "../utils/medicationSchedule";
@@ -43,11 +43,63 @@ function DashboardCard({ title, mainText, subText, navPage }) {
   );
 }
 
+function lastSeenStorageKey(userId) {
+  return `healio:messages:lastSeenByConversation:${userId || "unknown"}`;
+}
+
+function readLastSeenMap(userId) {
+  if (!userId || typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(lastSeenStorageKey(userId));
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function countUnreadMessages(conversations, currentUserId) {
+  if (!currentUserId || !Array.isArray(conversations) || conversations.length === 0) return 0;
+
+  const lastSeenMap = readLastSeenMap(currentUserId);
+  const candidateConversations = conversations.filter((conversation) => {
+    const lastMessage = conversation?.lastMessage;
+    if (!lastMessage?.sentAt) return false;
+    if (lastMessage.sender?.id === currentUserId) return false;
+
+    const seenAt = lastSeenMap[conversation.id];
+    return !seenAt || new Date(lastMessage.sentAt).getTime() > new Date(seenAt).getTime();
+  });
+
+  if (!candidateConversations.length) return 0;
+
+  const messageResults = await Promise.allSettled(
+    candidateConversations.map((conversation) => getConversationMessages(conversation.id))
+  );
+
+  let unreadTotal = 0;
+  messageResults.forEach((result, index) => {
+    if (result.status !== "fulfilled") return;
+
+    const conversationId = candidateConversations[index]?.id;
+    const seenAt = lastSeenMap[conversationId];
+    const seenTime = seenAt ? new Date(seenAt).getTime() : 0;
+
+    unreadTotal += (result.value.messages || []).filter((message) => {
+      if (!message?.sentAt) return false;
+      if (message.sender?.id === currentUserId) return false;
+      return new Date(message.sentAt).getTime() > seenTime;
+    }).length;
+  });
+
+  return unreadTotal;
+}
+
 export default function DashboardPatient() {
   const navigate = useNavigate();
   const user = getUser();
   const [appointments, setAppointments] = useState([]);
-  const [conversationCount, setConversationCount] = useState(0);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const [medications, setMedications] = useState([]);
   const [symptoms, setSymptoms] = useState([]);
   const [profile, setProfile] = useState({});
@@ -120,9 +172,13 @@ export default function DashboardPatient() {
       setAppointments(
         appointmentsResult.status === "fulfilled" ? appointmentsResult.value.appointments || [] : []
       );
-      setConversationCount(
-        conversationsResult.status === "fulfilled" ? (conversationsResult.value.conversations || []).length : 0
-      );
+      if (conversationsResult.status === "fulfilled") {
+        const conversationList = conversationsResult.value.conversations || [];
+        const unreadCount = await countUnreadMessages(conversationList, user?.id);
+        setUnreadMessageCount(unreadCount);
+      } else {
+        setUnreadMessageCount(0);
+      }
       setMedications(
         medicationsResult.status === "fulfilled" && Array.isArray(medicationsResult.value)
           ? medicationsResult.value
@@ -276,8 +332,8 @@ export default function DashboardPatient() {
           />
           <DashboardCard
             title="Updates & Communication"
-            mainText={`${conversationCount}`}
-            subText="Check care updates and secure chats"
+            mainText={`${unreadMessageCount}`}
+            subText="New unread messages"
             navPage="/patientMessages"
           />
           <DashboardCard
@@ -329,6 +385,22 @@ export default function DashboardPatient() {
               ) : (
                 <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
                   No appointment requests yet. Link a doctor, then request your first visit.
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => navigate("/care-team")}
+                      className="rounded-xl bg-sky-100 px-3 py-2 text-xs font-semibold text-sky-700 hover:bg-sky-200 transition"
+                    >
+                      Link a doctor
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/patientAppointments")}
+                      className="rounded-xl bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-200 transition"
+                    >
+                      Request appointment
+                    </button>
+                  </div>
                 </div>
               )}
               {remainingAppointmentCount > 0 ? (
@@ -398,8 +470,8 @@ export default function DashboardPatient() {
                   <p className="mt-1 text-lg font-bold text-slate-900">{pendingDoctorRequestCount}</p>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Conversations</p>
-                  <p className="mt-1 text-lg font-bold text-slate-900">{conversationCount}</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Unread messages</p>
+                  <p className="mt-1 text-lg font-bold text-slate-900">{unreadMessageCount}</p>
                 </div>
               </div>
             </section>
@@ -408,8 +480,6 @@ export default function DashboardPatient() {
               <h2 className="text-xl font-semibold text-slate-900">Quick actions</h2>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {[
-                  { label: "Health summary", href: "/healthSummary", style: "bg-sky-100 text-sky-700" },
-                  { label: "Notification center", href: "/patient-notifications", style: "bg-indigo-100 text-indigo-700" },
                   {
                     label: profileCompletion.complete
                       ? "Profile complete"

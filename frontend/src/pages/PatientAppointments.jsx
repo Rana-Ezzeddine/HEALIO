@@ -7,6 +7,7 @@ import {
   getMyAppointments,
   getRequestableDoctors,
 } from "../api/appointments";
+import { readSafePrefill, writeSafePrefill } from "../utils/safePrefill";
 
 function formatDateTimeParts(dateLike) {
   const date = new Date(dateLike);
@@ -40,22 +41,38 @@ function doctorDisplayName(appointment) {
 
 export default function PatientAppointments() {
   const navigate = useNavigate();
+  const patientAppointmentsPrefill = readSafePrefill("patient-appointments", {
+    doctorId: "",
+    duration: "30",
+    location: "",
+    notes: "",
+  });
   const [appointments, setAppointments] = useState([]);
   const [requestableDoctors, setRequestableDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [requestError, setRequestError] = useState("");
+  const [requestSuccess, setRequestSuccess] = useState("");
   const [requestLoading, setRequestLoading] = useState(false);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [availableSlots, setAvailableSlots] = useState([]);
   const [form, setForm] = useState({
-    doctorId: "",
+    doctorId: patientAppointmentsPrefill.doctorId || "",
     date: "",
     timeSlot: "",
-    duration: "30",
-    location: "",
-    notes: "",
+    duration: patientAppointmentsPrefill.duration || "30",
+    location: patientAppointmentsPrefill.location || "",
+    notes: patientAppointmentsPrefill.notes || "",
   });
+
+  useEffect(() => {
+    writeSafePrefill("patient-appointments", {
+      doctorId: form.doctorId,
+      duration: form.duration,
+      location: form.location.trim(),
+      notes: form.notes.trim(),
+    });
+  }, [form.doctorId, form.duration, form.location, form.notes]);
 
   async function loadAppointmentsPage() {
     setLoading(true);
@@ -126,6 +143,20 @@ export default function PatientAppointments() {
     };
   }, [form.date, form.doctorId, form.duration]);
 
+  useEffect(() => {
+    if (!availableSlots.length) {
+      if (form.timeSlot) {
+        setForm((current) => ({ ...current, timeSlot: "" }));
+      }
+      return;
+    }
+
+    const hasSelectedSlot = availableSlots.some((slot) => slot.startsAt === form.timeSlot);
+    if (!hasSelectedSlot) {
+      setForm((current) => ({ ...current, timeSlot: availableSlots[0].startsAt }));
+    }
+  }, [availableSlots, form.timeSlot]);
+
   const requestedCount = useMemo(
     () => appointments.filter((appointment) => appointment.status === "requested").length,
     [appointments]
@@ -144,6 +175,7 @@ export default function PatientAppointments() {
   async function handleRequestAppointment(event) {
     event.preventDefault();
     setRequestError("");
+    setRequestSuccess("");
 
     if (!form.doctorId || !form.date || !form.timeSlot) {
       setRequestError("Select doctor, date, and an available time slot.");
@@ -180,15 +212,12 @@ export default function PatientAppointments() {
         notes: form.notes,
       });
 
-      setForm({
-        doctorId: "",
-        date: "",
+      setForm((current) => ({
+        ...current,
         timeSlot: "",
-        duration: "30",
-        location: "",
-        notes: "",
-      });
+      }));
       await loadAppointmentsPage();
+      setRequestSuccess("Appointment request sent successfully. You will see doctor response in status updates.");
     } catch (err) {
       setRequestError(err.message || "Failed to submit appointment request.");
     } finally {
@@ -237,7 +266,7 @@ export default function PatientAppointments() {
               onClick={() => navigate("/patientMessages")}
               className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
             >
-              Message Caregiver
+              Open updates & communication
             </button>
           </div>
 
@@ -332,13 +361,19 @@ export default function PatientAppointments() {
 
           {requestableDoctors.length === 0 && (
             <p className="mt-3 text-sm text-amber-700">
-              No assigned doctors found for this patient account.
+              No assigned doctors found for this patient account. Link a doctor from Care Team first, then request an appointment here.
             </p>
           )}
 
           {requestError && (
             <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {requestError}
+            </div>
+          )}
+
+          {requestSuccess && (
+            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              {requestSuccess}
             </div>
           )}
         </section>
@@ -404,7 +439,7 @@ export default function PatientAppointments() {
                 ) : (
                   <tr>
                     <td colSpan={6} className="py-6 px-4 text-center text-slate-500">
-                      No appointments found.
+                      No appointments found. Send your first request above after selecting a linked doctor.
                     </td>
                   </tr>
                 )}

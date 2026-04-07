@@ -366,7 +366,7 @@ export default function DoctorPatients() {
             </div>
           </div>
 
-          <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="mt-5 grid gap-4">
             <input
               type="text"
               value={searchTerm}
@@ -374,10 +374,7 @@ export default function DoctorPatients() {
               placeholder="Search by patient name, email, or symptom"
               className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
             />
-            <div className="rounded-2xl border border-sky-100 bg-gradient-to-r from-sky-50 to-cyan-50 px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700">Clinical urgency engine</p>
-              <p className="mt-1 text-sm text-slate-700">Patients are ranked by a deterministic review-priority engine using emergency status, symptom severity and recency, symptom frequency, diagnosis burden, medication burden, and follow-up timing. Doctors can review and override the score.</p>
-            </div>
+            <p className="text-xs text-slate-500">Showing a clean clinical snapshot. Open review tools only when you need urgency overrides.</p>
           </div>
 
           <div className="mt-5 space-y-3">
@@ -385,11 +382,11 @@ export default function DoctorPatients() {
               <p className="text-sm text-slate-500">Loading...</p>
             ) : assignedPatients.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-200 px-6 py-8 text-center text-sm text-slate-500">
-                No patients linked yet.
+                No patients linked yet. Open Link Requests from the doctor navigation to approve a patient first.
               </div>
             ) : filteredPatients.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-200 px-6 py-8 text-center text-sm text-slate-500">
-                No patients match the current search.
+                No patients match the current search. Clear or adjust the search and urgency filters to see more results.
               </div>
             ) : (
               filteredPatients.map((record) => {
@@ -434,10 +431,9 @@ export default function DoctorPatients() {
                           <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
                             <div className={`h-full rounded-full bg-gradient-to-r ${urgencyBarClasses}`} style={{ width: `${urgency.effectiveScore ?? urgency.score}%` }} />
                           </div>
-                          <p className="mt-2 text-[11px] text-slate-500">{urgency.reasons.join(" • ")}</p>
                         </div>
                       </div>
-                      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                          <div className="mt-3 grid gap-2 sm:grid-cols-2">
                         <div className="rounded-xl bg-slate-50 px-3 py-2">
                           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Latest symptom</p>
                           <p className="mt-1 text-sm font-semibold text-slate-900">{snapshot.latestSymptom?.name || "No recent symptom"}</p>
@@ -450,26 +446,20 @@ export default function DoctorPatients() {
                           <p className="mt-1 text-sm font-semibold text-slate-900">{snapshot.nextAppointmentAt ? formatDateTime(snapshot.nextAppointmentAt) : "Not scheduled"}</p>
                           <p className="mt-1 text-xs text-slate-500">{snapshot.nextAppointmentAt ? "Follow-up on calendar" : "No visit booked"}</p>
                         </div>
-                        <div className="rounded-xl bg-slate-50 px-3 py-2">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Meds count</p>
-                          <p className="mt-1 text-sm font-semibold text-slate-900">{snapshot.activeMedicationCount || 0} active</p>
-                          <p className="mt-1 text-xs text-slate-500">{snapshot.activeDiagnosisCount || 0} active diagnoses</p>
-                        </div>
-                        <div className="rounded-xl bg-slate-50 px-3 py-2">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">AI recommendation</p>
-                          <p className="mt-1 text-sm font-semibold text-sky-700">
-                            {urgency.recommendedAction || ((urgency.effectiveLevel || urgency.level) === "critical" ? "Review immediately" : (urgency.effectiveLevel || urgency.level) === "needs_review" ? "Check soon" : "Routine follow-up")}
-                          </p>
-                        </div>
                       </div>
-                      <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                          <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-3 py-3">
                         <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
-                            <span>Model: deterministic-v1</span>
-                            {record.calculatedAt ? <span>Calculated {formatDateTime(record.calculatedAt)}</span> : null}
-                            {record.review?.reviewedAt ? <span>Reviewed {formatDateTime(record.review.reviewedAt)}</span> : null}
-                            {urgency.override?.overriddenAt ? <span>Override {formatDateTime(urgency.override.overriddenAt)}</span> : null}
-                          </div>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  rememberDoctorPatientTab({ id: patientId, name: displayName });
+                                  navigate(`/doctor-patients/${patientId}`);
+                                }}
+                                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                              >
+                                Open patient chart
+                              </button>
                           <button
                             type="button"
                             onClick={(event) => {
@@ -484,6 +474,22 @@ export default function DoctorPatients() {
 
                         {expandedReviewPatientId === patientId ? (
                           <div className="mt-3 space-y-3">
+                            <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+                              <div className="flex flex-wrap items-center gap-3">
+                                <span>Meds: {snapshot.activeMedicationCount || 0} active</span>
+                                <span>Diagnoses: {snapshot.activeDiagnosisCount || 0} active</span>
+                                <span>
+                                  Recommendation: {urgency.recommendedAction || ((urgency.effectiveLevel || urgency.level) === "critical" ? "Review immediately" : (urgency.effectiveLevel || urgency.level) === "needs_review" ? "Check soon" : "Routine follow-up")}
+                                </span>
+                              </div>
+                              <div className="mt-2 flex flex-wrap items-center gap-3">
+                                <span>Model: deterministic-v1</span>
+                                {record.calculatedAt ? <span>Calculated {formatDateTime(record.calculatedAt)}</span> : null}
+                                {record.review?.reviewedAt ? <span>Reviewed {formatDateTime(record.review.reviewedAt)}</span> : null}
+                                {urgency.override?.overriddenAt ? <span>Override {formatDateTime(urgency.override.overriddenAt)}</span> : null}
+                              </div>
+                              {urgency.reasons?.length ? <p className="mt-2">Reasons: {urgency.reasons.join(" • ")}</p> : null}
+                            </div>
                             <div className="flex flex-wrap items-center gap-2">
                               <button
                                 type="button"

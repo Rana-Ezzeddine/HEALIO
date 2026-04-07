@@ -390,7 +390,7 @@ export default function PatientNotificationCenter() {
 
           {!loading && !error && filteredNotifications.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">
-              No notifications in this category.
+              No notifications in this category. Switch to All or refresh after your next care action.
             </div>
           ) : null}
 

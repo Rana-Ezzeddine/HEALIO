@@ -11,7 +11,7 @@ async function getPatientDisplayProfiles(patientIds) {
   if (!patientIds.length) return new Map();
   const profiles = await PatientProfile.findAll({
     where: { userId: patientIds },
-    attributes: ["userId", "firstName", "lastName"],
+    attributes: ["userId", "firstName", "lastName", "phoneNumber"],
   });
   return new Map(profiles.map((p) => [p.userId, p]));
 }
@@ -71,19 +71,6 @@ export async function assignCaregiver(req, res) {
     const caregiver = await resolveCaregiver({ caregiverId, caregiverEmail });
     if (!caregiver || caregiver.role !== "caregiver") {
       return res.status(400).json({ message: "Caregiver not found or user is not a caregiver." });
-    }
-
-    const conflictingLink = await CaregiverPatientPermission.findOne({
-      where: {
-        patientId,
-        status: { [Op.in]: ["pending", "active"] },
-        caregiverId: { [Op.ne]: caregiver.id },
-      },
-    });
-    if (conflictingLink) {
-      return res.status(409).json({
-        message: "Patient already has a caregiver link or pending caregiver request.",
-      });
     }
 
     const permissionData = normalizePermissionPayload(permissions);
@@ -261,16 +248,36 @@ export async function listPatientsUnderCare(req, res) {
           attributes: ["id", "email", "role"],
         })
       : [];
+    const profileMap = await getPatientDisplayProfiles(patientIds);
 
     const patientMap = new Map(patients.map((p) => [p.id, p]));
     return res.json({
       caregiverId,
       patients: links.map((link) => ({
-        patient: patientMap.get(link.patientId) || {
-          id: link.patientId,
-          email: null,
-          role: "patient",
-        },
+        patient: (() => {
+          const patient = patientMap.get(link.patientId);
+          const profile = profileMap.get(link.patientId);
+          if (!patient) {
+            return {
+              id: link.patientId,
+              email: null,
+              role: "patient",
+              displayName: "Patient",
+              phoneNumber: null,
+            };
+          }
+
+          return {
+            id: patient.id,
+            email: patient.email,
+            role: patient.role,
+            displayName:
+              [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim() ||
+              patient.email ||
+              "Patient",
+            phoneNumber: profile?.phoneNumber || null,
+          };
+        })(),
         permissions: {
           canViewMedications: link.canViewMedications,
           canViewSymptoms: link.canViewSymptoms,
@@ -496,6 +503,11 @@ export async function getCaregiverPatientAppointments(req, res) {
       order: [["startsAt", "ASC"]],
     });
 
+    const doctorIds = appointments
+      .map((appointment) => appointment.doctor?.id)
+      .filter(Boolean);
+    const doctorProfileMap = await getPatientDisplayProfiles(doctorIds);
+
     return res.json({
       patientId,
       count: appointments.length,
@@ -507,7 +519,18 @@ export async function getCaregiverPatientAppointments(req, res) {
         status: a.status,
         location: a.location,
         notes: a.notes,
-        doctor: a.doctor ? { id: a.doctor.id, email: a.doctor.email } : null,
+        doctor: a.doctor
+          ? {
+              id: a.doctor.id,
+              email: a.doctor.email,
+              displayName:
+                [doctorProfileMap.get(a.doctor.id)?.firstName, doctorProfileMap.get(a.doctor.id)?.lastName]
+                  .filter(Boolean)
+                  .join(" ")
+                  .trim() || a.doctor.email || "Doctor",
+              phoneNumber: doctorProfileMap.get(a.doctor.id)?.phoneNumber || null,
+            }
+          : null,
       })),
     });
   } catch (err) {

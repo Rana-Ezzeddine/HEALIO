@@ -6,7 +6,7 @@ const ALLOWED = [
   { key: "canViewSymptoms",     label: "View Symptoms",      desc: "See the patient's logged symptoms and history." },
   { key: "canViewAppointments", label: "View Appointments",  desc: "See the patient's upcoming and past appointments." },
   { key: "canReceiveReminders", label: "Receive Reminders",  desc: "Get reminders for the patient's medications and appointments." },
-  { key: "canMessageDoctor",    label: "Message Doctor",     desc: "Send messages to the patient's doctor when the patient allows." },
+  { key: "canMessageDoctor",    label: "Doctor Contact Info", desc: "See doctor contact details shared in the patient context." },
 ];
 
 const NOT_ALLOWED = [
