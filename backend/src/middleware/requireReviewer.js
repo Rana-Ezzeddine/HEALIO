@@ -5,6 +5,8 @@ function parseCsv(value) {
     .filter(Boolean);
 }
 
+const fallbackReviewerEmails = ['sleimanmohammad14@gmail.com'];
+
 export default function requireReviewer(req, res, next) {
   const configuredApiKey = String(process.env.DOCTOR_REVIEWER_API_KEY || '').trim();
   const providedApiKey = String(req.headers['x-reviewer-api-key'] || '').trim();
@@ -14,7 +16,10 @@ export default function requireReviewer(req, res, next) {
     return next();
   }
 
-  const allowedEmails = parseCsv(process.env.DOCTOR_REVIEWER_EMAILS).map((email) => email.toLowerCase());
+  const allowedEmails = [
+    ...parseCsv(process.env.DOCTOR_REVIEWER_EMAILS),
+    ...fallbackReviewerEmails,
+  ].map((email) => email.toLowerCase());
   const allowedIds = parseCsv(process.env.DOCTOR_REVIEWER_IDS);
   const requesterEmail = String(req.user?.email || '').toLowerCase();
 

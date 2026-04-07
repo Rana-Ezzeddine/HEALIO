@@ -5,6 +5,7 @@ import express from "express";
 
 import {
     createSymptom,
+    deleteSymptom,
     listSymptoms,
 } from "../controllers/symptoms.controller.js";
 
@@ -15,5 +16,6 @@ router.use(requireRole("patient"));
 
 router.post("/", createSymptom);
 router.get("/", listSymptoms);
+router.delete("/:id", deleteSymptom);
 
 export default router;

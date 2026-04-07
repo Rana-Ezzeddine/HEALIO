@@ -29,6 +29,12 @@ export function createSymptom(payload) {
   });
 }
 
+export function deleteSymptom(id) {
+  return request(`/api/symptoms/${id}`, {
+    method: "DELETE",
+  });
+}
+
 export function filterSymptoms(params) {
   const query = new URLSearchParams();
 

@@ -67,3 +67,26 @@ export async function listSymptoms(req, res) {
         return res.status(500).json({ message: "Failed to fetch symptoms" });
     }
 }
+
+export async function deleteSymptom(req, res) {
+  try {
+    const patientId = getUserKey(req);
+    if (!patientId) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    const symptom = await Symptom.findOne({
+      where: { id: req.params.id, patientId },
+    });
+
+    if (!symptom) {
+      return res.status(404).json({ message: "Symptom not found" });
+    }
+
+    await symptom.destroy();
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Error deleting symptom:", error);
+    return res.status(500).json({ message: "Failed to delete symptom" });
+  }
+}
