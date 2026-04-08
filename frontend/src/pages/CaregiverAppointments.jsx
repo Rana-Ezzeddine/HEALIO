@@ -52,7 +52,6 @@ export default function CaregiverAppointments() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Request appointment modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form, setForm] = useState({ startsAt: "", endsAt: "", location: "", notes: "" });
   const [requestMessage, setRequestMessage] = useState(null);
@@ -88,7 +87,6 @@ export default function CaregiverAppointments() {
     return () => { cancelled = true; };
   }, []);
 
-  // Load patient's appointments when activePatientId changes
   useEffect(() => {
     if (!activePatientId) return;
 
@@ -208,4 +206,250 @@ export default function CaregiverAppointments() {
         )}
 
         {requestMessage && (
-          <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sk
+          <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-700">
+            {requestMessage}
+          </div>
+        )}
+
+        {loading ? (
+          <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-8 text-sm text-slate-500 shadow-sm">
+            Loading caregiver appointments...
+          </section>
+        ) : linkedPatients.length === 0 ? (
+          <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+            <h2 className="text-xl font-semibold text-slate-900">No linked patients yet</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Accept a patient invitation first to unlock appointment visibility.
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate("/caregiverAcceptInvite")}
+              className="mt-5 rounded-2xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-600"
+            >
+              Enter patient invite link
+            </button>
+          </section>
+        ) : (
+          <>
+            {/* Permission notice + Request button */}
+            <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div>
+                  <h2 className="text-xl font-semibold text-slate-900">Upcoming appointments</h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    What is scheduled next for this patient.
+                  </p>
+                  {/* Permission state explanation */}
+                  {!canViewAppointments && (
+                    <p className="mt-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                      This patient has not granted appointment visibility. Ask them
+                      to enable it from their Care Team settings.
+                    </p>
+                  )}
+                </div>
+
+                {/*request appointment button
+                    Shown when canViewAppointments is true */}
+                {canViewAppointments && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRequestMessage(null);
+                      setIsModalOpen(true);
+                    }}
+                    className="rounded-2xl bg-sky-500 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-600"
+                  >
+                    + Request Appointment
+                  </button>
+                )}
+              </div>
+
+              {canViewAppointments && (
+                <div className="mt-5 space-y-3">
+                  {upcomingAppointments.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 px-6 py-8 text-center text-sm text-slate-500">
+                      No upcoming appointments in this patient context.
+                    </div>
+                  ) : (
+                    upcomingAppointments.map((appointment) => {
+                      const dt = formatDateTimeParts(appointment.startsAt);
+                      return (
+                        <article
+                          key={appointment.id}
+                          className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                        >
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                                {dt.date}
+                              </p>
+                              <p className="mt-1 text-lg font-semibold text-slate-900">{dt.time}</p>
+                              <p className="mt-1 text-sm text-slate-600">
+                                With {doctorLabel(appointment)}
+                              </p>
+                              {appointment.location && (
+                                <p className="mt-1 text-sm text-slate-500">
+                                  Location: {appointment.location}
+                                </p>
+                              )}
+                            </div>
+                            <span
+                              className={`h-fit rounded-full px-3 py-1 text-xs font-semibold ${statusClass(appointment.status)}`}
+                            >
+                              {statusLabel(appointment.status)}
+                            </span>
+                          </div>
+                          {appointment.notes && (
+                            <p className="mt-3 rounded-xl bg-white px-3 py-2 text-sm text-slate-600">
+                              {appointment.notes}
+                            </p>
+                          )}
+                        </article>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </section>
+
+            {/* Past appointments */}
+            {canViewAppointments && (
+              <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="text-xl font-semibold text-slate-900">Recent history</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Completed or past appointment records for reference.
+                </p>
+                <div className="mt-5 space-y-3">
+                  {pastAppointments.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 px-6 py-8 text-center text-sm text-slate-500">
+                      No past appointments found.
+                    </div>
+                  ) : (
+                    pastAppointments.slice(0, 8).map((appointment) => {
+                      const dt = formatDateTimeParts(appointment.startsAt);
+                      return (
+                        <article
+                          key={appointment.id}
+                          className="rounded-2xl border border-slate-200 p-4"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <p className="font-medium text-slate-900">
+                                {dt.date} at {dt.time}
+                              </p>
+                              <p className="text-sm text-slate-500">
+                                With {doctorLabel(appointment)}
+                              </p>
+                            </div>
+                            <span
+                              className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClass(appointment.status)}`}
+                            >
+                              {statusLabel(appointment.status)}
+                            </span>
+                          </div>
+                        </article>
+                      );
+                    })
+                  )}
+                </div>
+              </section>
+            )}
+          </>
+        )}
+      </main>
+
+      {/* Request Appointment Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-slate-900">Request Appointment</h2>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-sm text-slate-500 mb-5">
+              Requesting on behalf of <strong>{patientLabel(activePatientRecord)}</strong>.
+              The doctor will review and confirm.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Start Time
+                </label>
+                <input
+                  type="datetime-local"
+                  value={form.startsAt}
+                  onChange={(e) => setForm((f) => ({ ...f, startsAt: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  End Time
+                </label>
+                <input
+                  type="datetime-local"
+                  value={form.endsAt}
+                  onChange={(e) => setForm((f) => ({ ...f, endsAt: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Location (optional)
+                </label>
+                <input
+                  type="text"
+                  value={form.location}
+                  onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
+                  placeholder="Clinic name or address"
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Notes (optional)
+                </label>
+                <textarea
+                  value={form.notes}
+                  onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                  rows={2}
+                  placeholder="Reason for visit or any context for the doctor..."
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 resize-none"
+                />
+              </div>
+            </div>
+
+            {requestMessage && (
+              <p className="mt-3 text-sm text-red-600">{requestMessage}</p>
+            )}
+
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="flex-1 rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleRequest}
+                disabled={requesting}
+                className="flex-1 rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 transition disabled:opacity-40"
+              >
+                {requesting ? "Requesting..." : "Request Appointment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
