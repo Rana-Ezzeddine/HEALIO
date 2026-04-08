@@ -1,9 +1,16 @@
 const STORAGE_KEY = "healio.safe-prefill.v1";
 
-function loadStore() {
+function getStorage(scope) {
+  if (typeof window === "undefined") return null;
+  return scope === "auth" ? window.sessionStorage : window.localStorage;
+}
+
+function loadStore(scope) {
   if (typeof window === "undefined") return {};
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const storage = getStorage(scope);
+    if (!storage) return {};
+    const raw = storage.getItem(STORAGE_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === "object" ? parsed : {};
@@ -12,10 +19,11 @@ function loadStore() {
   }
 }
 
-function saveStore(value) {
+function saveStore(scope, value) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
+    const storage = getStorage(scope);
+    storage?.setItem(STORAGE_KEY, JSON.stringify(value));
   } catch {
     // Ignore storage write errors (private mode, quota limits, etc.)
   }
@@ -32,13 +40,13 @@ function sanitizeValue(value) {
 }
 
 export function readSafePrefill(scope, defaults = {}) {
-  const store = loadStore();
+  const store = loadStore(scope);
   const scopeData = store[scope] && typeof store[scope] === "object" ? store[scope] : {};
   return { ...defaults, ...scopeData };
 }
 
 export function writeSafePrefill(scope, values = {}) {
-  const store = loadStore();
+  const store = loadStore(scope);
   const current = store[scope] && typeof store[scope] === "object" ? store[scope] : {};
   const next = { ...current };
 
@@ -52,16 +60,16 @@ export function writeSafePrefill(scope, values = {}) {
   }
 
   store[scope] = next;
-  saveStore(store);
+  saveStore(scope, store);
 }
 
 export function clearSafePrefill(scope, keys = []) {
-  const store = loadStore();
+  const store = loadStore(scope);
   if (!store[scope]) return;
 
   if (!Array.isArray(keys) || keys.length === 0) {
     delete store[scope];
-    saveStore(store);
+    saveStore(scope, store);
     return;
   }
 
@@ -69,5 +77,5 @@ export function clearSafePrefill(scope, keys = []) {
     delete store[scope][key];
   }
 
-  saveStore(store);
+  saveStore(scope, store);
 }

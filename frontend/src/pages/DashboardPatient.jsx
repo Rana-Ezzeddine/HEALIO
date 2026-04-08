@@ -25,6 +25,39 @@ function formatAppointmentTime(dateLike) {
   return new Date(dateLike).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+function formatDateTime(dateLike) {
+  if (!dateLike) return "Not recorded";
+  const parsed = new Date(dateLike);
+  if (Number.isNaN(parsed.getTime())) return "Not recorded";
+  return parsed.toLocaleString();
+}
+
+function formatDateOnly(dateLike) {
+  if (!dateLike) return "Not recorded";
+  const parsed = new Date(dateLike);
+  if (Number.isNaN(parsed.getTime())) return "Not recorded";
+  return parsed.toLocaleDateString();
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function formatEmergencyContact(contact) {
+  if (!contact || typeof contact !== "object") return "Not recorded";
+  const parts = [
+    contact.name,
+    contact.relationship ? `(${contact.relationship})` : "",
+    contact.phoneNumber || contact.phone,
+  ].filter(Boolean);
+  return parts.length ? parts.join(" ") : "Not recorded";
+}
+
 function doctorName(appointment) {
   return appointment.doctor?.displayName || appointment.doctor?.email || "Doctor";
 }
@@ -520,44 +553,350 @@ export default function DashboardPatient() {
     const popup = window.open("", "_blank", "width=900,height=700");
     if (!popup) return;
 
+    const fullName =
+      [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim() ||
+      [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() ||
+      user?.email ||
+      "Patient";
+
+    const activeMedicationsForReport = medications.filter((item) => isActiveMedication(item));
+    const medicationRows = (activeMedicationsForReport.length ? activeMedicationsForReport : medications)
+      .map((medication) => {
+        const schedule = Array.isArray(medication.scheduleTimes) && medication.scheduleTimes.length
+          ? medication.scheduleTimes.join(", ")
+          : medication.scheduleTime || medication.time || "Not recorded";
+        const duration = [
+          medication.startDate ? `Start: ${formatDateOnly(medication.startDate)}` : null,
+          medication.endDate ? `End: ${formatDateOnly(medication.endDate)}` : null,
+        ].filter(Boolean).join(" | ") || "No start or end date recorded";
+
+        return `
+          <tr>
+            <td>${escapeHtml(medication.name || "Medication")}</td>
+            <td>${escapeHtml(medication.dosage || "Not recorded")}</td>
+            <td>${escapeHtml(medication.frequency || "Not recorded")}</td>
+            <td>${escapeHtml(schedule)}</td>
+            <td>${escapeHtml(duration)}</td>
+            <td>${escapeHtml(medication.instructions || medication.notes || "No extra notes")}</td>
+          </tr>
+        `;
+      })
+      .join("");
+
+    const symptomRows = [...symptoms]
+      .sort((left, right) => new Date(right.loggedAt || right.createdAt || 0) - new Date(left.loggedAt || left.createdAt || 0))
+      .slice(0, 12)
+      .map((symptom) => `
+        <tr>
+          <td>${escapeHtml(symptom.symptom || symptom.name || "Symptom")}</td>
+          <td>${escapeHtml(symptom.severity || "Not recorded")}</td>
+          <td>${escapeHtml(formatDateTime(symptom.loggedAt || symptom.createdAt))}</td>
+          <td>${escapeHtml(symptom.notes || symptom.note || "No notes")}</td>
+        </tr>
+      `)
+      .join("");
+
+    const appointmentRows = [...appointments]
+      .sort((left, right) => new Date(right.startsAt || right.createdAt || 0) - new Date(left.startsAt || left.createdAt || 0))
+      .slice(0, 12)
+      .map((appointment) => `
+        <tr>
+          <td>${escapeHtml(doctorName(appointment))}</td>
+          <td>${escapeHtml(formatDateTime(appointment.startsAt))}</td>
+          <td>${escapeHtml(appointment.status || "Not recorded")}</td>
+          <td>${escapeHtml(appointment.location || "Not recorded")}</td>
+          <td>${escapeHtml(appointment.notes || "No notes")}</td>
+        </tr>
+      `)
+      .join("");
+
+    const summaryStats = [
+      { label: "Active medications", value: String(activeMedicationsForReport.length) },
+      { label: "Total symptom logs", value: String(symptoms.length) },
+      { label: "Appointments", value: String(appointments.length) },
+      { label: "Linked doctors", value: String(doctorCount) },
+    ]
+      .map(
+        (item) => `
+          <div class="stat-card">
+            <div class="stat-label">${escapeHtml(item.label)}</div>
+            <div class="stat-value">${escapeHtml(item.value)}</div>
+          </div>
+        `
+      )
+      .join("");
+
     const html = `
       <html>
         <head>
           <title>HEALIO Health Summary</title>
           <style>
-            body { font-family: Arial, sans-serif; margin: 32px; color: #0f172a; }
-            h1 { margin-bottom: 8px; }
-            h2 { margin-top: 28px; margin-bottom: 10px; font-size: 18px; }
-            p, li { line-height: 1.5; font-size: 14px; }
-            ul { padding-left: 18px; }
-            .card { border: 1px solid #cbd5e1; border-radius: 16px; padding: 16px; margin-bottom: 14px; }
-            .muted { color: #475569; }
+            * { box-sizing: border-box; }
+            body {
+              font-family: Arial, sans-serif;
+              margin: 0;
+              padding: 30px;
+              color: #0f172a;
+              background: #f8fafc;
+            }
+            .report {
+              max-width: 980px;
+              margin: 0 auto;
+              background: white;
+              border: 1px solid #dbe7f2;
+              border-radius: 24px;
+              overflow: hidden;
+            }
+            .hero {
+              padding: 28px 32px;
+              background: linear-gradient(135deg, #0f172a 0%, #0f4c81 55%, #0ea5e9 100%);
+              color: white;
+            }
+            .hero h1 { margin: 0; font-size: 30px; }
+            .hero p { margin: 8px 0 0; font-size: 14px; color: rgba(255,255,255,0.84); }
+            .meta {
+              display: grid;
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+              gap: 12px;
+              margin-top: 18px;
+            }
+            .meta-card {
+              padding: 14px 16px;
+              border: 1px solid rgba(255,255,255,0.18);
+              border-radius: 16px;
+              background: rgba(255,255,255,0.08);
+            }
+            .meta-label {
+              font-size: 11px;
+              text-transform: uppercase;
+              letter-spacing: 0.16em;
+              opacity: 0.8;
+            }
+            .meta-value {
+              margin-top: 6px;
+              font-size: 15px;
+              font-weight: 700;
+            }
+            .content { padding: 28px 32px 34px; }
+            .stats {
+              display: grid;
+              grid-template-columns: repeat(4, minmax(0, 1fr));
+              gap: 12px;
+              margin-bottom: 22px;
+            }
+            .stat-card {
+              border: 1px solid #dbe7f2;
+              border-radius: 18px;
+              padding: 14px 16px;
+              background: #f8fbff;
+            }
+            .stat-label {
+              font-size: 11px;
+              text-transform: uppercase;
+              letter-spacing: 0.14em;
+              color: #64748b;
+            }
+            .stat-value {
+              margin-top: 6px;
+              font-size: 24px;
+              font-weight: 700;
+              color: #0f172a;
+            }
+            .section {
+              margin-top: 18px;
+              border: 1px solid #e2e8f0;
+              border-radius: 20px;
+              padding: 20px;
+              background: #ffffff;
+            }
+            .section h2 {
+              margin: 0 0 14px;
+              font-size: 18px;
+              color: #0f172a;
+            }
+            .details-grid {
+              display: grid;
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+              gap: 12px;
+            }
+            .detail {
+              border: 1px solid #e2e8f0;
+              border-radius: 14px;
+              padding: 12px 14px;
+              background: #f8fafc;
+            }
+            .detail-label {
+              font-size: 11px;
+              text-transform: uppercase;
+              letter-spacing: 0.14em;
+              color: #64748b;
+            }
+            .detail-value {
+              margin-top: 6px;
+              font-size: 14px;
+              font-weight: 600;
+              color: #0f172a;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              font-size: 13px;
+            }
+            th, td {
+              border-bottom: 1px solid #e2e8f0;
+              text-align: left;
+              vertical-align: top;
+              padding: 10px 8px;
+            }
+            th {
+              font-size: 11px;
+              text-transform: uppercase;
+              letter-spacing: 0.12em;
+              color: #64748b;
+              background: #f8fafc;
+            }
+            .empty {
+              border: 1px dashed #cbd5e1;
+              border-radius: 16px;
+              padding: 16px;
+              color: #64748b;
+              background: #f8fafc;
+              font-size: 14px;
+            }
+            .footer-note {
+              margin-top: 18px;
+              font-size: 12px;
+              color: #64748b;
+            }
+            @media print {
+              body { padding: 0; background: white; }
+              .report { border: none; border-radius: 0; }
+            }
           </style>
         </head>
         <body>
-          <h1>HEALIO Health Summary</h1>
-          <p class="muted">Generated on ${new Date().toLocaleString()}</p>
-          <div class="card">
-            <h2>Profile</h2>
-            <p>Completion: ${healthSummary.profileCompletion}%</p>
-            <p>Missing items: ${healthSummary.profileMissing.length > 0 ? healthSummary.profileMissing.join(", ") : "None"}</p>
-          </div>
-          <div class="card">
-            <h2>Care Team</h2>
-            <p>${doctorCount} doctor(s), ${caregiverCount} caregiver(s), ${healthSummary.conversationCount} conversation(s)</p>
-          </div>
-          <div class="card">
-            <h2>Medications and Symptoms</h2>
-            <p>Active medications: ${healthSummary.activeMedicationCount} of ${healthSummary.totalMedicationCount}</p>
-            <p>Symptom logs: ${healthSummary.symptomCount}</p>
-            <p>Latest medication: ${healthSummary.latestMedication?.name || "None"}</p>
-            <p>Latest symptom: ${healthSummary.latestSymptom?.name || healthSummary.latestSymptom?.symptom || "None"}</p>
-          </div>
-          <div class="card">
-            <h2>Appointments</h2>
-            <p>Total appointments: ${healthSummary.appointmentCount}</p>
-            <p>Pending requests: ${healthSummary.requestedAppointments}</p>
-            <p>Next appointment: ${healthSummary.recentAppointment ? `${formatAppointmentDate(healthSummary.recentAppointment.startsAt)} at ${formatAppointmentTime(healthSummary.recentAppointment.startsAt)}` : "None"}</p>
+          <div class="report">
+            <div class="hero">
+              <h1>HEALIO Patient Health Summary</h1>
+              <p>Detailed patient-facing report prepared for clinical review and discussion.</p>
+              <div class="meta">
+                <div class="meta-card">
+                  <div class="meta-label">Patient</div>
+                  <div class="meta-value">${escapeHtml(fullName)}</div>
+                </div>
+                <div class="meta-card">
+                  <div class="meta-label">Generated</div>
+                  <div class="meta-value">${escapeHtml(new Date().toLocaleString())}</div>
+                </div>
+              </div>
+            </div>
+            <div class="content">
+              <div class="stats">
+                ${summaryStats}
+              </div>
+
+              <div class="section">
+                <h2>Patient Details</h2>
+                <div class="details-grid">
+                  <div class="detail">
+                    <div class="detail-label">Email</div>
+                    <div class="detail-value">${escapeHtml(profile?.email || user?.email || "Not recorded")}</div>
+                  </div>
+                  <div class="detail">
+                    <div class="detail-label">Phone</div>
+                    <div class="detail-value">${escapeHtml(profile?.phone || "Not recorded")}</div>
+                  </div>
+                  <div class="detail">
+                    <div class="detail-label">Date of birth</div>
+                    <div class="detail-value">${escapeHtml(formatDateOnly(profile?.dateOfBirth))}</div>
+                  </div>
+                  <div class="detail">
+                    <div class="detail-label">Gender</div>
+                    <div class="detail-value">${escapeHtml(profile?.gender || profile?.sex || "Not recorded")}</div>
+                  </div>
+                  <div class="detail">
+                    <div class="detail-label">Blood type</div>
+                    <div class="detail-value">${escapeHtml(profile?.bloodType || "Not recorded")}</div>
+                  </div>
+                  <div class="detail">
+                    <div class="detail-label">Emergency status</div>
+                    <div class="detail-value">${escapeHtml(profile?.emergencyStatus ? "Active" : "Normal")}</div>
+                  </div>
+                  <div class="detail">
+                    <div class="detail-label">Emergency contact</div>
+                    <div class="detail-value">${escapeHtml(formatEmergencyContact(profile?.emergencyContact))}</div>
+                  </div>
+                  <div class="detail">
+                    <div class="detail-label">Linked care team</div>
+                    <div class="detail-value">${escapeHtml(`${doctorCount} doctor(s), ${caregiverCount} caregiver(s)`)}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="section">
+                <h2>Medication Summary</h2>
+                ${
+                  medicationRows
+                    ? `<table>
+                        <thead>
+                          <tr>
+                            <th>Medication</th>
+                            <th>Dosage</th>
+                            <th>Frequency</th>
+                            <th>Schedule</th>
+                            <th>Duration</th>
+                            <th>Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody>${medicationRows}</tbody>
+                      </table>`
+                    : '<div class="empty">No medications recorded.</div>'
+                }
+              </div>
+
+              <div class="section">
+                <h2>Symptom History</h2>
+                ${
+                  symptomRows
+                    ? `<table>
+                        <thead>
+                          <tr>
+                            <th>Symptom</th>
+                            <th>Severity</th>
+                            <th>Logged at</th>
+                            <th>Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody>${symptomRows}</tbody>
+                      </table>`
+                    : '<div class="empty">No symptom logs recorded.</div>'
+                }
+              </div>
+
+              <div class="section">
+                <h2>Appointment Summary</h2>
+                ${
+                  appointmentRows
+                    ? `<table>
+                        <thead>
+                          <tr>
+                            <th>Doctor</th>
+                            <th>Date and time</th>
+                            <th>Status</th>
+                            <th>Location</th>
+                            <th>Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody>${appointmentRows}</tbody>
+                      </table>`
+                    : '<div class="empty">No appointments recorded.</div>'
+                }
+              </div>
+
+              <p class="footer-note">
+                This summary is generated from the patient dashboard data available in Healio at the time of export.
+              </p>
+            </div>
           </div>
         </body>
       </html>

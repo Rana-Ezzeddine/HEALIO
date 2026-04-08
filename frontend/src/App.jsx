@@ -143,8 +143,10 @@ function RoutedApp() {
         <Route
           path="/doctor-review"
           element={
-            <ProtectedRoute allowedRoles={["admin"]}>
-              <DoctorReviewPage />
+            <ProtectedRoute>
+              <RouteErrorBoundary>
+                <DoctorReviewPage />
+              </RouteErrorBoundary>
             </ProtectedRoute>
           }
         />
