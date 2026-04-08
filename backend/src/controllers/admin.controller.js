@@ -2,8 +2,6 @@ import bcrypt from "bcrypt";
 import User from "../models/User.js";
 import PatientProfile from "../models/PatientProfile.js";
 
-const MANAGEABLE_ROLES = new Set(["patient", "caregiver", "admin"]);
-
 function buildDisplayName(user, profile) {
   return [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim() || user.email;
 }
@@ -11,7 +9,7 @@ function buildDisplayName(user, profile) {
 export const listAdminAccounts = async (_req, res) => {
   try {
     const users = await User.findAll({
-      where: {},
+      where: { role: "admin" },
       order: [["createdAt", "DESC"]],
       attributes: [
         "id",
@@ -101,50 +99,6 @@ export const createAdminAccount = async (req, res) => {
     });
   } catch (err) {
     console.error("createAdminAccount error:", err);
-    return res.status(500).json({ message: "Server error." });
-  }
-};
-
-export const updateUserRole = async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const nextRole = String(req.body?.role || "").trim().toLowerCase();
-
-    if (!MANAGEABLE_ROLES.has(nextRole)) {
-      return res.status(400).json({ message: "Invalid target role." });
-    }
-
-    const user = await User.findByPk(userId);
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
-
-    if (req.user?.id && user.id === req.user.id) {
-      return res.status(400).json({ message: "Use a different admin account to change your own role." });
-    }
-
-    if (user.role === "admin") {
-      return res.status(400).json({ message: "Admin users cannot be modified from this page." });
-    }
-
-    await user.update({
-      role: nextRole,
-      doctorApprovalStatus: nextRole === "doctor" ? user.doctorApprovalStatus : "not_applicable",
-      doctorApprovalNotes: nextRole === "doctor" ? user.doctorApprovalNotes : null,
-      doctorApprovalRequestedInfoAt: nextRole === "doctor" ? user.doctorApprovalRequestedInfoAt : null,
-      doctorApprovalReviewedAt: nextRole === "doctor" ? user.doctorApprovalReviewedAt : null,
-    });
-
-    return res.json({
-      message: "User role updated.",
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-      },
-    });
-  } catch (err) {
-    console.error("updateUserRole error:", err);
     return res.status(500).json({ message: "Server error." });
   }
 };

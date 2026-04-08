@@ -35,18 +35,3 @@ export async function createAdminAccount(payload) {
   if (!res.ok) throw makeApiError(data, "Failed to create admin account.", res.status);
   return data;
 }
-
-export async function updateManagedUserRole(userId, role) {
-  const res = await fetch(`${apiUrl}/api/admin/users/${userId}/role`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(),
-    },
-    body: JSON.stringify({ role }),
-  });
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw makeApiError(data, "Failed to update user role.", res.status);
-  return data;
-}

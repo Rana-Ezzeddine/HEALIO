@@ -3,14 +3,7 @@ import Navbar from "../components/Navbar";
 import {
   createAdminAccount,
   listAdminAccounts,
-  updateManagedUserRole,
 } from "../api/admin";
-
-const ROLE_OPTIONS = [
-  { value: "admin", label: "Admin" },
-  { value: "patient", label: "Patient" },
-  { value: "caregiver", label: "Caregiver" },
-];
 
 function formatDate(value) {
   if (!value) return "Not available";
@@ -44,7 +37,6 @@ export default function AdminReviewerManagementPage() {
   const [success, setSuccess] = useState("");
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState("");
-  const [roleUpdatingId, setRoleUpdatingId] = useState("");
   const [form, setForm] = useState({
     email: "",
     password: "",
@@ -72,10 +64,10 @@ export default function AdminReviewerManagementPage() {
 
   const filteredUsers = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const source = users.filter((user) => user.role !== "admin");
+    const source = users.filter((user) => user.role === "admin");
     if (!query) return source;
     return source.filter((user) =>
-      [user.displayName, user.email, user.role]
+      [user.displayName, user.email]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query))
     );
@@ -102,21 +94,6 @@ export default function AdminReviewerManagementPage() {
     }
   }
 
-  async function handleRoleChange(userId, role) {
-    setRoleUpdatingId(userId);
-    setError("");
-    setSuccess("");
-    try {
-      const data = await updateManagedUserRole(userId, role);
-      setSuccess(data?.message || "User role updated.");
-      await loadUsers();
-    } catch (err) {
-      setError(err?.message || "Failed to update user role.");
-    } finally {
-      setRoleUpdatingId("");
-    }
-  }
-
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f8fbfd_0%,#eef7fb_100%)]">
       <Navbar />
@@ -127,7 +104,7 @@ export default function AdminReviewerManagementPage() {
               <p className="text-sm font-semibold uppercase tracking-[0.28em] text-sky-100">Admin workspace</p>
               <h1 className="mt-4 text-4xl font-black tracking-tight">Admin Access Management</h1>
               <p className="mt-4 max-w-3xl text-sm leading-7 text-sky-50/90">
-                Provision internal admin accounts, promote trusted internal users into admin access, and keep doctor approval ownership inside the product instead of relying on environment allowlists.
+                Provision internal admin accounts and keep doctor approval ownership inside the product instead of relying on environment allowlists.
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -203,13 +180,13 @@ export default function AdminReviewerManagementPage() {
           <section className="rounded-[1.75rem] border border-slate-200 bg-white/90 p-6 shadow-[0_25px_70px_-55px_rgba(15,23,42,0.45)]">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-500">Manage roles</p>
-                <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-900">Promote or demote admin access</h2>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-500">Admin accounts</p>
+                <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-900">Current internal admins</h2>
               </div>
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search name, email, or role"
+                placeholder="Search name or email"
                 className="w-full max-w-xs rounded-full border border-slate-200 px-4 py-2.5 text-sm text-slate-700 shadow-sm outline-none transition focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
               />
             </div>
@@ -235,7 +212,7 @@ export default function AdminReviewerManagementPage() {
                         <p className="mt-1 text-sm text-slate-500">{user.email}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                            {user.role}
+                            Admin
                           </span>
                           <span
                             className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] ${
@@ -248,37 +225,11 @@ export default function AdminReviewerManagementPage() {
                           </span>
                         </div>
                       </div>
-
-                      <div className="flex flex-wrap items-center gap-2">
-                        {user.role === "doctor" ? (
-                          <span className="rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800">
-                            Managed in doctor approval
-                          </span>
-                        ) : (
-                          <select
-                            value={user.role}
-                            onChange={(event) => handleRoleChange(user.id, event.target.value)}
-                            disabled={roleUpdatingId === user.id}
-                            className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-sky-300 focus:ring-2 focus:ring-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {ROLE_OPTIONS.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                      </div>
                     </div>
                     <div className="mt-4 grid gap-3 text-sm text-slate-500 md:grid-cols-2">
                       <p>Created: {formatDate(user.createdAt)}</p>
                       <p>Updated: {formatDate(user.updatedAt)}</p>
                     </div>
-                    {user.role === "doctor" ? (
-                      <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-                        Doctor roles remain managed through the doctor application workflow.
-                      </p>
-                    ) : null}
                   </div>
                 ))
               )}
