@@ -11,6 +11,7 @@ import {
   deleteMedication,
   logMedicationAdherence,
   searchMedications,
+  searchMedicationCatalog,
 } from "../controllers/medications.controller.js";
 
 const router = express.Router();
@@ -20,6 +21,7 @@ router.use(requireVerified);
 
 router.get("/search/:query", searchMedications);
 router.get("/", getAllMedications);
+router.get("/catalog", searchMedicationCatalog);
 router.get("/:id", getMedicationById);
 router.patch("/:id/adherence", requireRole("patient", "doctor"), logMedicationAdherence);
 router.post("/", requireRole("patient", "doctor"), createMedication);
