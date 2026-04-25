@@ -5,6 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import sequelize, { testConnection } from './database.js';
+import ngrok from "@ngrok/ngrok";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -190,16 +191,36 @@ const startServer = async () => {
     pendingRegistrationCleanupInterval = startPendingRegistrationCleanupJob();
     ReminderService.startPoller();
 
-    app.listen(PORT, () => {
-      console.log(`
+    app.listen(PORT, async () => {
+  console.log(`
 ╔═══════════════════════════════════════╗
 ║   HEALIO Backend Server Running      ║
 ║   Port: ${PORT.toString().padEnd(30)}║
 ║   Environment: ${(process.env.NODE_ENV || "development").padEnd(23)}║
 ║   Database: PostgreSQL                ║
 ╚═══════════════════════════════════════╝
-      `);
-    });
+  `);
+
+  console.log("ENABLE_NGROK:", process.env.ENABLE_NGROK);
+  console.log("NGROK_AUTHTOKEN exists:", !!process.env.NGROK_AUTHTOKEN);
+
+  if (process.env.ENABLE_NGROK === "true") {
+    try {
+      const listener = await ngrok.connect({
+        addr: PORT,
+        authtoken_from_env: true,
+      });
+
+      const publicUrl = listener.url();
+
+      console.log("🌍 Ngrok public URL:", publicUrl);
+      console.log("🔗 Health check:", `${publicUrl}/health`);
+      console.log(`✅ Put this in .env:\nAPP_BASE_URL=${publicUrl}`);
+    } catch (error) {
+      console.error("❌ Failed to start ngrok:", error.message);
+    }
+  }
+});
   } catch (error) {
     console.error("Failed to start server:", error.message);
     process.exit(1);
