@@ -11,6 +11,47 @@ import PasswordResetToken from '../../src/models/PasswordResetToken.js';
 
 const email = `integration_${Date.now()}@example.com`;
 const password = 'StrongPass123';
+const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+function decodeBase32(input) {
+  const normalized = String(input || '')
+    .toUpperCase()
+    .replace(/[^A-Z2-7]/g, '');
+
+  let bits = 0;
+  let value = 0;
+  const bytes = [];
+
+  for (const char of normalized) {
+    const index = BASE32_ALPHABET.indexOf(char);
+    if (index === -1) continue;
+
+    value = (value << 5) | index;
+    bits += 5;
+
+    if (bits >= 8) {
+      bytes.push((value >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  }
+
+  return Buffer.from(bytes);
+}
+
+function createTotpCode(secret, now = Date.now()) {
+  const counter = Math.floor(now / 1000 / 30);
+  const counterBuffer = Buffer.alloc(8);
+  counterBuffer.writeBigUInt64BE(BigInt(counter));
+  const hmac = crypto.createHmac('sha1', decodeBase32(secret)).update(counterBuffer).digest();
+  const offset = hmac[hmac.length - 1] & 0x0f;
+  const binary =
+    ((hmac[offset] & 0x7f) << 24) |
+    ((hmac[offset + 1] & 0xff) << 16) |
+    ((hmac[offset + 2] & 0xff) << 8) |
+    (hmac[offset + 3] & 0xff);
+
+  return String(binary % 1_000_000).padStart(6, '0');
+}
 
 test('registration issues verification token and blocks login before verification', async () => {
   const registerRes = await request(app)
@@ -408,4 +449,144 @@ test('doctor accounts stay pending approval until a reviewer approves them', asy
     .send({ doctorEmail });
 
   assert.equal(allowedLinkRes.status, 201);
+});
+
+test('local user can enable MFA and then must complete a second factor at login', async () => {
+  const mfaEmail = `mfa_${Date.now()}@example.com`;
+
+  const registerRes = await request(app)
+    .post('/api/auth/register')
+    .send({
+      firstName: 'Mia',
+      lastName: 'Factor',
+      email: mfaEmail,
+      password,
+      role: 'patient',
+    });
+
+  assert.equal(registerRes.status, 201);
+
+  const verifyRes = await request(app)
+    .post('/api/auth/verify-email')
+    .send({ token: registerRes.body.verificationToken });
+
+  assert.equal(verifyRes.status, 200);
+
+  const loginRes = await request(app)
+    .post('/api/auth/login')
+    .send({ email: mfaEmail, password });
+
+  assert.equal(loginRes.status, 200);
+  assert.ok(loginRes.body.token);
+
+  const setupRes = await request(app)
+    .post('/api/auth/mfa/setup')
+    .set('Authorization', `Bearer ${loginRes.body.token}`)
+    .send({ password });
+
+  assert.equal(setupRes.status, 200);
+  assert.ok(setupRes.body.setupToken);
+  assert.ok(setupRes.body.secret);
+
+  const enableRes = await request(app)
+    .post('/api/auth/mfa/enable')
+    .set('Authorization', `Bearer ${loginRes.body.token}`)
+    .send({
+      setupToken: setupRes.body.setupToken,
+      code: createTotpCode(setupRes.body.secret),
+    });
+
+  assert.equal(enableRes.status, 200);
+  assert.equal(enableRes.body.backupCodes.length, 8);
+
+  const mfaLoginRes = await request(app)
+    .post('/api/auth/login')
+    .send({ email: mfaEmail, password });
+
+  assert.equal(mfaLoginRes.status, 200);
+  assert.equal(mfaLoginRes.body.requiresTwoFactor, true);
+  assert.ok(mfaLoginRes.body.challengeToken);
+  assert.equal(mfaLoginRes.body.user.mfaEnabled, true);
+  assert.equal(mfaLoginRes.body.token, undefined);
+
+  const verifyMfaRes = await request(app)
+    .post('/api/auth/verify-2fa')
+    .send({
+      challengeToken: mfaLoginRes.body.challengeToken,
+      code: createTotpCode(setupRes.body.secret),
+    });
+
+  assert.equal(verifyMfaRes.status, 200);
+  assert.ok(verifyMfaRes.body.token);
+  assert.equal(verifyMfaRes.body.usedBackupCode, false);
+  assert.equal(verifyMfaRes.body.user.mfaEnabled, true);
+});
+
+test('backup codes can complete MFA once and are then consumed', async () => {
+  const recoveryEmail = `mfa_backup_${Date.now()}@example.com`;
+
+  const registerRes = await request(app)
+    .post('/api/auth/register')
+    .send({
+      firstName: 'Nora',
+      lastName: 'Backup',
+      email: recoveryEmail,
+      password,
+      role: 'patient',
+    });
+
+  const verifyRes = await request(app)
+    .post('/api/auth/verify-email')
+    .send({ token: registerRes.body.verificationToken });
+
+  assert.equal(verifyRes.status, 200);
+
+  const loginRes = await request(app)
+    .post('/api/auth/login')
+    .send({ email: recoveryEmail, password });
+
+  const setupRes = await request(app)
+    .post('/api/auth/mfa/setup')
+    .set('Authorization', `Bearer ${loginRes.body.token}`)
+    .send({ password });
+
+  const enableRes = await request(app)
+    .post('/api/auth/mfa/enable')
+    .set('Authorization', `Bearer ${loginRes.body.token}`)
+    .send({
+      setupToken: setupRes.body.setupToken,
+      code: createTotpCode(setupRes.body.secret),
+    });
+
+  const backupCode = enableRes.body.backupCodes[0];
+  assert.ok(backupCode);
+
+  const challengedLoginRes = await request(app)
+    .post('/api/auth/login')
+    .send({ email: recoveryEmail, password });
+
+  assert.equal(challengedLoginRes.body.requiresTwoFactor, true);
+
+  const backupVerifyRes = await request(app)
+    .post('/api/auth/verify-2fa')
+    .send({
+      challengeToken: challengedLoginRes.body.challengeToken,
+      code: backupCode,
+    });
+
+  assert.equal(backupVerifyRes.status, 200);
+  assert.equal(backupVerifyRes.body.usedBackupCode, true);
+
+  const secondLoginRes = await request(app)
+    .post('/api/auth/login')
+    .send({ email: recoveryEmail, password });
+
+  const reusedBackupRes = await request(app)
+    .post('/api/auth/verify-2fa')
+    .send({
+      challengeToken: secondLoginRes.body.challengeToken,
+      code: backupCode,
+    });
+
+  assert.equal(reusedBackupRes.status, 401);
 });

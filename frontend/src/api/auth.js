@@ -33,6 +33,76 @@ export async function login(email, password) {
   return data;
 }
 
+export async function verifyTwoFactor(challengeToken, code) {
+  const res = await fetch(`${API_BASE}/api/auth/verify-2fa`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ challengeToken, code }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw makeApiError(data, "Two-factor verification failed", res.status);
+  return data;
+}
+
+export async function getMfaStatus(headers) {
+  const res = await fetch(`${API_BASE}/api/auth/mfa/status`, {
+    headers: { "Content-Type": "application/json", ...(headers || {}) },
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw makeApiError(data, "Failed to load two-factor status", res.status);
+  return data;
+}
+
+export async function beginMfaSetup(payload, headers) {
+  const res = await fetch(`${API_BASE}/api/auth/mfa/setup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(headers || {}) },
+    body: JSON.stringify(payload || {}),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw makeApiError(data, "Failed to start two-factor setup", res.status);
+  return data;
+}
+
+export async function enableMfa(payload, headers) {
+  const res = await fetch(`${API_BASE}/api/auth/mfa/enable`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(headers || {}) },
+    body: JSON.stringify(payload || {}),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw makeApiError(data, "Failed to enable two-factor authentication", res.status);
+  return data;
+}
+
+export async function disableMfa(payload, headers) {
+  const res = await fetch(`${API_BASE}/api/auth/mfa/disable`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(headers || {}) },
+    body: JSON.stringify(payload || {}),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw makeApiError(data, "Failed to disable two-factor authentication", res.status);
+  return data;
+}
+
+export async function regenerateMfaRecoveryCodes(payload, headers) {
+  const res = await fetch(`${API_BASE}/api/auth/mfa/recovery-codes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(headers || {}) },
+    body: JSON.stringify(payload || {}),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw makeApiError(data, "Failed to regenerate backup codes", res.status);
+  return data;
+}
+
 export async function verifyEmail(token) {
   const res = await fetch(`${API_BASE}/api/auth/verify-email`, {
     method: "POST",

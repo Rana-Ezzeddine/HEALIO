@@ -1,5 +1,6 @@
 import { apiUrl, authHeaders, getUser } from "../api/http";
 import Navbar from "../components/Navbar";
+import TwoFactorSecurityCard from "../components/TwoFactorSecurityCard";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import userMale from "../assets/userMale.png"
@@ -297,6 +298,9 @@ export default function ProfileCaregiver(){
             </section>
           </div>
           </main>
+          <div className="mx-auto max-w-6xl px-4 pb-10 sm:px-6 lg:px-8">
+            <TwoFactorSecurityCard />
+          </div>
       </div>
     );
 }

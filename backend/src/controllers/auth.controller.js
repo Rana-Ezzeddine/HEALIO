@@ -10,6 +10,19 @@ import PendingRegistration from '../models/PendingRegistration.js';
 import PasswordResetToken from '../models/PasswordResetToken.js';
 import { sendPasswordResetEmail, sendVerificationEmail } from '../services/mail.service.js';
 import {
+  buildMfaSetupPayload,
+  createMfaChallengeToken,
+  createMfaSetupToken,
+  decryptMfaSecret,
+  encryptMfaSecret,
+  generateBackupCodes,
+  generateTotpSecret,
+  verifyBackupCode,
+  verifyMfaChallengeToken,
+  verifyMfaSetupToken,
+  verifyTotpCode,
+} from '../services/mfa.service.js';
+import {
   DOCTOR_APPROVAL_STATUS,
   getDoctorApprovalStatusForNewUser,
   isDoctorRole,
@@ -65,6 +78,56 @@ const issueAccessToken = (user) => {
     secret,
     { expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '15m' }
   );
+};
+
+const assertLocalPasswordIfNeeded = async (user, password) => {
+  if (user.authProvider !== 'local') return;
+
+  if (!password) {
+    const err = new Error('Current password is required.');
+    err.status = 400;
+    throw err;
+  }
+
+  const ok = await bcrypt.compare(String(password), user.passwordHash || '');
+  if (!ok) {
+    const err = new Error('Current password is incorrect.');
+    err.status = 401;
+    throw err;
+  }
+};
+
+const buildMfaChallengeResponse = async (user, provider = 'local') => ({
+  requiresTwoFactor: true,
+  challengeToken: createMfaChallengeToken({ userId: user.id, provider }),
+  user: await buildAuthUser(user),
+  message: 'Two-factor authentication code required.',
+});
+
+const verifyMfaCodeForUser = async (user, code) => {
+  const normalizedCode = String(code || '').trim();
+  if (!normalizedCode) {
+    return { ok: false };
+  }
+
+  const encryptedSecret = user.mfaSecretEncrypted;
+  if (encryptedSecret) {
+    const secret = decryptMfaSecret(encryptedSecret);
+    if (verifyTotpCode(secret, normalizedCode)) {
+      return { ok: true, consumedBackupCode: false };
+    }
+  }
+
+  const backupHashes = Array.isArray(user.mfaRecoveryCodeHashes) ? user.mfaRecoveryCodeHashes : [];
+  if (backupHashes.length > 0) {
+    const result = await verifyBackupCode(normalizedCode, backupHashes);
+    if (result.ok) {
+      await user.update({ mfaRecoveryCodeHashes: result.remainingHashes });
+      return { ok: true, consumedBackupCode: true };
+    }
+  }
+
+  return { ok: false };
 };
 
 const createVerificationToken = async () => crypto.randomBytes(32).toString('hex');
@@ -163,6 +226,8 @@ const buildAuthUser = async (user) => {
     email: user.email,
     role: user.role,
     isVerified: user.isVerified,
+    authProvider: user.authProvider,
+    mfaEnabled: Boolean(user.mfaEnabled),
     firstName: profile?.firstName || null,
     lastName: profile?.lastName || null,
     licenseNb: profile?.licenseNb || null,
@@ -177,6 +242,8 @@ const buildPendingAuthUser = ({ firstName, lastName, email, role, licenseNb = nu
   email,
   role,
   isVerified: false,
+  authProvider: 'local',
+  mfaEnabled: false,
   firstName,
   lastName,
   licenseNb,
@@ -443,6 +510,10 @@ const completeSocialLogin = async ({ provider, providerSubject, email, firstName
         email: user.email,
       },
     });
+  }
+
+  if (user.mfaEnabled) {
+    return buildMfaChallengeResponse(user, provider);
   }
 
   const token = issueAccessToken(user);
@@ -936,7 +1007,7 @@ export const login = async (req, res) => {
 
     const cleanEmail = String(email || '').toLowerCase().trim();
 
-    const user = await User.scope('withPassword').findOne({ where: { email: cleanEmail } });
+    const user = await User.scope('withSensitiveAuth').findOne({ where: { email: cleanEmail } });
 
     if (!user) {
       const pendingRegistration = await PendingRegistration.findOne({ where: { email: cleanEmail } });
@@ -976,6 +1047,10 @@ export const login = async (req, res) => {
       });
     }
 
+    if (user.mfaEnabled) {
+      return res.json(await buildMfaChallengeResponse(user, 'local'));
+    }
+
     const token = issueAccessToken(user);
     const authUser = await buildAuthUser(user);
 
@@ -1002,6 +1077,8 @@ export const me = async (req, res) => {
         'doctorApprovalNotes',
         'doctorApprovalRequestedInfoAt',
         'createdAt',
+        'authProvider',
+        'mfaEnabled',
       ],
     });
     if (!user) return res.status(404).json({ message: 'User not found.' });
@@ -1010,6 +1087,187 @@ export const me = async (req, res) => {
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+export const verifyTwoFactor = async (req, res) => {
+  try {
+    const { challengeToken, code } = req.body || {};
+    if (!challengeToken || !code) {
+      return res.status(400).json({ message: 'challengeToken and code are required.' });
+    }
+
+    const payload = verifyMfaChallengeToken(challengeToken);
+    const user = await User.scope('withSensitiveAuth').findByPk(payload.sub);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+    if (!user.mfaEnabled) {
+      return res.status(400).json({ message: 'Two-factor authentication is not enabled for this account.' });
+    }
+
+    const result = await verifyMfaCodeForUser(user, code);
+    if (!result.ok) {
+      return res.status(401).json({ message: 'Invalid authentication code.' });
+    }
+
+    const token = issueAccessToken(user);
+    const authUser = await buildAuthUser(user);
+    return res.json({
+      token,
+      user: authUser,
+      usedBackupCode: result.consumedBackupCode,
+      message: 'Two-factor verification successful.',
+    });
+  } catch (err) {
+    return res.status(401).json({ message: err.message || 'Invalid or expired MFA challenge.' });
+  }
+};
+
+export const getMfaStatus = async (req, res) => {
+  try {
+    const user = await User.findByPk(req.user.id, {
+      attributes: ['id', 'authProvider', 'mfaEnabled', 'mfaRecoveryCodeHashes'],
+    });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+    return res.json({
+      enabled: Boolean(user.mfaEnabled),
+      authProvider: user.authProvider,
+      backupCodesRemaining: Array.isArray(user.mfaRecoveryCodeHashes) ? user.mfaRecoveryCodeHashes.length : 0,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to load MFA status.' });
+  }
+};
+
+export const beginMfaSetup = async (req, res) => {
+  try {
+    const { password } = req.body || {};
+    const user = await User.scope('withPassword').findByPk(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    await assertLocalPasswordIfNeeded(user, password);
+
+    const secret = generateTotpSecret();
+    const encryptedSecret = encryptMfaSecret(secret);
+    const setupToken = createMfaSetupToken({ userId: user.id, encryptedSecret });
+
+    return res.json({
+      setupToken,
+      ...buildMfaSetupPayload({ email: user.email, secret }),
+    });
+  } catch (err) {
+    return res.status(err.status || 500).json({ message: err.message || 'Failed to start two-factor setup.' });
+  }
+};
+
+export const enableMfa = async (req, res) => {
+  try {
+    const { setupToken, code } = req.body || {};
+    if (!setupToken || !code) {
+      return res.status(400).json({ message: 'setupToken and code are required.' });
+    }
+
+    const payload = verifyMfaSetupToken(setupToken);
+    if (payload.sub !== req.user.id) {
+      return res.status(403).json({ message: 'This setup token does not belong to the current user.' });
+    }
+
+    const secret = decryptMfaSecret(payload.encryptedSecret);
+    if (!verifyTotpCode(secret, code)) {
+      return res.status(401).json({ message: 'Invalid authentication code.' });
+    }
+
+    const { codes, hashes } = await generateBackupCodes();
+    const user = await User.findByPk(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    await user.update({
+      mfaEnabled: true,
+      mfaSecretEncrypted: payload.encryptedSecret,
+      mfaRecoveryCodeHashes: hashes,
+    });
+
+    return res.json({
+      message: 'Two-factor authentication enabled.',
+      backupCodes: codes,
+    });
+  } catch (err) {
+    return res.status(401).json({ message: err.message || 'Failed to enable two-factor authentication.' });
+  }
+};
+
+export const disableMfa = async (req, res) => {
+  try {
+    const { password, code } = req.body || {};
+    if (!code) {
+      return res.status(400).json({ message: 'A current authenticator or backup code is required.' });
+    }
+
+    const user = await User.scope('withSensitiveAuth').findByPk(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+    if (!user.mfaEnabled) {
+      return res.status(400).json({ message: 'Two-factor authentication is not enabled.' });
+    }
+
+    await assertLocalPasswordIfNeeded(user, password);
+
+    const result = await verifyMfaCodeForUser(user, code);
+    if (!result.ok) {
+      return res.status(401).json({ message: 'Invalid authentication code.' });
+    }
+
+    await user.update({
+      mfaEnabled: false,
+      mfaSecretEncrypted: null,
+      mfaRecoveryCodeHashes: [],
+    });
+
+    return res.json({ message: 'Two-factor authentication disabled.' });
+  } catch (err) {
+    return res.status(err.status || 500).json({ message: err.message || 'Failed to disable two-factor authentication.' });
+  }
+};
+
+export const regenerateMfaRecoveryCodes = async (req, res) => {
+  try {
+    const { password, code } = req.body || {};
+    if (!code) {
+      return res.status(400).json({ message: 'A current authenticator or backup code is required.' });
+    }
+
+    const user = await User.scope('withSensitiveAuth').findByPk(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+    if (!user.mfaEnabled) {
+      return res.status(400).json({ message: 'Two-factor authentication is not enabled.' });
+    }
+
+    await assertLocalPasswordIfNeeded(user, password);
+
+    const result = await verifyMfaCodeForUser(user, code);
+    if (!result.ok) {
+      return res.status(401).json({ message: 'Invalid authentication code.' });
+    }
+
+    const { codes, hashes } = await generateBackupCodes();
+    await user.update({ mfaRecoveryCodeHashes: hashes });
+
+    return res.json({
+      message: 'Backup codes regenerated.',
+      backupCodes: codes,
+    });
+  } catch (err) {
+    return res.status(err.status || 500).json({ message: err.message || 'Failed to regenerate backup codes.' });
   }
 };
 

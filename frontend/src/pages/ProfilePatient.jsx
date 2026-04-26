@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiUrl, authHeaders, getUser, updateSessionUser } from "../api/http";
 import Navbar from "../components/Navbar";
+import TwoFactorSecurityCard from "../components/TwoFactorSecurityCard";
 import userMale from "../assets/userMale.png";
 import userFemale from "../assets/userFemale.png";
 import { getProfileCompletion } from "../utils/patientSetup";
@@ -373,6 +374,9 @@ export default function ProfilePatient() {
           </section>
         </div>
       </main>
+      <div className="mx-auto max-w-5xl px-4 pb-10 sm:px-6 lg:px-8">
+        <TwoFactorSecurityCard />
+      </div>
     </div>
   );
 }

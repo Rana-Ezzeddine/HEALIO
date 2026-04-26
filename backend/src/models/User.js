@@ -65,6 +65,19 @@ const User = sequelize.define('User', {
   doctorApprovalReviewedAt: {
     type: DataTypes.DATE,
     allowNull: true
+  },
+  mfaEnabled: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
+  },
+  mfaSecretEncrypted: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  mfaRecoveryCodeHashes: {
+    type: DataTypes.JSONB,
+    allowNull: true
   }
 }, {
   tableName: 'users',
@@ -93,11 +106,14 @@ const User = sequelize.define('User', {
     }
   ],
   defaultScope: {
-    attributes: { exclude: ['passwordHash'] }
+    attributes: { exclude: ['passwordHash', 'mfaSecretEncrypted', 'mfaRecoveryCodeHashes'] }
   },
   scopes: {
     withPassword: {
       attributes: { include: ['passwordHash'] }
+    },
+    withSensitiveAuth: {
+      attributes: { include: ['passwordHash', 'mfaSecretEncrypted', 'mfaRecoveryCodeHashes'] }
     }
   }
 });

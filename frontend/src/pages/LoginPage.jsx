@@ -1,7 +1,7 @@
 // src/pages/LoginPage.jsx
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { login as loginApi, resendVerification, startSocialAuth } from "../api/auth";
+import { login as loginApi, resendVerification, startSocialAuth, verifyTwoFactor } from "../api/auth";
 import { clearSession, setSession } from "../api/http";
 import { getPostAuthRoute } from "../utils/authRouting";
 import { readSafePrefill, writeSafePrefill } from "../utils/safePrefill";
@@ -29,6 +29,9 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [needsVerification, setNeedsVerification] = useState(false);
+  const [mfaChallengeToken, setMfaChallengeToken] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaUser, setMfaUser] = useState(null);
 
   useEffect(() => {
     if (!embedded) {
@@ -45,10 +48,22 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
     setError("");
     setInfo("");
     setNeedsVerification(false);
+    setMfaChallengeToken("");
+    setMfaCode("");
+    setMfaUser(null);
     setLoading(true);
 
     try {
-      const { token, user } = await loginApi(email, password);
+      const result = await loginApi(email, password);
+
+      if (result?.requiresTwoFactor) {
+        setMfaChallengeToken(result.challengeToken || "");
+        setMfaUser(result.user || null);
+        setInfo(result.message || "Enter your authenticator or backup code to continue.");
+        return;
+      }
+
+      const { token, user } = result;
 
       setSession({ token, user });
       queuePatientOnboarding(user);
@@ -60,6 +75,32 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
         setNeedsVerification(true);
       }
       setError(err?.message || "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleVerifyTwoFactor(e) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+
+    try {
+      const { token, user, usedBackupCode } = await verifyTwoFactor(
+        mfaChallengeToken,
+        mfaCode
+      );
+
+      setSession({ token, user });
+      queuePatientOnboarding(user);
+      if (usedBackupCode) {
+        setInfo("Signed in. One backup code was used and can’t be reused.");
+      }
+      navigate(getPostAuthRoute(user), { replace: true });
+
+      if (embedded) onClose?.();
+    } catch (err) {
+      setError(err?.message || "Two-factor verification failed");
     } finally {
       setLoading(false);
     }
@@ -128,7 +169,10 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
         </div>
 
         
-        <form className="mt-8 space-y-4" onSubmit={handleLogin}>
+        <form
+          className="mt-8 space-y-4"
+          onSubmit={mfaChallengeToken ? handleVerifyTwoFactor : handleLogin}
+        >
           <div className="space-y-2">
             <label className="text-sm font-medium text-slate-700">Email Address</label>
             <input
@@ -142,42 +186,67 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
             />
           </div>
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">Password</label>
-            <div className="relative">
+          {!mfaChallengeToken ? (
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">Password</label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="•••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-400 focus:ring-sky-400 transition pr-6"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-sky-500 hover:text-sky-700 transition"
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    document.body.classList.add("auth-route-transitioning");
+                    window.setTimeout(() => {
+                      navigate("/forgot-password");
+                      document.body.classList.remove("auth-route-transitioning");
+                    }, 90);
+                  }}
+                  className="text-sm font-medium text-sky-600 hover:text-sky-700 hover:underline"
+                >
+                  Forgot Password?
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">
+                Two-Factor Code
+              </label>
+              <p className="text-xs text-slate-500">
+                Enter the 6-digit code from your authenticator app or one of your backup codes.
+              </p>
               <input
-                type={showPassword ? "text" : "password"}
-                placeholder="•••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-                className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-400 focus:ring-sky-400 transition pr-6"
+                type="text"
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value)}
+                className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-400 focus:ring-sky-400 transition"
+                placeholder="123456 or ABCD-EFGH"
+                autoComplete="one-time-code"
                 required
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-sky-500 hover:text-sky-700 transition"
-              >
-                {showPassword ? "Hide" : "Show"}
-              </button>
+              {mfaUser ? (
+                <p className="text-xs text-slate-500">
+                  Second factor required for {mfaUser.email}.
+                </p>
+              ) : null}
             </div>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  document.body.classList.add("auth-route-transitioning");
-                  window.setTimeout(() => {
-                    navigate("/forgot-password");
-                    document.body.classList.remove("auth-route-transitioning");
-                  }, 90);
-                }}
-                className="text-sm font-medium text-sky-600 hover:text-sky-700 hover:underline"
-              >
-                Forgot Password?
-              </button>
-            </div>
-          </div>
+          )}
 
           {error && (
             <div className="text-sm text-red-700 bg-red-100 border border-red-200 rounded-lg p-2">
@@ -207,35 +276,55 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
             disabled={loading}
             className="mt-4 w-full h-11 bg-gradient-to-r from-sky-400 to-indigo-400 rounded-xl text-white font-semibold hover:from-sky-500 hover:to-indigo-500 transition disabled:opacity-70 shadow"
           >
-            {loading ? "Logging in..." : "Login"}
+            {loading ? "Working..." : mfaChallengeToken ? "Verify code" : "Login"}
           </button>
 
-          <div className="flex items-center gap-3 pt-2">
-            <div className="h-px flex-1 bg-slate-200" />
-            <span className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">or</span>
-            <div className="h-px flex-1 bg-slate-200" />
-          </div>
-
-          <button
-            type="button"
-            onClick={() => handleSocialLogin("google")}
-            className="w-full h-11 rounded-xl border border-slate-300 bg-white text-slate-900 font-semibold hover:bg-slate-50 transition flex items-center justify-center gap-3"
-          >
-            <GoogleIcon />
-            <span>Sign in with Google</span>
-          </button>
-
-          <p className="text-center text-sm text-slate-600 mt-3">
-            Don&apos;t have an account yet?{" "}
-            <span
-              onClick={() =>
-                embedded ? onSwitchToSignup?.() : navigate("/signup")
-              }
-              className="text-sky-500 hover:underline cursor-pointer"
+          {mfaChallengeToken ? (
+            <button
+              type="button"
+              onClick={() => {
+                setMfaChallengeToken("");
+                setMfaCode("");
+                setMfaUser(null);
+                setInfo("");
+                setError("");
+              }}
+              className="w-full h-11 rounded-xl border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 transition"
             >
-              Sign up
-            </span>
-          </p>
+              Back to password login
+            </button>
+          ) : null}
+
+          {!mfaChallengeToken ? (
+            <>
+              <div className="flex items-center gap-3 pt-2">
+                <div className="h-px flex-1 bg-slate-200" />
+                <span className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">or</span>
+                <div className="h-px flex-1 bg-slate-200" />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleSocialLogin("google")}
+                className="w-full h-11 rounded-xl border border-slate-300 bg-white text-slate-900 font-semibold hover:bg-slate-50 transition flex items-center justify-center gap-3"
+              >
+                <GoogleIcon />
+                <span>Sign in with Google</span>
+              </button>
+
+              <p className="text-center text-sm text-slate-600 mt-3">
+                Don&apos;t have an account yet?{" "}
+                <span
+                  onClick={() =>
+                    embedded ? onSwitchToSignup?.() : navigate("/signup")
+                  }
+                  className="text-sky-500 hover:underline cursor-pointer"
+                >
+                  Sign up
+                </span>
+              </p>
+            </>
+          ) : null}
         </form>
       </div>
     </div>
