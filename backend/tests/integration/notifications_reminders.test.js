@@ -160,9 +160,9 @@ test('Medication creation auto-schedules pending reminder', async () => {
   assert.ok(reminder, 'Expected a pending medication reminder to be created');
 });
 
-test('Appointment scheduling creates and clears pending reminder', async () => {
+test('Doctor-created appointment request schedules reminder only after patient approval and clears it on cancellation', async () => {
   const { user: doctor, token: doctorToken } = await createVerifiedUser(`doc_appt_${Date.now()}@example.com`, 'doctor');
-  const { user: patient } = await createVerifiedUser(`pat_appt_${Date.now()}@example.com`, 'patient');
+  const { user: patient, token: patientToken } = await createVerifiedUser(`pat_appt_${Date.now()}@example.com`, 'patient');
 
   await doctor.update({ doctorApprovalStatus: 'approved' });
   await DoctorPatientAssignment.create({
@@ -186,6 +186,7 @@ test('Appointment scheduling creates and clears pending reminder', async () => {
 
   assert.equal(createRes.status, 201);
   const appointmentId = createRes.body.id;
+  assert.equal(createRes.body.status, 'requested');
 
   const pendingReminder = await Reminder.findOne({
     where: {
@@ -195,7 +196,24 @@ test('Appointment scheduling creates and clears pending reminder', async () => {
       status: 'pending',
     },
   });
-  assert.ok(pendingReminder, 'Expected appointment reminder after scheduling');
+  assert.equal(pendingReminder, null, 'Expected no appointment reminder before patient approval');
+
+  const approveRes = await request(app)
+    .patch(`/api/appointments/${appointmentId}/status`)
+    .set('Authorization', `Bearer ${patientToken}`)
+    .send({ status: 'scheduled' });
+
+  assert.equal(approveRes.status, 200);
+
+  const scheduledReminder = await Reminder.findOne({
+    where: {
+      userId: patient.id,
+      type: 'appointment',
+      relatedId: appointmentId,
+      status: 'pending',
+    },
+  });
+  assert.ok(scheduledReminder, 'Expected appointment reminder after patient approval');
 
   const cancelRes = await request(app)
     .patch(`/api/appointments/${appointmentId}/status`)

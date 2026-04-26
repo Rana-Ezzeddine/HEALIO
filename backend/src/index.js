@@ -26,7 +26,6 @@ for (const key of requiredEnv) {
 /////////////////////////////////////////////////
 import express from "express";
 import cors from "cors";
-import ngrok from "@ngrok/ngrok";
 
 // Database
 import sequelize, { testConnection } from "../database.js";
@@ -47,6 +46,29 @@ import caregiverActionsRoutes from "./routes/caregiverActions.routes.js";
 // ✅ Initialize App
 /////////////////////////////////////////////////
 const app = express();
+
+async function startNgrokTunnel(port) {
+  if (process.env.ENABLE_NGROK !== "true") return;
+
+  try {
+    const { default: ngrok } = await import("@ngrok/ngrok");
+    const listener = await ngrok.connect({
+      addr: port,
+      authtoken_from_env: true,
+    });
+
+    const publicUrl = listener.url();
+
+    console.log(`🌍 Ngrok public URL: ${publicUrl}`);
+    console.log(`🔗 Health check: ${publicUrl}/health`);
+    console.log(`🔐 Verification base URL: ${publicUrl}`);
+    console.log(
+      `✅ Put this in your .env for email verification:\nAPP_BASE_URL=${publicUrl}`
+    );
+  } catch (ngrokError) {
+    console.error("❌ Failed to start ngrok:", ngrokError);
+  }
+}
 
 /////////////////////////////////////////////////
 // ✅ Middlewares
@@ -106,26 +128,7 @@ const startServer = async () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`);
 
       // ✅ Start ngrok only if enabled
-      if (process.env.ENABLE_NGROK === "true") {
-        try {
-          const listener = await ngrok.connect({
-            addr: PORT,
-            authtoken_from_env: true,
-          });
-
-          const publicUrl = listener.url();
-
-          console.log(`🌍 Ngrok public URL: ${publicUrl}`);
-          console.log(`🔗 Health check: ${publicUrl}/health`);
-          console.log(`🔐 Verification base URL: ${publicUrl}`);
-
-          console.log(
-            `✅ Put this in your .env for email verification:\nAPP_BASE_URL=${publicUrl}`
-          );
-        } catch (ngrokError) {
-          console.error("❌ Failed to start ngrok:", ngrokError);
-        }
-      }
+      await startNgrokTunnel(PORT);
     });
   } catch (error) {
     console.error("Failed to start server:", error);

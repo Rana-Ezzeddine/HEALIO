@@ -16,7 +16,6 @@ import {
 
 // ─── helpers (unchanged) ─────────────────────────────────────────────────────
 
-<<<<<<< HEAD
 const DOSAGE_UNITS = ["mg", "mcg", "g", "mL", "tablet(s)", "capsule(s)", "drop(s)", "unit(s)", "puff(s)"];
 const FREQUENCY_OPTIONS = ["Once daily", "Twice daily", "Three times daily", "Every 8 hours", "Weekly", "As needed", "Custom"];
 
@@ -46,14 +45,6 @@ function parseDosageParts(value) {
   const [, doseAmount, rawUnit] = match;
   const doseUnit = DOSAGE_UNITS.includes(rawUnit) ? rawUnit : "mg";
   return { doseAmount, doseUnit };
-=======
-function parseScheduleInput(value) {
-  const times = String(value || "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-  return { times };
->>>>>>> refs/remotes/origin/main
 }
 
 function formatScheduleInput(scheduleJson, frequency) {
@@ -463,10 +454,12 @@ export default function MedicationManager() {
 
   // NEW: called when patient selects a drug from autocomplete
   function handleDrugSelect(drug) {
+    const dosageParts = parseDosageParts(drug.dosage);
     setFormData((current) => ({
       ...current,
       name: drug.name,
-      dosage: drug.dosage || current.dosage,
+      doseAmount: dosageParts.doseAmount || current.doseAmount,
+      doseUnit: dosageParts.doseUnit || current.doseUnit,
       frequency: drug.frequency || current.frequency,
     }));
     setAutoFilled(true);
@@ -1029,9 +1022,17 @@ export default function MedicationManager() {
 
                   {/* ── Dosage — auto-filled, still editable ── */}
                   <div>
-<<<<<<< HEAD
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Dosage</label>
-                    <p className="mb-1.5 text-xs text-slate-500">Structured dose amount and unit, matching doctor-side medication entry.</p>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Dosage
+                      {autoFilled && (
+                        <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-normal text-emerald-700">
+                          Auto-filled · review
+                        </span>
+                      )}
+                    </label>
+                    <p className="mb-1.5 text-xs text-slate-500">
+                      Structured dose amount and unit, matching doctor-side medication entry.
+                    </p>
                     <div className="grid grid-cols-[minmax(0,1fr)_140px] gap-2">
                       <input
                         type="number"
@@ -1054,9 +1055,12 @@ export default function MedicationManager() {
                         ))}
                       </select>
                     </div>
-=======
+                  </div>
+
+                  {/* ── Frequency — auto-filled, still editable ── */}
+                  <div>
                     <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Dosage
+                      Frequency
                       {autoFilled && (
                         <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-normal text-emerald-700">
                           Auto-filled · review
@@ -1064,26 +1068,8 @@ export default function MedicationManager() {
                       )}
                     </label>
                     <p className="mb-1.5 text-xs text-slate-500">
-                      Amount per dose, e.g. 500 mg or 5 mL.
+                      Choose a scheduling pattern instead of entering free text.
                     </p>
-                    <input
-                      type="text"
-                      value={formData.dosage}
-                      onChange={(e) =>
-                        setFormData((current) => ({ ...current, dosage: e.target.value }))
-                      }
-                      required
-                      placeholder="e.g. 500 mg"
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                    />
->>>>>>> refs/remotes/origin/main
-                  </div>
-
-                  {/* ── Frequency — auto-filled, still editable ── */}
-                  <div>
-<<<<<<< HEAD
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Frequency</label>
-                    <p className="mb-1.5 text-xs text-slate-500">Choose a scheduling pattern instead of entering free text.</p>
                     <select
                       value={formData.frequency}
                       onChange={(event) => {
@@ -1100,27 +1086,7 @@ export default function MedicationManager() {
                                 : current.scheduleTimes,
                         }));
                       }}
-=======
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Frequency
-                      {autoFilled && (
-                        <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-normal text-emerald-700">
-                          Auto-filled · review
-                        </span>
-                      )}
-                    </label>
-                    <p className="mb-1.5 text-xs text-slate-500">
-                      How often, e.g. Twice daily or Every 8 hours.
-                    </p>
-                    <input
-                      type="text"
-                      value={formData.frequency}
-                      onChange={(e) =>
-                        setFormData((current) => ({ ...current, frequency: e.target.value }))
-                      }
->>>>>>> refs/remotes/origin/main
                       required
-                      placeholder="e.g. Twice daily"
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500"
                     >
                       {FREQUENCY_OPTIONS.map((option) => (
@@ -1184,9 +1150,12 @@ export default function MedicationManager() {
 
                   {/* ── Schedule times (unchanged) ── */}
                   <div>
-<<<<<<< HEAD
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Schedule times</label>
-                    <p className="mb-1.5 text-xs text-slate-500">Add one or more dosing times in HH:MM format.</p>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Schedule times
+                    </label>
+                    <p className="mb-1.5 text-xs text-slate-500">
+                      Add one or more dosing times in HH:MM format.
+                    </p>
                     <div className="space-y-2">
                       {formData.scheduleTimes.map((time, index) => (
                         <div key={`${index}-${time}`} className="flex items-center gap-2">
@@ -1216,26 +1185,6 @@ export default function MedicationManager() {
                         Add time
                       </button>
                     </div>
-=======
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Schedule times
-                    </label>
-                    <p className="mb-1.5 text-xs text-slate-500">
-                      Comma-separated times, e.g. 08:00, 14:00, 20:00.
-                    </p>
-                    <input
-                      type="text"
-                      value={formData.scheduleTimes}
-                      onChange={(e) =>
-                        setFormData((current) => ({
-                          ...current,
-                          scheduleTimes: e.target.value,
-                        }))
-                      }
-                      placeholder="08:00, 20:00"
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                    />
->>>>>>> refs/remotes/origin/main
                   </div>
 
                   {/* ── Start / End dates (unchanged) ── */}

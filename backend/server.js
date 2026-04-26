@@ -5,7 +5,6 @@ import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import sequelize, { testConnection } from './database.js';
-import ngrok from "@ngrok/ngrok";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -69,6 +68,26 @@ import ReminderService from './src/services/reminderService.js';
 const app = express();
 const PORT = process.env.PORT || 5050;
 let pendingRegistrationCleanupInterval = null;
+
+async function startNgrokTunnel(port) {
+  if (process.env.ENABLE_NGROK !== "true") return;
+
+  try {
+    const { default: ngrok } = await import("@ngrok/ngrok");
+    const listener = await ngrok.connect({
+      addr: port,
+      authtoken_from_env: true,
+    });
+
+    const publicUrl = listener.url();
+
+    console.log("🌍 Ngrok public URL:", publicUrl);
+    console.log("🔗 Health check:", `${publicUrl}/health`);
+    console.log(`✅ Put this in .env:\nAPP_BASE_URL=${publicUrl}`);
+  } catch (error) {
+    console.error("❌ Failed to start ngrok:", error.message);
+  }
+}
 
 /////////////////////////////////////////////////
 // Middlewares
@@ -204,22 +223,7 @@ const startServer = async () => {
   console.log("ENABLE_NGROK:", process.env.ENABLE_NGROK);
   console.log("NGROK_AUTHTOKEN exists:", !!process.env.NGROK_AUTHTOKEN);
 
-  if (process.env.ENABLE_NGROK === "true") {
-    try {
-      const listener = await ngrok.connect({
-        addr: PORT,
-        authtoken_from_env: true,
-      });
-
-      const publicUrl = listener.url();
-
-      console.log("🌍 Ngrok public URL:", publicUrl);
-      console.log("🔗 Health check:", `${publicUrl}/health`);
-      console.log(`✅ Put this in .env:\nAPP_BASE_URL=${publicUrl}`);
-    } catch (error) {
-      console.error("❌ Failed to start ngrok:", error.message);
-    }
-  }
+  await startNgrokTunnel(PORT);
 });
   } catch (error) {
     console.error("Failed to start server:", error.message);
