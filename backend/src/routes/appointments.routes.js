@@ -11,6 +11,8 @@ import {
   getDoctorSchedule,
   getMyAppointments,
   getRequestableDoctors,
+  requestAppointmentReschedule,
+  reviewAppointmentReschedule,
   updateAppointment,
   updateAppointmentStatus,
   suggestAlternativeSlot,
@@ -34,6 +36,8 @@ router.post("/", requireRole("doctor"), createAppointment);
 router.post("/requests", requireRole("patient"), createAppointmentRequest);
 router.put("/:id", requireRole("doctor"), updateAppointment);
 router.post("/requests/:id/suggest-slot", requireRole("doctor"), suggestAlternativeSlot);
+router.post("/:id/reschedule", requireRole("doctor", "patient"), requestAppointmentReschedule);
+router.post("/:id/reschedule/review", requireRole("doctor", "patient"), reviewAppointmentReschedule);
 router.patch("/:id/status", requireRole("doctor", "patient"), updateAppointmentStatus);
 
 export default router;

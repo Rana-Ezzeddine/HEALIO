@@ -26,7 +26,7 @@ function normalizeName(value, fieldName) {
   const s = normString(value);
   if (!s) return { error: `${fieldName} is required` };
   if (s.length < 2) return { error: `${fieldName} must be at least 2 characters` };
-  if (!isAlphaOnly(s)) return { error: `${fieldName} must contain letters only` };
+  if (!isWordsOnly(s)) return { error: `${fieldName} must contain letters, spaces, apostrophes, or hyphens only` };
   return { value: s };
 }
 

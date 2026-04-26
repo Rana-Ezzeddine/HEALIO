@@ -5,13 +5,35 @@ import { apiUrl, authHeaders } from "../api/http";
 import { getMedicationFilterOptions, searchAndFilterMedications } from "../api/search";
 import { formatDoseTime, getNextMedicationDose, getScheduleTimes, isActiveMedication } from "../utils/medicationSchedule";
 
-function parseScheduleInput(value) {
-  const times = String(value || "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
+const DOSAGE_UNITS = ["mg", "mcg", "g", "mL", "tablet(s)", "capsule(s)", "drop(s)", "unit(s)", "puff(s)"];
+const FREQUENCY_OPTIONS = ["Once daily", "Twice daily", "Three times daily", "Every 8 hours", "Weekly", "As needed", "Custom"];
 
-  return { times };
+function parseScheduleInput(times) {
+  return {
+    times: Array.isArray(times)
+      ? times.map((item) => String(item || "").trim()).filter(Boolean)
+      : [],
+  };
+}
+
+function getSuggestedTimesForFrequency(frequency) {
+  if (frequency === "Twice daily") return ["08:00", "20:00"];
+  if (frequency === "Three times daily") return ["08:00", "14:00", "20:00"];
+  if (frequency === "Every 8 hours") return ["06:00", "14:00", "22:00"];
+  if (frequency === "Once daily") return ["08:00"];
+  return [];
+}
+
+function parseDosageParts(value) {
+  const trimmed = String(value || "").trim();
+  const match = trimmed.match(/^(\d+(?:\.\d+)?)\s*(.+)$/);
+  if (!match) {
+    return { doseAmount: "", doseUnit: "mg" };
+  }
+
+  const [, doseAmount, rawUnit] = match;
+  const doseUnit = DOSAGE_UNITS.includes(rawUnit) ? rawUnit : "mg";
+  return { doseAmount, doseUnit };
 }
 
 function formatScheduleInput(scheduleJson, frequency) {
@@ -147,13 +169,14 @@ export default function MedicationManager() {
   const [expandedHistoryMedicationId, setExpandedHistoryMedicationId] = useState("");
   const [formData, setFormData] = useState({
     name: "",
-    dosage: "",
-    frequency: "",
+    doseAmount: "",
+    doseUnit: "mg",
+    frequency: "Once daily",
     prescribedBy: "",
     startDate: "",
     endDate: "",
     notes: "",
-    scheduleTimes: "08:00",
+    scheduleTimes: [],
     reminderEnabled: true,
     reminderLeadMinutes: 30,
   });
@@ -209,9 +232,17 @@ export default function MedicationManager() {
   function openModal(medication = null) {
     if (medication) {
       setEditingMed(medication);
+      const dosageParts = parseDosageParts(medication.dosage);
       setFormData({
-        ...medication,
-        scheduleTimes: formatScheduleInput(medication.scheduleJson, medication.frequency),
+        name: medication.name || "",
+        doseAmount: dosageParts.doseAmount,
+        doseUnit: dosageParts.doseUnit,
+        frequency: medication.frequency || "Once daily",
+        prescribedBy: medication.prescribedBy || "",
+        startDate: medication.startDate || "",
+        endDate: medication.endDate || "",
+        notes: medication.notes || "",
+        scheduleTimes: getScheduleTimes({ scheduleJson: medication.scheduleJson, frequency: medication.frequency }),
         reminderEnabled: medication.reminderEnabled !== false,
         reminderLeadMinutes: medication.reminderLeadMinutes ?? 30,
       });
@@ -219,13 +250,14 @@ export default function MedicationManager() {
       setEditingMed(null);
       setFormData({
         name: "",
-        dosage: "",
-        frequency: "",
+        doseAmount: "",
+        doseUnit: "mg",
+        frequency: "Once daily",
         prescribedBy: "",
         startDate: "",
         endDate: "",
         notes: "",
-        scheduleTimes: "08:00",
+        scheduleTimes: [],
         reminderEnabled: true,
         reminderLeadMinutes: 30,
       });
@@ -240,9 +272,10 @@ export default function MedicationManager() {
 
   async function handleSubmit(event) {
     event.preventDefault();
+    const dosage = `${String(formData.doseAmount || "").trim()} ${String(formData.doseUnit || "").trim()}`.trim();
     const payload = {
       name: formData.name,
-      dosage: formData.dosage,
+      dosage,
       frequency: formData.frequency,
       prescribedBy: formData.prescribedBy,
       startDate: formData.startDate,
@@ -275,6 +308,27 @@ export default function MedicationManager() {
     } catch (saveError) {
       alert(saveError.message || "Failed to save medication.");
     }
+  }
+
+  function updateMedicationTime(index, value) {
+    setFormData((current) => ({
+      ...current,
+      scheduleTimes: current.scheduleTimes.map((time, timeIndex) => (timeIndex === index ? value : time)),
+    }));
+  }
+
+  function addMedicationTime() {
+    setFormData((current) => ({
+      ...current,
+      scheduleTimes: [...current.scheduleTimes, ""],
+    }));
+  }
+
+  function removeMedicationTime(index) {
+    setFormData((current) => ({
+      ...current,
+      scheduleTimes: current.scheduleTimes.filter((_, timeIndex) => timeIndex !== index),
+    }));
   }
 
   async function deleteMedication(id) {
@@ -680,25 +734,58 @@ export default function MedicationManager() {
                   </div>
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-slate-700">Dosage</label>
-                    <p className="mb-1.5 text-xs text-slate-500">Amount taken each scheduled time, for example 1 pill or 5 mL.</p>
-                    <input
-                      type="text"
-                      value={formData.dosage}
-                      onChange={(event) => setFormData((current) => ({ ...current, dosage: event.target.value }))}
-                      required
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                    />
+                    <p className="mb-1.5 text-xs text-slate-500">Structured dose amount and unit, matching doctor-side medication entry.</p>
+                    <div className="grid grid-cols-[minmax(0,1fr)_140px] gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        value={formData.doseAmount}
+                        onChange={(event) => setFormData((current) => ({ ...current, doseAmount: event.target.value }))}
+                        required
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                      />
+                      <select
+                        value={formData.doseUnit}
+                        onChange={(event) => setFormData((current) => ({ ...current, doseUnit: event.target.value }))}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                      >
+                        {DOSAGE_UNITS.map((unit) => (
+                          <option key={unit} value={unit}>
+                            {unit}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-slate-700">Frequency</label>
-                    <p className="mb-1.5 text-xs text-slate-500">Descriptive pattern, for example twice daily or every 8 hours.</p>
-                    <input
-                      type="text"
+                    <p className="mb-1.5 text-xs text-slate-500">Choose a scheduling pattern instead of entering free text.</p>
+                    <select
                       value={formData.frequency}
-                      onChange={(event) => setFormData((current) => ({ ...current, frequency: event.target.value }))}
+                      onChange={(event) => {
+                        const frequency = event.target.value;
+                        const suggestedTimes = getSuggestedTimesForFrequency(frequency);
+                        setFormData((current) => ({
+                          ...current,
+                          frequency,
+                          scheduleTimes:
+                            current.scheduleTimes.length === 0
+                              ? current.scheduleTimes
+                              : current.scheduleTimes.every((time) => ["08:00", "20:00", "14:00", "06:00", "22:00"].includes(time))
+                                ? suggestedTimes
+                                : current.scheduleTimes,
+                        }));
+                      }}
                       required
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                    />
+                    >
+                      {FREQUENCY_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-slate-700">Prescribed By</label>
@@ -711,14 +798,36 @@ export default function MedicationManager() {
                   </div>
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-slate-700">Schedule times</label>
-                    <p className="mb-1.5 text-xs text-slate-500">Enter one or more times separated by commas, for example 08:00, 14:00, 20:00.</p>
-                    <input
-                      type="text"
-                      value={formData.scheduleTimes}
-                      onChange={(event) => setFormData((current) => ({ ...current, scheduleTimes: event.target.value }))}
-                      placeholder="08:00, 20:00"
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                    />
+                    <p className="mb-1.5 text-xs text-slate-500">Add one or more dosing times in HH:MM format.</p>
+                    <div className="space-y-2">
+                      {formData.scheduleTimes.map((time, index) => (
+                        <div key={`${index}-${time}`} className="flex items-center gap-2">
+                          <input
+                            type="time"
+                            value={time}
+                            onChange={(event) => updateMedicationTime(index, event.target.value)}
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeMedicationTime(index)}
+                            className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                      {formData.scheduleTimes.length === 0 ? (
+                        <p className="text-xs text-slate-500">No dosing times set.</p>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={addMedicationTime}
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                      >
+                        Add time
+                      </button>
+                    </div>
                   </div>
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-slate-700">Start Date</label>

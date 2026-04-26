@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
-import { getMyAppointments } from "../api/appointments";
+import { getDoctorAvailability, getMyAppointments, requestAppointmentReschedule, reviewAppointmentReschedule } from "../api/appointments";
 import { apiUrl, authHeaders } from "../api/http";
 
 const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -48,6 +48,7 @@ function statusClass(status) {
 function statusLabel(status) {
   if (status === "requested") return "Requested";
   if (status === "scheduled") return "Scheduled";
+  if (status === "reschedule_requested") return "Reschedule Pending";
   if (status === "completed") return "Completed";
   if (status === "cancelled") return "Cancelled";
   if (status === "denied") return "Denied";
@@ -92,6 +93,19 @@ export default function DoctorCalendar() {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
+  const [rescheduleOpenId, setRescheduleOpenId] = useState("");
+  const [rescheduleForm, setRescheduleForm] = useState({
+    appointmentId: "",
+    date: "",
+    duration: "30",
+    timeSlot: "",
+    location: "",
+    notes: "",
+  });
+  const [rescheduleSlots, setRescheduleSlots] = useState([]);
+  const [rescheduleSlotsLoading, setRescheduleSlotsLoading] = useState(false);
+  const [rescheduleLoadingId, setRescheduleLoadingId] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -127,6 +141,59 @@ export default function DoctorCalendar() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRescheduleAvailability() {
+      if (!rescheduleOpenId || !rescheduleForm.date) {
+        setRescheduleSlots([]);
+        return;
+      }
+
+      try {
+        setRescheduleSlotsLoading(true);
+        const dayStart = new Date(`${rescheduleForm.date}T00:00:00`);
+        const dayEnd = new Date(dayStart);
+        dayEnd.setDate(dayEnd.getDate() + 1);
+        const data = await getDoctorAvailability({
+          from: dayStart.toISOString(),
+          to: dayEnd.toISOString(),
+          slotMinutes: Number(rescheduleForm.duration || "30"),
+        });
+        if (!cancelled) {
+          const now = Date.now();
+          setRescheduleSlots((data.slots || []).filter((slot) => new Date(slot.startsAt).getTime() > now));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setRescheduleSlots([]);
+          setError(err.message || "Failed to load reschedule slots.");
+        }
+      } finally {
+        if (!cancelled) setRescheduleSlotsLoading(false);
+      }
+    }
+
+    loadRescheduleAvailability();
+    return () => {
+      cancelled = true;
+    };
+  }, [rescheduleOpenId, rescheduleForm.date, rescheduleForm.duration]);
+
+  useEffect(() => {
+    if (!rescheduleOpenId) return;
+    if (!rescheduleSlots.length) {
+      if (rescheduleForm.timeSlot) {
+        setRescheduleForm((current) => ({ ...current, timeSlot: "" }));
+      }
+      return;
+    }
+    const hasSelectedSlot = rescheduleSlots.some((slot) => slot.startsAt === rescheduleForm.timeSlot);
+    if (!hasSelectedSlot) {
+      setRescheduleForm((current) => ({ ...current, timeSlot: rescheduleSlots[0].startsAt }));
+    }
+  }, [rescheduleOpenId, rescheduleSlots, rescheduleForm.timeSlot]);
 
   const patientNameById = useMemo(() => {
     const map = new Map();
@@ -182,6 +249,92 @@ export default function DoctorCalendar() {
     );
   }
 
+  function openReschedule(appointment) {
+    const startsAt = new Date(appointment.proposedStartsAt || appointment.startsAt);
+    const endsAt = new Date(appointment.proposedEndsAt || appointment.endsAt);
+    setRescheduleOpenId(appointment.id);
+    setRescheduleForm({
+      appointmentId: appointment.id,
+      date: startsAt.toISOString().slice(0, 10),
+      duration: String(Math.round((endsAt - startsAt) / 60000) || 30),
+      timeSlot: "",
+      location: appointment.proposedLocation || appointment.location || "",
+      notes: appointment.rescheduleNotes || "",
+    });
+    setRescheduleSlots([]);
+    setSuccessMessage("");
+    setError("");
+  }
+
+  function closeReschedule() {
+    setRescheduleOpenId("");
+    setRescheduleSlots([]);
+    setRescheduleSlotsLoading(false);
+  }
+
+  async function reloadCalendarData() {
+    setLoading(true);
+    setError("");
+    try {
+      const [appointmentsResult, patientsResult] = await Promise.all([
+        getMyAppointments(),
+        fetchAssignedPatients(),
+      ]);
+      setAppointments(appointmentsResult.appointments || []);
+      setAssignedPatients(patientsResult.patients || []);
+    } catch (err) {
+      setError(err.message || "Failed to reload calendar data.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSubmitReschedule(appointment) {
+    if (!rescheduleForm.timeSlot) {
+      setError("Select a new slot before sending the reschedule request.");
+      return;
+    }
+    try {
+      setError("");
+      setSuccessMessage("");
+      setRescheduleLoadingId(appointment.id);
+      const startsAt = new Date(rescheduleForm.timeSlot);
+      const endsAt = new Date(startsAt.getTime() + Number(rescheduleForm.duration || "30") * 60000);
+      await requestAppointmentReschedule(appointment.id, {
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString(),
+        location: rescheduleForm.location,
+        notes: rescheduleForm.notes,
+      });
+      closeReschedule();
+      await reloadCalendarData();
+      setSuccessMessage("Reschedule request sent to the patient.");
+    } catch (err) {
+      setError(err.message || "Failed to request a reschedule.");
+    } finally {
+      setRescheduleLoadingId("");
+    }
+  }
+
+  async function handleReviewReschedule(appointmentId, decision) {
+    try {
+      setError("");
+      setSuccessMessage("");
+      setRescheduleLoadingId(appointmentId);
+      await reviewAppointmentReschedule(appointmentId, decision);
+      await reloadCalendarData();
+      setSuccessMessage(
+        decision === "approve"
+          ? "Reschedule approved."
+          : "Reschedule declined. The original appointment remains booked."
+      );
+    } catch (err) {
+      setError(err.message || "Failed to review the reschedule request.");
+    } finally {
+      setRescheduleLoadingId("");
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
@@ -211,6 +364,11 @@ export default function DoctorCalendar() {
         {error ? (
           <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
+          </div>
+        ) : null}
+        {successMessage ? (
+          <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            {successMessage}
           </div>
         ) : null}
 
@@ -367,35 +525,170 @@ export default function DoctorCalendar() {
                   <th className="py-3 px-4">Location</th>
                   <th className="py-3 px-4">Notes</th>
                   <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={5} className="py-6 px-4 text-center text-slate-500">Loading appointments...</td>
+                    <td colSpan={6} className="py-6 px-4 text-center text-slate-500">Loading appointments...</td>
                   </tr>
                 ) : selectedAppointments.length > 0 ? (
-                  selectedAppointments.map((appointment) => (
-                    <tr key={appointment.id} className="hover:bg-slate-50">
-                      <td className="py-3 px-4 font-medium text-slate-700">{formatTime(appointment.startsAt)}</td>
-                      <td className="py-3 px-4 text-slate-800">
-                        {patientNameById.get(appointment.patient?.id || appointment.patientId) ||
-                          appointment.patient?.displayName ||
-                          appointment.patient?.email ||
-                          "Patient"}
-                      </td>
-                      <td className="py-3 px-4 text-slate-600">{appointment.location || "-"}</td>
-                      <td className="py-3 px-4 text-slate-600">{appointment.notes || "-"}</td>
-                      <td className="py-3 px-4">
-                        <span className={`rounded-full px-2 py-1 text-xs ${statusClass(appointment.status)}`}>
-                          {statusLabel(appointment.status)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
+                  selectedAppointments.map((appointment) => {
+                    const proposedParts = appointment.proposedStartsAt ? formatShortDateLabel(toDateKey(appointment.proposedStartsAt)) + " • " + formatTime(appointment.proposedStartsAt) : null;
+                    const patientRequestedReschedule =
+                      appointment.status === "reschedule_requested" && appointment.rescheduleRequestedBy === "patient";
+                    const doctorRequestedReschedule =
+                      appointment.status === "reschedule_requested" && appointment.rescheduleRequestedBy === "doctor";
+                    return (
+                      <>
+                        <tr key={appointment.id} className="hover:bg-slate-50">
+                          <td className="py-3 px-4 font-medium text-slate-700">{formatTime(appointment.startsAt)}</td>
+                          <td className="py-3 px-4 text-slate-800">
+                            {patientNameById.get(appointment.patient?.id || appointment.patientId) ||
+                              appointment.patient?.displayName ||
+                              appointment.patient?.email ||
+                              "Patient"}
+                          </td>
+                          <td className="py-3 px-4 text-slate-600">{appointment.location || "-"}</td>
+                          <td className="py-3 px-4 text-slate-600">
+                            {appointment.notes || "-"}
+                            {appointment.rescheduleNotes ? <p className="mt-1 text-xs text-violet-700">{appointment.rescheduleNotes}</p> : null}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className={`rounded-full px-2 py-1 text-xs ${statusClass(appointment.status)}`}>
+                              {statusLabel(appointment.status)}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4">
+                            {patientRequestedReschedule ? (
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleReviewReschedule(appointment.id, "approve")}
+                                  disabled={rescheduleLoadingId === appointment.id}
+                                  className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600 disabled:opacity-70"
+                                >
+                                  Approve move
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleReviewReschedule(appointment.id, "deny")}
+                                  disabled={rescheduleLoadingId === appointment.id}
+                                  className="rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-600 disabled:opacity-70"
+                                >
+                                  Keep original
+                                </button>
+                              </div>
+                            ) : appointment.status === "scheduled" ? (
+                              <button
+                                type="button"
+                                onClick={() => (rescheduleOpenId === appointment.id ? closeReschedule() : openReschedule(appointment))}
+                                className="rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-50"
+                              >
+                                {rescheduleOpenId === appointment.id ? "Close" : "Reschedule"}
+                              </button>
+                            ) : doctorRequestedReschedule ? (
+                              <span className="text-xs font-medium text-violet-700">Waiting for patient review</span>
+                            ) : (
+                              <span className="text-slate-400">-</span>
+                            )}
+                          </td>
+                        </tr>
+                        {appointment.status === "reschedule_requested" && proposedParts ? (
+                          <tr>
+                            <td colSpan={6} className="px-4 pb-4">
+                              <div className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900">
+                                Proposed move: {proposedParts}
+                                {appointment.proposedLocation ? ` • ${appointment.proposedLocation}` : ""}
+                              </div>
+                            </td>
+                          </tr>
+                        ) : null}
+                        {rescheduleOpenId === appointment.id ? (
+                          <tr>
+                            <td colSpan={6} className="px-4 pb-4">
+                              <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
+                                <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+                                  <input
+                                    type="date"
+                                    value={rescheduleForm.date}
+                                    onChange={(event) => setRescheduleForm((current) => ({ ...current, date: event.target.value, timeSlot: "" }))}
+                                    className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                                  />
+                                  <select
+                                    value={rescheduleForm.duration}
+                                    onChange={(event) => setRescheduleForm((current) => ({ ...current, duration: event.target.value, timeSlot: "" }))}
+                                    className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                                  >
+                                    <option value="15">15 minutes</option>
+                                    <option value="30">30 minutes</option>
+                                    <option value="45">45 minutes</option>
+                                    <option value="60">60 minutes</option>
+                                  </select>
+                                  <select
+                                    value={rescheduleForm.timeSlot}
+                                    onChange={(event) => setRescheduleForm((current) => ({ ...current, timeSlot: event.target.value }))}
+                                    className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 md:col-span-2"
+                                    disabled={!rescheduleForm.date || rescheduleSlotsLoading}
+                                  >
+                                    <option value="">
+                                      {!rescheduleForm.date
+                                        ? "Select date first"
+                                        : rescheduleSlotsLoading
+                                        ? "Loading slots..."
+                                        : rescheduleSlots.length === 0
+                                        ? "No available slots"
+                                        : "Select slot"}
+                                    </option>
+                                    {rescheduleSlots.map((slot) => (
+                                      <option key={slot.startsAt} value={slot.startsAt}>
+                                        {formatTime(slot.startsAt)} - {formatTime(slot.endsAt)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <input
+                                    type="text"
+                                    placeholder="Location"
+                                    value={rescheduleForm.location}
+                                    onChange={(event) => setRescheduleForm((current) => ({ ...current, location: event.target.value }))}
+                                    className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                                  />
+                                </div>
+                                <textarea
+                                  value={rescheduleForm.notes}
+                                  onChange={(event) => setRescheduleForm((current) => ({ ...current, notes: event.target.value }))}
+                                  rows={3}
+                                  placeholder="Optional note for the patient"
+                                  className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                                />
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSubmitReschedule(appointment)}
+                                    disabled={rescheduleLoadingId === appointment.id || !rescheduleForm.timeSlot}
+                                    className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-70"
+                                  >
+                                    {rescheduleLoadingId === appointment.id ? "Sending..." : "Send reschedule request"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={closeReschedule}
+                                    className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : null}
+                      </>
+                    );
+                  })
                 ) : (
                   <tr>
-                    <td colSpan={5} className="py-6 px-4 text-center text-slate-500">No appointments found for this date. Pick another day or open Appointments to schedule a visit.</td>
+                    <td colSpan={6} className="py-6 px-4 text-center text-slate-500">No appointments found for this date. Pick another day or open Appointments to schedule a visit.</td>
                   </tr>
                 )}
               </tbody>

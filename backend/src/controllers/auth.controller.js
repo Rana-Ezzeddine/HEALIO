@@ -29,11 +29,11 @@ const APPLE_AUTH_URL = 'https://appleid.apple.com/auth/authorize';
 const APPLE_TOKEN_URL = 'https://appleid.apple.com/auth/token';
 const APPLE_JWKS_URL = 'https://appleid.apple.com/auth/keys';
 
-const isValidName = (name) => (
-  typeof name === 'string' &&
-  /^[A-Za-z]+$/.test(name.trim()) &&
-  name.trim().length >= 2
-);
+const isValidName = (name) => {
+  if (typeof name !== 'string') return false;
+  const trimmed = name.trim();
+  return /^[A-Za-z]+(?:\s+[A-Za-z]+)*$/.test(trimmed) && trimmed.replace(/\s+/g, '').length >= 2;
+};
 
 const isStrongPassword = (pw) => (
   typeof pw === 'string' &&
@@ -516,13 +516,13 @@ export const register = async (req, res) => {
 
     if (!isValidName(firstName)) {
       return res.status(400).json({
-        message: 'First name must be at least 2 characters and contain letters only.',
+        message: 'First name must be at least 2 letters and may include spaces.',
       });
     }
 
     if (!isValidName(lastName)) {
       return res.status(400).json({
-        message: 'Last name must be at least 2 characters and contain letters only.',
+        message: 'Last name must be at least 2 letters and may include spaces.',
       });
     }
 

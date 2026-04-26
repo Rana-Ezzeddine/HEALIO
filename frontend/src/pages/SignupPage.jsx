@@ -51,7 +51,10 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
     doctor: "Manage patient records, schedule appointments, and provide healthcare services.",
     caregiver: "Support loved ones by tracking care updates, appointments, and medications.",
   };
-  const isNameValid = (value) => /^[A-Za-z]{2,}$/.test(value.trim());
+  const isNameValid = (value) => {
+    const trimmed = value.trim();
+    return /^[A-Za-z]+(?:\s+[A-Za-z]+)*$/.test(trimmed) && trimmed.replace(/\s+/g, "").length >= 2;
+  };
   const isStrongPassword = (value) =>
     value.length >= 10 &&
     /[A-Z]/.test(value) &&
@@ -99,6 +102,21 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
     });
   }, [email, firstName, lastName, licenseNb, userType]);
 
+  function handleRoleSelect(nextRole) {
+    if (nextRole === userType) return;
+
+    setUserType(nextRole);
+    setFirstName("");
+    setLastName("");
+    setEmail("");
+    setLicenseNb("");
+    setPassword("");
+    setConfirmPassword("");
+    setError("");
+    setSuccess("");
+    setPendingVerificationEmail("");
+  }
+
   async function handleCreateAccount(e) {
     e.preventDefault();
     setError("");
@@ -115,12 +133,12 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
     }
 
     if (!isNameValid(cleanFirstName)) {
-      setError("First name must be at least 2 characters and contain letters only.");
+      setError("First name must be at least 2 letters and may include spaces.");
       return;
     }
 
     if (!isNameValid(cleanLastName)) {
-      setError("Last name must be at least 2 characters and contain letters only.");
+      setError("Last name must be at least 2 letters and may include spaces.");
       return;
     }
 
@@ -251,27 +269,19 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
               active={userType === "patient"}
               title="Patient"
               accent="from-sky-500 to-cyan-400"
-              onClick={() => {
-                setUserType("patient");
-                setLicenseNb("");
-              }}
+              onClick={() => handleRoleSelect("patient")}
             />
             <RoleOption
               active={userType === "doctor"}
               title="Doctor"
               accent="from-violet-500 to-fuchsia-400"
-              onClick={() => {
-                setUserType("doctor");
-              }}
+              onClick={() => handleRoleSelect("doctor")}
             />
             <RoleOption
               active={userType === "caregiver"}
               title="Caregiver"
               accent="from-emerald-500 to-teal-400"
-              onClick={() => {
-                setUserType("caregiver");
-                setLicenseNb("");
-              }}
+              onClick={() => handleRoleSelect("caregiver")}
             />
           </div>
         </div>
@@ -311,7 +321,7 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
                 minLength={2}
-                pattern="[A-Za-z]{2,}"
+                pattern="[A-Za-z]+(?:\\s+[A-Za-z]+)*"
                 required
                 className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-400 focus:ring-sky-400 transition"
               />
@@ -324,7 +334,7 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
                 minLength={2}
-                pattern="[A-Za-z]{2,}"
+                pattern="[A-Za-z]+(?:\\s+[A-Za-z]+)*"
                 required
                 className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-400 focus:ring-sky-400 transition"
               />

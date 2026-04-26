@@ -133,3 +133,17 @@ export function suggestAppointmentSlot(id, payload) {
     body: JSON.stringify(payload),
   });
 }
+
+export function requestAppointmentReschedule(id, payload) {
+  return request(`/api/appointments/${id}/reschedule`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function reviewAppointmentReschedule(id, decision, note = "") {
+  return request(`/api/appointments/${id}/reschedule/review`, {
+    method: "POST",
+    body: JSON.stringify({ decision, note }),
+  });
+}

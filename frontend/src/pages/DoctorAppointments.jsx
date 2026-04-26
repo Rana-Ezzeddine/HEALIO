@@ -96,6 +96,12 @@ function statusLabel(status) {
 function patientLabel(patientRecord) {
   return patientRecord.profile?.displayName || patientRecord.patient?.displayName || patientRecord.patient?.email || patientRecord.email || "Patient";
 }
+
+function isDateOnlyRequest(appointment) {
+  if (!appointment || appointment.requestSource !== "patient" || appointment.status !== "requested") return false;
+  const start = new Date(appointment.startsAt);
+  return start.getHours() === 0 && start.getMinutes() === 0;
+}
 function MetricCard({ label, value, hint }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -942,6 +948,7 @@ export default function DoctorAppointments() {
                   "Patient";
                 const requestedDuration = Math.round((new Date(appointment.endsAt) - new Date(appointment.startsAt)) / 60000);
                 const isSuggesting = suggestOpenId === appointment.id;
+                const needsDoctorSlotChoice = isDateOnlyRequest(appointment);
 
                 return (
                   <div key={appointment.id} className="rounded-3xl border border-slate-200 bg-white/90 p-5 shadow-sm">
@@ -952,8 +959,9 @@ export default function DoctorAppointments() {
                           <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">Requested</span>
                         </div>
                         <p className="mt-2 text-sm text-slate-500">
-                          Requested slot: {formatDateLabel(toDateKey(appointment.startsAt))} at {formatTime(appointment.startsAt)}
-                          {appointment.endsAt ? ` for ${requestedDuration} minutes` : ""}
+                          {needsDoctorSlotChoice
+                            ? `Preferred day: ${formatDateLabel(toDateKey(appointment.startsAt))} • ${requestedDuration} minutes • doctor must choose slot`
+                            : `Requested slot: ${formatDateLabel(toDateKey(appointment.startsAt))} at ${formatTime(appointment.startsAt)}${appointment.endsAt ? ` for ${requestedDuration} minutes` : ""}`}
                         </p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           <SoftPill label="Duration" value={`${requestedDuration} min`} tone="sky" />
@@ -991,11 +999,11 @@ export default function DoctorAppointments() {
                     <div className="mt-4 flex flex-wrap gap-2">
                       <button
                         type="button"
-                        disabled={statusLoadingId === appointment.id || suggestLoadingId === appointment.id}
+                        disabled={needsDoctorSlotChoice || statusLoadingId === appointment.id || suggestLoadingId === appointment.id}
                         onClick={() => handleReviewRequest(appointment.id, "scheduled")}
                         className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-70"
                       >
-                        Approve requested slot
+                        {needsDoctorSlotChoice ? "Choose slot first" : "Approve requested slot"}
                       </button>
                       <button
                         type="button"
@@ -1011,7 +1019,7 @@ export default function DoctorAppointments() {
                         onClick={() => (isSuggesting ? closeSuggestSlot() : openSuggestSlot(appointment))}
                         className="rounded-xl border border-sky-300 bg-white px-4 py-2 text-sm font-semibold text-sky-700 hover:bg-sky-50 disabled:opacity-70"
                       >
-                        {isSuggesting ? "Close suggestion" : "Suggest another slot"}
+                        {isSuggesting ? "Close suggestion" : needsDoctorSlotChoice ? "Choose slot" : "Suggest another slot"}
                       </button>
                     </div>
 
@@ -1020,7 +1028,9 @@ export default function DoctorAppointments() {
                         <div className="mb-3">
                           <h4 className="text-sm font-semibold text-slate-900">Suggest another slot</h4>
                           <p className="mt-1 text-xs text-slate-500">
-                            Pick a new date, duration, and available time. The appointment stays in requested state, but its requested slot updates to your suggestion.
+                            {needsDoctorSlotChoice
+                              ? "Pick the actual appointment slot for this patient request. After sending it, you can approve the request."
+                              : "Pick a new date, duration, and available time. The appointment stays in requested state, but its requested slot updates to your suggestion."}
                           </p>
                         </div>
 

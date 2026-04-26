@@ -63,6 +63,50 @@ async function ensureAppointmentRequestSourceColumnReady() {
   }
 }
 
+async function ensureAppointmentRescheduleColumnsReady() {
+  const queryInterface = Appointment.sequelize.getQueryInterface();
+  await Appointment.sequelize.query(`
+    ALTER TYPE "enum_appointments_status" ADD VALUE IF NOT EXISTS 'reschedule_requested';
+  `);
+  const table = await queryInterface.describeTable(Appointment.getTableName());
+
+  if (!table.proposedStartsAt) {
+    await queryInterface.addColumn(Appointment.getTableName(), "proposedStartsAt", {
+      type: Appointment.sequelize.Sequelize.DATE,
+      allowNull: true,
+    });
+  }
+  if (!table.proposedEndsAt) {
+    await queryInterface.addColumn(Appointment.getTableName(), "proposedEndsAt", {
+      type: Appointment.sequelize.Sequelize.DATE,
+      allowNull: true,
+    });
+  }
+  if (!table.proposedLocation) {
+    await queryInterface.addColumn(Appointment.getTableName(), "proposedLocation", {
+      type: Appointment.sequelize.Sequelize.STRING,
+      allowNull: true,
+    });
+  }
+  if (!table.rescheduleRequestedBy) {
+    await queryInterface.addColumn(Appointment.getTableName(), "rescheduleRequestedBy", {
+      type: Appointment.sequelize.Sequelize.STRING,
+      allowNull: true,
+    });
+  }
+  if (!table.rescheduleNotes) {
+    await queryInterface.addColumn(Appointment.getTableName(), "rescheduleNotes", {
+      type: Appointment.sequelize.Sequelize.TEXT,
+      allowNull: true,
+    });
+  }
+}
+
+async function ensureAppointmentSchemaReady() {
+  await ensureAppointmentRequestSourceColumnReady();
+  await ensureAppointmentRescheduleColumnsReady();
+}
+
 async function validateDoctorPatientLink(doctorId, patientId) {
   const assignment = await DoctorPatientAssignment.findOne({
     where: { doctorId, patientId, status: "active" },
@@ -87,6 +131,7 @@ async function buildDoctorAvailability({
   slotMinutes,
 }) {
   await ensureAvailabilityTableReady();
+  await ensureAppointmentSchemaReady();
 
   const [availabilities, appointments] = await Promise.all([
     Availability.findAll({
@@ -104,11 +149,20 @@ async function buildDoctorAvailability({
     Appointment.findAll({
       where: {
         doctorId,
-        status: { [Op.in]: ["requested", "scheduled"] },
-        startsAt: { [Op.lt]: to },
-        endsAt: { [Op.gt]: from },
+        [Op.or]: [
+          {
+            status: { [Op.in]: ["requested", "scheduled", "reschedule_requested"] },
+            startsAt: { [Op.lt]: to },
+            endsAt: { [Op.gt]: from },
+          },
+          {
+            status: "reschedule_requested",
+            proposedStartsAt: { [Op.lt]: to },
+            proposedEndsAt: { [Op.gt]: from },
+          },
+        ],
       },
-      attributes: ["startsAt", "endsAt"],
+      attributes: ["startsAt", "endsAt", "status", "proposedStartsAt", "proposedEndsAt"],
     })
   ]);
 
@@ -148,7 +202,16 @@ async function buildDoctorAvailability({
           if (slotEnd > actualEnd) break;
 
           // Check for overlaps with appointments
-          const hasApptOverlap = appointments.some((a) => a.startsAt < slotEnd && a.endsAt > slotStart);
+          const hasApptOverlap = appointments.some((a) => {
+            const originalOverlap = a.startsAt < slotEnd && a.endsAt > slotStart;
+            const proposedOverlap =
+              a.status === "reschedule_requested" &&
+              a.proposedStartsAt &&
+              a.proposedEndsAt &&
+              a.proposedStartsAt < slotEnd &&
+              a.proposedEndsAt > slotStart;
+            return originalOverlap || proposedOverlap;
+          });
           
           // Check for overlaps with breaks/blocked
           const hasBlockOverlap = blocks.some(b => {
@@ -192,11 +255,21 @@ async function ensureDoctorUser(doctorId) {
 }
 
 async function hasDoctorConflict(doctorId, startsAt, endsAt, excludeAppointmentId = null) {
+  await ensureAppointmentSchemaReady();
   const where = {
     doctorId,
-    status: { [Op.in]: ["requested", "scheduled"] },
-    startsAt: { [Op.lt]: endsAt },
-    endsAt: { [Op.gt]: startsAt },
+    [Op.or]: [
+      {
+        status: { [Op.in]: ["requested", "scheduled", "reschedule_requested"] },
+        startsAt: { [Op.lt]: endsAt },
+        endsAt: { [Op.gt]: startsAt },
+      },
+      {
+        status: "reschedule_requested",
+        proposedStartsAt: { [Op.lt]: endsAt },
+        proposedEndsAt: { [Op.gt]: startsAt },
+      },
+    ],
   };
 
   if (excludeAppointmentId) {
@@ -211,9 +284,28 @@ function buildDisplayName(email, firstName, lastName) {
   return [firstName, lastName].filter(Boolean).join(" ").trim() || email;
 }
 
+function parsePreferredRequestDate(value) {
+  const normalized = String(value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    throw new Error("preferredDate must be in YYYY-MM-DD format");
+  }
+
+  const parsed = new Date(`${normalized}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error("preferredDate must be a valid date");
+  }
+
+  return parsed;
+}
+
+function isDateOnlyRequestSlot(startsAt) {
+  const date = new Date(startsAt);
+  return date.getHours() === 0 && date.getMinutes() === 0;
+}
+
 export async function getDoctorSchedule(req, res) {
   try {
-    await ensureAppointmentRequestSourceColumnReady();
+    await ensureAppointmentSchemaReady();
     const doctorId = req.user.id;
     const { from, to } = parseRange(req);
     const includeCancelled = String(req.query.includeCancelled || "false").toLowerCase() === "true";
@@ -225,7 +317,7 @@ export async function getDoctorSchedule(req, res) {
     };
 
     if (!includeCancelled) {
-      where.status = { [Op.in]: ["scheduled", "completed"] };
+      where.status = { [Op.in]: ["scheduled", "completed", "reschedule_requested"] };
     }
 
     const appointments = await Appointment.findAll({
@@ -254,6 +346,11 @@ export async function getDoctorSchedule(req, res) {
         location: a.location,
         status: a.status,
         notes: a.notes,
+        proposedStartsAt: a.proposedStartsAt || null,
+        proposedEndsAt: a.proposedEndsAt || null,
+        proposedLocation: a.proposedLocation || null,
+        rescheduleRequestedBy: a.rescheduleRequestedBy || null,
+        rescheduleNotes: a.rescheduleNotes || null,
         patient: a.patient
           ? {
               id: a.patient.id,
@@ -275,7 +372,7 @@ export async function getDoctorSchedule(req, res) {
 
 export async function createAppointment(req, res) {
   try {
-    await ensureAppointmentRequestSourceColumnReady();
+    await ensureAppointmentSchemaReady();
     const doctorId = req.user.id;
     const { patientId, startsAt, endsAt, location, notes } = req.body || {};
 
@@ -337,24 +434,48 @@ export async function createAppointment(req, res) {
 
 export async function createAppointmentRequest(req, res) {
   try {
-    await ensureAppointmentRequestSourceColumnReady();
+    await ensureAppointmentSchemaReady();
     const patientId = req.user.id;
-    const { doctorId, startsAt, endsAt, location, notes } = req.body || {};
+    const { doctorId, startsAt, endsAt, preferredDate, durationMinutes, location, notes } = req.body || {};
 
-    if (!doctorId || !startsAt || !endsAt) {
+    if (!doctorId) {
       return res.status(400).json({
-        message: "doctorId, startsAt, and endsAt are required",
+        message: "doctorId is required",
       });
     }
 
-    const start = parseISODate(startsAt, "startsAt");
-    const end = parseISODate(endsAt, "endsAt");
+    let start;
+    let end;
+    let slotMinutes;
+
+    if (startsAt && endsAt) {
+      start = parseISODate(startsAt, "startsAt");
+      end = parseISODate(endsAt, "endsAt");
+      slotMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
+    } else {
+      if (!preferredDate || !durationMinutes) {
+        return res.status(400).json({
+          message: "Either startsAt/endsAt or preferredDate/durationMinutes are required",
+        });
+      }
+
+      start = parsePreferredRequestDate(preferredDate);
+      slotMinutes = Number(durationMinutes);
+      if (!Number.isInteger(slotMinutes) || slotMinutes <= 0) {
+        return res.status(400).json({
+          message: "durationMinutes must be a positive integer",
+        });
+      }
+      end = new Date(start.getTime() + slotMinutes * 60000);
+    }
 
     if (start >= end) {
       return res.status(400).json({ message: "startsAt must be before endsAt" });
     }
 
-    if (start < new Date()) {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    if (start < todayStart) {
       return res.status(400).json({ message: "Cannot request appointments in the past" });
     }
 
@@ -363,34 +484,41 @@ export async function createAppointmentRequest(req, res) {
 
     const preFill = await ContextService.getPreFillData(patientId, 'appointment');
 
-    // Task 25.d: Only allow slots that exist in the doctor's generated slot list
-    const slotFrom = new Date(start);
-    slotFrom.setHours(0, 0, 0, 0);
-    const slotTo = new Date(slotFrom);
-    slotTo.setDate(slotTo.getDate() + 1);
+    if (!isDateOnlyRequestSlot(start)) {
+      const slotFrom = new Date(start);
+      slotFrom.setHours(0, 0, 0, 0);
+      const slotTo = new Date(slotFrom);
+      slotTo.setDate(slotTo.getDate() + 1);
 
-    const availableSlots = await buildDoctorAvailability({
-      doctorId,
-      from: slotFrom,
-      to: slotTo,
-      slotMinutes: 30, // Default slot duration
-    });
+      if (!Number.isInteger(slotMinutes) || slotMinutes <= 0) {
+        return res.status(400).json({
+          message: "Requested appointment duration is invalid",
+        });
+      }
 
-    const isValidSlot = availableSlots.some(
-      (s) => s.startsAt.getTime() === start.getTime() && s.endsAt.getTime() === end.getTime()
-    );
-
-    if (!isValidSlot) {
-      return res.status(400).json({
-        message: "Requested time does not match any available slots for this doctor",
+      const availableSlots = await buildDoctorAvailability({
+        doctorId,
+        from: slotFrom,
+        to: slotTo,
+        slotMinutes,
       });
-    }
 
-    const conflict = await hasDoctorConflict(doctorId, start, end);
-    if (conflict) {
-      return res.status(409).json({
-        message: "Doctor is not available in this time window",
-      });
+      const isValidSlot = availableSlots.some(
+        (s) => s.startsAt.getTime() === start.getTime() && s.endsAt.getTime() === end.getTime()
+      );
+
+      if (!isValidSlot) {
+        return res.status(400).json({
+          message: "Requested time does not match any available slots for this doctor",
+        });
+      }
+
+      const conflict = await hasDoctorConflict(doctorId, start, end);
+      if (conflict) {
+        return res.status(409).json({
+          message: "Doctor is not available in this time window",
+        });
+      }
     }
 
     const created = await Appointment.create({
@@ -413,14 +541,16 @@ export async function createAppointmentRequest(req, res) {
         userId: doctorId,
         category: 'appointment_request',
         title: 'New Appointment Request',
-        message: `A patient has requested an appointment on ${start.toLocaleString()}`,
+        message: isDateOnlyRequestSlot(start)
+          ? `A patient has requested an appointment on ${start.toLocaleDateString()} and needs you to choose a slot.`
+          : `A patient has requested an appointment on ${start.toLocaleString()}`,
         type: 'info',
       }
     );
 
     return res.status(201).json(created);
   } catch (err) {
-    const status = err.message?.includes("doctor") || err.message?.includes("startsAt") ? 400 : 500;
+    const status = err.message?.includes("doctor") || err.message?.includes("startsAt") || err.message?.includes("preferredDate") ? 400 : 500;
     return res.status(status).json({ message: err.message || "Failed to create appointment request." });
   }
 }
@@ -459,6 +589,7 @@ export async function getRequestableDoctors(req, res) {
 
 export async function updateAppointment(req, res) {
   try {
+    await ensureAppointmentSchemaReady();
     const doctorId = req.user.id;
     const { id } = req.params;
     const { startsAt, endsAt, location, notes } = req.body || {};
@@ -510,7 +641,7 @@ export async function updateAppointment(req, res) {
 
 export async function updateAppointmentStatus(req, res) {
   try {
-    await ensureAppointmentRequestSourceColumnReady();
+    await ensureAppointmentSchemaReady();
     const actorId = req.user.id;
     const actorRole = req.user.role;
     const { id } = req.params;
@@ -547,6 +678,7 @@ export async function updateAppointmentStatus(req, res) {
     const transitionsByRole = {
       doctor: {
         requested: new Set(["scheduled", "denied", "cancelled"]),
+        reschedule_requested: new Set(),
         scheduled: new Set(["completed", "cancelled"]),
         completed: new Set(),
         cancelled: new Set(),
@@ -554,6 +686,7 @@ export async function updateAppointmentStatus(req, res) {
       },
       patient: {
         requested: new Set(["scheduled", "denied", "cancelled"]),
+        reschedule_requested: new Set(),
         scheduled: new Set(["cancelled"]),
         completed: new Set(),
         cancelled: new Set(),
@@ -616,6 +749,7 @@ export async function updateAppointmentStatus(req, res) {
 
 export async function getDoctorAvailability(req, res) {
   try {
+    await ensureAppointmentSchemaReady();
     const doctorId = req.user.id;
     const { from, to } = parseRange(req);
     const slotMinutes = Number(req.query.slotMinutes || 30);
@@ -658,6 +792,7 @@ export async function getDoctorAvailability(req, res) {
 
 export async function suggestAlternativeSlot(req, res) {
   try {
+    await ensureAppointmentSchemaReady();
     const doctorId = req.user.id;
     const { id } = req.params;
     const { startsAt, endsAt, notes } = req.body || {};
@@ -704,6 +839,7 @@ export async function suggestAlternativeSlot(req, res) {
 
 export async function getPatientDoctorAvailability(req, res) {
   try {
+    await ensureAppointmentSchemaReady();
     const patientId = req.user.id;
     const doctorId = req.params.doctorId;
     const { from, to } = parseRange(req);
@@ -757,7 +893,7 @@ export async function getPatientDoctorAvailability(req, res) {
 
 export async function getMyAppointments(req, res) {
   try {
-    await ensureAppointmentRequestSourceColumnReady();
+    await ensureAppointmentSchemaReady();
     const userId = req.user.id;
     const role = req.user.role;
     const where = role === "doctor" ? { doctorId: userId } : { patientId: userId };
@@ -792,6 +928,11 @@ export async function getMyAppointments(req, res) {
         requestSource: a.requestSource || null,
         location: a.location,
         notes: a.notes,
+        proposedStartsAt: a.proposedStartsAt || null,
+        proposedEndsAt: a.proposedEndsAt || null,
+        proposedLocation: a.proposedLocation || null,
+        rescheduleRequestedBy: a.rescheduleRequestedBy || null,
+        rescheduleNotes: a.rescheduleNotes || null,
         doctor: a.doctor
           ? {
               id: a.doctor.id,
@@ -818,5 +959,149 @@ export async function getMyAppointments(req, res) {
     });
   } catch (err) {
     return res.status(500).json({ message: err.message || "Failed to fetch appointments." });
+  }
+}
+
+export async function requestAppointmentReschedule(req, res) {
+  try {
+    await ensureAppointmentSchemaReady();
+    const actorId = req.user.id;
+    const actorRole = req.user.role;
+    const { id } = req.params;
+    const { startsAt, endsAt, location, notes } = req.body || {};
+
+    if (!startsAt || !endsAt) {
+      return res.status(400).json({ message: "startsAt and endsAt are required." });
+    }
+
+    const start = parseISODate(startsAt, "startsAt");
+    const end = parseISODate(endsAt, "endsAt");
+
+    if (start >= end) {
+      return res.status(400).json({ message: "startsAt must be before endsAt" });
+    }
+    if (start < new Date()) {
+      return res.status(400).json({ message: "Cannot reschedule into the past" });
+    }
+
+    const appt = await Appointment.findByPk(id);
+    if (!appt) {
+      return res.status(404).json({ message: "Appointment not found" });
+    }
+
+    const isDoctorActor = actorRole === "doctor" && appt.doctorId === actorId;
+    const isPatientActor = actorRole === "patient" && appt.patientId === actorId;
+    if (!isDoctorActor && !isPatientActor) {
+      return res.status(403).json({ message: "You are not allowed to reschedule this appointment." });
+    }
+    if (appt.status !== "scheduled") {
+      return res.status(400).json({ message: "Only scheduled appointments can be rescheduled." });
+    }
+
+    const conflict = await hasDoctorConflict(appt.doctorId, start, end, appt.id);
+    if (conflict) {
+      return res.status(409).json({ message: "Doctor is not available in this time window" });
+    }
+
+    await appt.update({
+      status: "reschedule_requested",
+      proposedStartsAt: start,
+      proposedEndsAt: end,
+      proposedLocation: typeof location === "string" ? location.trim() || appt.location : appt.location,
+      rescheduleRequestedBy: actorRole,
+      rescheduleNotes: typeof notes === "string" ? notes.trim() || null : null,
+    });
+
+    const recipientId = isDoctorActor ? appt.patientId : appt.doctorId;
+    const requesterLabel = isDoctorActor ? "doctor" : "patient";
+    await NotificationService.notifyAppointmentUpdate(
+      recipientId,
+      appt.id,
+      `A ${requesterLabel} requested to reschedule this appointment for ${start.toLocaleString()}.`
+    );
+
+    return res.json(appt);
+  } catch (err) {
+    const status = err.message?.includes("startsAt") ? 400 : 500;
+    return res.status(status).json({ message: err.message || "Failed to request appointment reschedule." });
+  }
+}
+
+export async function reviewAppointmentReschedule(req, res) {
+  try {
+    await ensureAppointmentSchemaReady();
+    const actorId = req.user.id;
+    const actorRole = req.user.role;
+    const { id } = req.params;
+    const decision = String(req.body?.decision || "").trim().toLowerCase();
+    const note = String(req.body?.note || "").trim();
+
+    if (!["approve", "deny"].includes(decision)) {
+      return res.status(400).json({ message: "decision must be approve or deny" });
+    }
+
+    const appt = await Appointment.findByPk(id);
+    if (!appt) {
+      return res.status(404).json({ message: "Appointment not found" });
+    }
+    if (appt.status !== "reschedule_requested") {
+      return res.status(400).json({ message: "This appointment has no pending reschedule request." });
+    }
+
+    const isDoctorActor = actorRole === "doctor" && appt.doctorId === actorId;
+    const isPatientActor = actorRole === "patient" && appt.patientId === actorId;
+    if (!isDoctorActor && !isPatientActor) {
+      return res.status(403).json({ message: "You are not allowed to review this reschedule request." });
+    }
+    if ((appt.rescheduleRequestedBy === "doctor" && isDoctorActor) || (appt.rescheduleRequestedBy === "patient" && isPatientActor)) {
+      return res.status(403).json({ message: "The other party must review this reschedule request." });
+    }
+
+    if (decision === "approve") {
+      const conflict = await hasDoctorConflict(appt.doctorId, appt.proposedStartsAt, appt.proposedEndsAt, appt.id);
+      if (conflict) {
+        return res.status(409).json({ message: "Doctor is no longer available in the proposed time window." });
+      }
+
+      await appt.update({
+        startsAt: appt.proposedStartsAt,
+        endsAt: appt.proposedEndsAt,
+        location: appt.proposedLocation || appt.location,
+        status: "scheduled",
+        proposedStartsAt: null,
+        proposedEndsAt: null,
+        proposedLocation: null,
+        rescheduleRequestedBy: null,
+        rescheduleNotes: null,
+      });
+
+      await ReminderSchedulerService.scheduleAppointmentReminder(appt);
+      const recipientId = isDoctorActor ? appt.patientId : appt.doctorId;
+      await NotificationService.notifyAppointmentUpdate(
+        recipientId,
+        appt.id,
+        `The reschedule request was approved. The appointment is now set for ${appt.startsAt.toLocaleString()}.`
+      );
+    } else {
+      await appt.update({
+        status: "scheduled",
+        proposedStartsAt: null,
+        proposedEndsAt: null,
+        proposedLocation: null,
+        rescheduleRequestedBy: null,
+        rescheduleNotes: null,
+      });
+
+      const recipientId = isDoctorActor ? appt.patientId : appt.doctorId;
+      await NotificationService.notifyAppointmentUpdate(
+        recipientId,
+        appt.id,
+        note || "The reschedule request was declined and the original appointment remains unchanged."
+      );
+    }
+
+    return res.json(appt);
+  } catch (err) {
+    return res.status(500).json({ message: err.message || "Failed to review appointment reschedule." });
   }
 }
