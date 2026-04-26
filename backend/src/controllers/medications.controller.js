@@ -2,6 +2,7 @@ import Medication from "../models/Medication.js";
 import { Op } from "sequelize";
 import ContextService from "../services/ContextService.js";
 import ReminderSchedulerService from "../services/reminderSchedulerService.js";
+import sequelize from '../../database.js';
 
 const cleanString = (v) => (typeof v === "string" ? v.trim() : v);
 const nullIfEmpty = (v) => {
@@ -367,5 +368,62 @@ export const searchMedications = async (req, res) => {
   } catch (error) {
     console.error("Error searching medications:", error);
     return res.status(500).json({ error: "Failed to search medications" });
+  }
+};
+// Catalog search — searches unique drug names across all patients
+// Used for autocomplete when adding a new medication
+// Returns name, dosage, frequency, doseAmount, doseUnit, scheduleJson
+// so the frontend can auto-fill the form
+export const searchMedicationCatalog = async (req, res) => {
+  try {
+    const q = String(req.query.q || "").trim();
+
+    if (q.length === 0) {
+      // Return most common medications when no query (instant suggestions on focus)
+      const [rows] = await sequelize.query(`
+        SELECT
+          name,
+          dosage,
+          frequency,
+          "doseAmount",
+          "doseUnit",
+          "scheduleJson",
+          notes,
+          COUNT(*) as usage_count
+        FROM medications
+        GROUP BY name, dosage, frequency, "doseAmount", "doseUnit", "scheduleJson", notes
+        ORDER BY usage_count DESC
+        LIMIT 10
+      `);
+      return res.json({ suggestions: rows });
+    }
+
+    if (q.length < 1) {
+      return res.json({ suggestions: [] });
+    }
+
+    // Search by name across all patients, deduplicate, return most common match per name
+    const [rows] = await sequelize.query(`
+      SELECT DISTINCT ON (LOWER(name))
+        name,
+        dosage,
+        frequency,
+        "doseAmount",
+        "doseUnit",
+        "scheduleJson",
+        notes,
+        COUNT(*) OVER (PARTITION BY LOWER(name)) as usage_count
+      FROM medications
+      WHERE name ILIKE :pattern
+      ORDER BY LOWER(name), usage_count DESC
+      LIMIT 10
+    `, {
+      replacements: { pattern: `%${q}%` },
+    });
+
+    return res.json({ suggestions: rows });
+  } catch (err) {
+    console.error('searchMedicationCatalog error:', err);
+    return res.status(500).json({ message: 'Server error.' });
   }
 };
