@@ -140,6 +140,9 @@ const queueEmailDelivery = (label, sendFn) => {
     });
 };
 
+const isSmtpConfigurationError = (error) =>
+  String(error?.message || '').includes('MAILTRAP_SMTP_NOT_CONFIGURED');
+
 const getFrontendBaseUrl = () => process.env.FRONTEND_URL || process.env.APP_BASE_URL || 'http://localhost:5173';
 
 const getSocialCallbackUrl = () => `${getFrontendBaseUrl()}${SOCIAL_CALLBACK_PATH}`;
@@ -701,9 +704,20 @@ export const register = async (req, res) => {
         });
       }
 
-      queueEmailDelivery('register-verification-email', () =>
-        sendVerificationEmail({ to: cleanEmail, token: rawToken })
-      );
+      try {
+        await sendVerificationEmail({ to: cleanEmail, token: rawToken });
+      } catch (mailErr) {
+        if (isSmtpConfigurationError(mailErr)) {
+          return res.status(500).json({
+            message: 'Signup created but verification email could not be sent because SMTP is not configured on the server.',
+            code: 'SMTP_NOT_CONFIGURED',
+          });
+        }
+        return res.status(502).json({
+          message: 'Signup created but verification email delivery failed. Please try resending in a minute.',
+          code: 'EMAIL_DELIVERY_FAILED',
+        });
+      }
 
       return res.status(existingPending ? 200 : 201).json({
         message: existingPending
@@ -828,9 +842,20 @@ export const resendVerification = async (req, res) => {
     pendingRegistration.expiresAt = new Date(Date.now() + EMAIL_TOKEN_TTL_MS);
     await pendingRegistration.save();
 
-    queueEmailDelivery('resend-verification-email', () =>
-      sendVerificationEmail({ to: pendingRegistration.email, token: rawToken })
-    );
+    try {
+      await sendVerificationEmail({ to: pendingRegistration.email, token: rawToken });
+    } catch (mailErr) {
+      if (isSmtpConfigurationError(mailErr)) {
+        return res.status(500).json({
+          message: 'Verification email could not be sent because SMTP is not configured on the server.',
+          code: 'SMTP_NOT_CONFIGURED',
+        });
+      }
+      return res.status(502).json({
+        message: 'Verification email delivery failed. Please try again shortly.',
+        code: 'EMAIL_DELIVERY_FAILED',
+      });
+    }
 
     return res.status(200).json({
       message: 'Verification email is being sent.',

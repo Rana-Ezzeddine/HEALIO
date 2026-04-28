@@ -122,6 +122,9 @@ const startServer = async () => {
     if (!connected) throw new Error("PostgreSQL connection failed");
 
     await sequelize.sync({ alter: true });
+    if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+      console.warn("SMTP is not fully configured. Verification and reset emails will fail.");
+    }
     console.log("✅ PostgreSQL models synchronized");
 
     app.listen(PORT, async () => {
