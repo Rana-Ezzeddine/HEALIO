@@ -473,10 +473,7 @@ const completeSocialLogin = async ({ provider, providerSubject, email, firstName
   } else {
     const updates = {};
 
-    if (user.authProvider === 'local') {
-      updates.authProvider = provider;
-      updates.providerSubject = providerSubject;
-    } else if (!user.providerSubject) {
+    if (user.authProvider !== 'local' && !user.providerSubject) {
       updates.providerSubject = providerSubject;
     }
 
@@ -867,13 +864,6 @@ export const requestPasswordReset = async (req, res) => {
       });
     }
 
-    if (user.authProvider !== 'local') {
-      return res.status(400).json({
-        code: 'PASSWORD_RESET_UNAVAILABLE',
-        message: `This account uses ${user.authProvider === 'google' ? 'Google' : 'social'} sign-in and does not support password reset.`,
-      });
-    }
-
     const rawToken = await createPasswordResetToken();
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
 
@@ -961,14 +951,6 @@ export const resetPassword = async (req, res) => {
       return res.status(404).json({
         code: 'RESET_USER_NOT_FOUND',
         message: 'User not found for this reset link.',
-      });
-    }
-
-    if (user.authProvider !== 'local') {
-      await PasswordResetToken.destroy({ where: { id: record.id } });
-      return res.status(400).json({
-        code: 'PASSWORD_RESET_UNAVAILABLE',
-        message: 'This account uses social sign-in and does not support password reset.',
       });
     }
 
