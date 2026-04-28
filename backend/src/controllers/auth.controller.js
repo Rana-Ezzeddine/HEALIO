@@ -45,7 +45,7 @@ const APPLE_JWKS_URL = 'https://appleid.apple.com/auth/keys';
 const isValidName = (name) => {
   if (typeof name !== 'string') return false;
   const trimmed = name.trim();
-  return /^[A-Za-z]+(?:\s+[A-Za-z]+)*$/.test(trimmed) && trimmed.replace(/\s+/g, '').length >= 2;
+  return /^[\p{L}]+(?:[ '\-][\p{L}]+)*$/u.test(trimmed) && trimmed.replace(/[^\p{L}]/gu, '').length >= 2;
 };
 
 const isStrongPassword = (pw) => (
