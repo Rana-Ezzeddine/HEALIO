@@ -132,6 +132,13 @@ const verifyMfaCodeForUser = async (user, code) => {
 
 const createVerificationToken = async () => crypto.randomBytes(32).toString('hex');
 const createPasswordResetToken = async () => crypto.randomBytes(32).toString('hex');
+const queueEmailDelivery = (label, sendFn) => {
+  Promise.resolve()
+    .then(sendFn)
+    .catch((error) => {
+      console.error(`[${label}] background email delivery failed:`, error);
+    });
+};
 
 const getFrontendBaseUrl = () => process.env.FRONTEND_URL || process.env.APP_BASE_URL || 'http://localhost:5173';
 
@@ -694,12 +701,14 @@ export const register = async (req, res) => {
         });
       }
 
-      await sendVerificationEmail({ to: cleanEmail, token: rawToken });
+      queueEmailDelivery('register-verification-email', () =>
+        sendVerificationEmail({ to: cleanEmail, token: rawToken })
+      );
 
       return res.status(existingPending ? 200 : 201).json({
         message: existingPending
-          ? 'Pending registration updated. Please verify your email using the newest link.'
-          : 'Registered successfully. Please verify your email.',
+          ? 'Pending registration updated. A fresh verification email is being sent.'
+          : 'Registered successfully. A verification email is being sent.',
         user: pendingUser,
         verificationRequired: true,
         ...(process.env.NODE_ENV === 'test' ? { verificationToken: rawToken } : {}),
@@ -709,16 +718,8 @@ export const register = async (req, res) => {
         await PendingRegistration.destroy({ where: { email: cleanEmail } });
       }
 
-      if (mailErr.message === 'SMTP_NOT_CONFIGURED') {
-        return res.status(503).json({
-          message: 'Email verification is not configured on the server. Add SMTP settings before allowing signup.',
-        });
-      }
-
       console.error(mailErr);
-      return res.status(502).json({
-        message: 'Failed to send verification email. Please try again later.',
-      });
+      return res.status(500).json({ message: 'Server error during registration.' });
     }
   } catch (err) {
     if (err.name === 'SequelizeUniqueConstraintError') {
@@ -827,19 +828,12 @@ export const resendVerification = async (req, res) => {
     pendingRegistration.expiresAt = new Date(Date.now() + EMAIL_TOKEN_TTL_MS);
     await pendingRegistration.save();
 
-    try {
-      await sendVerificationEmail({ to: pendingRegistration.email, token: rawToken });
-    } catch (mailErr) {
-      if (mailErr.message === 'SMTP_NOT_CONFIGURED') {
-        return res.status(503).json({
-          message: 'Email verification is not configured on the server. Add SMTP settings before resending.',
-        });
-      }
-      throw mailErr;
-    }
+    queueEmailDelivery('resend-verification-email', () =>
+      sendVerificationEmail({ to: pendingRegistration.email, token: rawToken })
+    );
 
     return res.status(200).json({
-      message: 'Verification email sent.',
+      message: 'Verification email is being sent.',
       ...(process.env.NODE_ENV === 'test' ? { verificationToken: rawToken } : {}),
     });
   } catch (err) {
@@ -879,26 +873,12 @@ export const requestPasswordReset = async (req, res) => {
       expiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
     });
 
-    try {
-      await sendPasswordResetEmail({ to: cleanEmail, token: rawToken });
-    } catch (mailErr) {
-      await PasswordResetToken.destroy({
-        where: {
-          userId: user.id,
-        },
-      });
-
-      if (mailErr.message === 'SMTP_NOT_CONFIGURED') {
-        return res.status(503).json({
-          message: 'Password reset email is not configured on the server. Add SMTP settings before using this feature.',
-        });
-      }
-
-      throw mailErr;
-    }
+    queueEmailDelivery('password-reset-email', () =>
+      sendPasswordResetEmail({ to: cleanEmail, token: rawToken })
+    );
 
     return res.status(200).json({
-      message: 'A password reset link has been sent.',
+      message: 'If an account with that email exists, a password reset link is being sent.',
       ...(process.env.NODE_ENV === 'test' ? { resetToken: rawToken } : {}),
     });
   } catch (err) {
