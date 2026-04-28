@@ -3,6 +3,7 @@ import Diagnosis from '../models/Diagnosis.js';
 import { Op } from 'sequelize';
 import DoctorPatientAssignment from '../models/DoctorPatientAssignment.js';
 import CaregiverPatientPermission from '../models/CaregiverPatientPermission.js';
+import NotificationService from '../services/notificationService.js';
 
 const canAccessPatientData = async (req, patientId) => {
   if (!req.user?.id || !req.user?.role || !patientId) return false;
@@ -48,12 +49,22 @@ export const getPatientDoctorNotes = async (req, res) => {
       limit: 50
     });
 
-    const formattedNotes = doctorNotes.map(note => ({
-      id: note.id,
-      date: note.createdAt,
-      doctorId: note.doctorId,
-      content: note.note
-    }));
+    const formattedNotes = doctorNotes.map((note) => {
+      let structured = null;
+      try {
+        structured = note.note ? JSON.parse(note.note) : null;
+      } catch {
+        structured = null;
+      }
+
+      return {
+        id: note.id,
+        date: note.createdAt,
+        doctorId: note.doctorId,
+        content: note.note,
+        structured,
+      };
+    });
 
     res.json({
       patientId,
@@ -294,5 +305,60 @@ export const getTreatmentPlanById = async (req, res) => {
   } catch (error) {
     console.error('Error fetching treatment plan:', error);
     res.status(500).json({ message: 'Failed to fetch treatment plan.' });
+  }
+};
+
+export const createPatientDoctorNote = async (req, res) => {
+  try {
+    const { patientId } = req.params;
+    if (!patientId) {
+      return res.status(400).json({ message: 'patientId is required.' });
+    }
+    if (req.user?.role !== 'doctor') {
+      return res.status(403).json({ message: 'Only doctors can create clinical notes.' });
+    }
+
+    const assignment = await DoctorPatientAssignment.findOne({
+      where: { doctorId: req.user.id, patientId, status: 'active' },
+    });
+    if (!assignment) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
+    const payload = req.body || {};
+    const noteTitle = String(payload.noteTitle || '').trim();
+    const chiefComplaint = String(payload.chiefComplaint || '').trim();
+    if (!noteTitle || !chiefComplaint) {
+      return res.status(400).json({ message: 'noteTitle and chiefComplaint are required.' });
+    }
+
+    const created = await MedicalNote.create({
+      patientId,
+      doctorId: req.user.id,
+      note: JSON.stringify(payload),
+    });
+
+    await NotificationService.createWithContext(
+      { type: 'medical_note', relatedId: created.id },
+      {
+        userId: patientId,
+        category: 'medical_note_update',
+        title: 'New Clinical Note',
+        message: `Dr. note added: ${noteTitle}`,
+        type: 'info',
+        metadata: { patientId, doctorId: req.user.id },
+      }
+    );
+
+    return res.status(201).json({
+      id: created.id,
+      date: created.createdAt,
+      doctorId: created.doctorId,
+      content: created.note,
+      structured: payload,
+    });
+  } catch (error) {
+    console.error('Error creating doctor note:', error);
+    return res.status(500).json({ message: 'Failed to create doctor note.' });
   }
 };

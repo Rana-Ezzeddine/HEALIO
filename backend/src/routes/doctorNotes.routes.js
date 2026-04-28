@@ -1,5 +1,6 @@
 import express from 'express';
 import {
+  createPatientDoctorNote,
   getPatientDoctorNotes,
   getPatientTreatmentPlans,
   getPatientClinicalInformation,
@@ -21,6 +22,7 @@ router.use(requireDoctorProductAccessIfDoctor);
 
 
 // Get all doctor notes for a patient
+router.post('/patient/:patientId/notes', createPatientDoctorNote);
 router.get('/patient/:patientId/notes', getPatientDoctorNotes);
 
 // Get all treatment plans for a patient

@@ -41,6 +41,7 @@ import caregiverRoutes from "./routes/caregiver.routes.js";
 import caregiverInviteRoutes from "./routes/caregiverInvite.routes.js";
 import caregiverNotesRoutes from "./routes/caregiverNotes.routes.js";
 import caregiverActionsRoutes from "./routes/caregiverActions.routes.js";
+import doctorNotesRoutes from "./routes/doctorNotes.routes.js";
 
 /////////////////////////////////////////////////
 // ✅ Initialize App
@@ -102,6 +103,7 @@ app.use("/api/caregivers", caregiverRoutes);
 app.use("/api/caregiver-invites", caregiverInviteRoutes);
 app.use("/api/caregiver-notes", caregiverNotesRoutes);
 app.use("/api/caregiver-actions", caregiverActionsRoutes);
+app.use("/api/doctor-notes", doctorNotesRoutes);
 
 /////////////////////////////////////////////////
 // ✅ Global error handler
@@ -119,10 +121,20 @@ const PORT = process.env.PORT || 5050;
 const startServer = async () => {
   try {
     const connected = await testConnection();
-    if (!connected) throw new Error("PostgreSQL connection failed");
+    if (!connected) throw new Error("PostgreSQL connection failed");    const [result] = await sequelize.query(`
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+        AND table_name = 'SequelizeMeta'
+      ) AS "exists";
+    `);
 
-    await sequelize.sync({ alter: true });
-    console.log("✅ PostgreSQL models synchronized");
+    if (!result[0].exists) {
+      console.log("Database tables not found. Run: npm run db:migrate");
+    } else {
+      console.log("Migrations detected (database schema ready)");
+    }
 
     app.listen(PORT, async () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`);
@@ -137,3 +149,4 @@ const startServer = async () => {
 };
 
 startServer();
+

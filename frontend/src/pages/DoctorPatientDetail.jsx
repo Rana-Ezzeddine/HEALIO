@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import { apiUrl, authHeaders } from "../api/http";
@@ -6,7 +6,6 @@ import { rememberDoctorPatientTab } from "../utils/doctorPatientTabs";
 import {
   formatListOutput,
   getDoctorEmergencyReview,
-  getPatientClinicalNotes,
   getPatientTreatmentPlans,
   saveDoctorEmergencyReview,
 } from "../utils/doctorPatientRecords";
@@ -83,6 +82,12 @@ function formatScheduleInput(scheduleJson, frequency) {
 function getMedicationStatus(medication) {
   return isActiveMedication(medication) ? "Active" : "Inactive";
 }
+function formatMedicationDose(medication) {
+  if (medication?.doseAmount != null && medication?.doseUnit) {
+    return `${medication.doseAmount} ${medication.doseUnit}`;
+  }
+  return medication?.dosage || "Not recorded";
+}
 function InfoPill({ label, value, tone = "sky" }) {
   const tones = {
     sky: "bg-sky-100 text-sky-700",
@@ -94,7 +99,7 @@ function InfoPill({ label, value, tone = "sky" }) {
   };
   return <span className={`rounded-full px-3 py-1 text-xs font-semibold ${tones[tone] || tones.sky}`}>{label}: {value}</span>;
 }
-function SummaryMetric({ label, value, hint, tone = "sky" }) {
+function SummaryMetric({ label, value, hint, tone = "sky", active = false, onClick }) {
   const tones = {
     sky: "from-sky-500 to-cyan-400",
     violet: "from-violet-500 to-fuchsia-400",
@@ -102,14 +107,20 @@ function SummaryMetric({ label, value, hint, tone = "sky" }) {
     amber: "from-amber-500 to-orange-400",
   };
   return (
-    <div className="rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full rounded-3xl border p-4 text-left backdrop-blur-sm transition ${
+        active ? "border-white/40 bg-white/20" : "border-white/15 bg-white/10 hover:bg-white/15"
+      }`}
+    >
       <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70">{label}</p>
       <p className="mt-2 text-3xl font-black text-white">{value}</p>
       <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/15">
         <div className={`h-full rounded-full bg-gradient-to-r ${tones[tone] || tones.sky}`} style={{ width: "100%" }} />
       </div>
       <p className="mt-2 text-xs text-white/70">{hint}</p>
-    </div>
+    </button>
   );
 }
 async function fetchPatientOverview(patientId) {
@@ -163,6 +174,13 @@ export default function DoctorPatientDetail() {
   const [aiSummary, setAiSummary] = useState(null);
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
   const [aiSummaryError, setAiSummaryError] = useState("");
+  const [activeWorkspaceSection, setActiveWorkspaceSection] = useState("");
+  const sectionRefs = {
+    symptoms: useRef(null),
+    medications: useRef(null),
+    diagnoses: useRef(null),
+    activity: useRef(null),
+  };
   const [medicationForm, setMedicationForm] = useState({
     name: "",
     doseAmount: "",
@@ -182,7 +200,18 @@ export default function DoctorPatientDetail() {
     ]);
     setWorkspace({ overview, timeline: timeline.events || [], notes: notes.notes || [] });
     rememberDoctorPatientTab({ id: currentPatientId, name: patientDisplayName(overview) });
-    setLocalNotes(getPatientClinicalNotes(currentPatientId));
+    const normalizedNotes = (notes.notes || []).map((note) => {
+      let structured = note.structured || null;
+      if (!structured && note.content) {
+        try {
+          structured = JSON.parse(note.content);
+        } catch {
+          structured = null;
+        }
+      }
+      return structured ? { id: note.id, createdAt: note.date || note.createdAt, ...structured } : null;
+    }).filter(Boolean);
+    setLocalNotes(normalizedNotes);
     setLocalPlans(getPatientTreatmentPlans(currentPatientId));
     setEmergencyReview(getDoctorEmergencyReview(currentPatientId));
     setCommunicationConversationId("");
@@ -246,12 +275,28 @@ export default function DoctorPatientDetail() {
   const profile = overview?.patientProfile || null;
   const medications = overview?.medications || [];
   const diagnoses = overview?.diagnoses || [];
+  const symptoms = overview?.symptoms || [];
   const appointments = overview?.appointmentsAsPatient || [];
   const caregivers = overview?.caregivers || [];
+  const actionableAppointmentStatuses = new Set(["requested", "scheduled", "reschedule_requested"]);
+  const upcomingAppointments = appointments
+    .filter((appointment) => {
+      const startsAtMs = appointment?.startsAt ? new Date(appointment.startsAt).getTime() : NaN;
+      if (!Number.isFinite(startsAtMs) || startsAtMs <= Date.now()) return false;
+      return actionableAppointmentStatuses.has(String(appointment.status || "").toLowerCase());
+    })
+    .sort((left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime());
   const currentUserId = reqUserId();
   const activeMedications = medications.filter((item) => isActiveMedication(item));
   const nextMedicationDose = getNextMedicationDose(activeMedications);
   const activeDiagnosisCount = diagnoses.filter((item) => item.status === "active").length;
+
+  function openWorkspaceSection(sectionKey) {
+    setActiveWorkspaceSection(sectionKey);
+    window.setTimeout(() => {
+      sectionRefs[sectionKey]?.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  }
 
   const communicationContextOptions = [
     ...appointments.map((appointment) => ({
@@ -497,14 +542,15 @@ export default function DoctorPatientDetail() {
           <p className="text-sm font-semibold uppercase tracking-[0.25em] text-white/75">Doctor Workspace</p>
           <h1 className="mt-3 text-4xl font-black">{overview ? patientDisplayName(overview) : 'Patient detail'}</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-white/85">Clinical context, notes, appointments, and treatment summary for this patient.</p>
+          <p className="mt-2 text-xs text-white/70">Click a summary card to open its detailed section.</p>
           <div className="mt-5 flex flex-wrap gap-3">
             <button type="button" onClick={() => navigate('/doctor-patients')} className="rounded-xl bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25">Back to patients</button>
           </div>
           <div className="mt-6 grid gap-4 md:grid-cols-4">
-            <SummaryMetric label="Caregivers" value={caregivers.length} hint="Active support links" tone="emerald" />
-            <SummaryMetric label="Medications" value={activeMedications.length} hint={nextMedicationDose ? `Next at ${formatDoseTime(nextMedicationDose.at)}` : "No dose queued"} tone="sky" />
-            <SummaryMetric label="Diagnoses" value={activeDiagnosisCount} hint="Active conditions tracked" tone="violet" />
-            <SummaryMetric label="Activity" value={workspace?.timeline?.length || 0} hint="Recent patient events" tone="amber" />
+            <SummaryMetric label="Symptoms" value={symptoms.length} hint="Recorded symptom logs" tone="emerald" active={activeWorkspaceSection === "symptoms"} onClick={() => openWorkspaceSection("symptoms")} />
+            <SummaryMetric label="Medications" value={activeMedications.length} hint={nextMedicationDose ? `Next at ${formatDoseTime(nextMedicationDose.at)}` : "No dose queued"} tone="sky" active={activeWorkspaceSection === "medications"} onClick={() => openWorkspaceSection("medications")} />
+            <SummaryMetric label="Diagnoses" value={activeDiagnosisCount} hint="Active conditions tracked" tone="violet" active={activeWorkspaceSection === "diagnoses"} onClick={() => openWorkspaceSection("diagnoses")} />
+            <SummaryMetric label="Activity" value={workspace?.timeline?.length || 0} hint="Recent patient events" tone="amber" active={activeWorkspaceSection === "activity"} onClick={() => openWorkspaceSection("activity")} />
           </div>
         </section>
         {error ? <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
@@ -661,46 +707,216 @@ export default function DoctorPatientDetail() {
                 </div>
               )}
             </div>
+            {activeWorkspaceSection === "medications" ? (
+            <div ref={sectionRefs.medications} className="rounded-3xl bg-gradient-to-br from-white to-amber-50 p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">Medication plan</h3>
+                  <p className="mt-1 text-sm text-slate-500">Current and historical medications for this patient.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => openMedicationForm()}
+                  className="rounded-lg bg-sky-100 px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-200"
+                >
+                  Add medication
+                </button>
+              </div>
+              {medicationError ? (
+                <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {medicationError}
+                </div>
+              ) : null}
+              {medicationFormOpen ? (
+                <form onSubmit={handleMedicationSubmit} className="mt-4 rounded-2xl border border-slate-200 bg-white/90 p-4">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <label className="text-sm font-medium text-slate-700">
+                      Medication name
+                      <input
+                        type="text"
+                        value={medicationForm.name}
+                        onChange={(event) => setMedicationForm((current) => ({ ...current, name: event.target.value }))}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                        required
+                      />
+                    </label>
+                    <div className="grid grid-cols-[1fr_120px] gap-2">
+                      <label className="text-sm font-medium text-slate-700">
+                        Dose amount
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          value={medicationForm.doseAmount}
+                          onChange={(event) => setMedicationForm((current) => ({ ...current, doseAmount: event.target.value }))}
+                          className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                          required
+                        />
+                      </label>
+                      <label className="text-sm font-medium text-slate-700">
+                        Unit
+                        <input
+                          type="text"
+                          value={medicationForm.doseUnit}
+                          onChange={(event) => setMedicationForm((current) => ({ ...current, doseUnit: event.target.value }))}
+                          className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                          required
+                        />
+                      </label>
+                    </div>
+                    <label className="text-sm font-medium text-slate-700">
+                      Frequency
+                      <input
+                        type="text"
+                        value={medicationForm.frequency}
+                        onChange={(event) => setMedicationForm((current) => ({ ...current, frequency: event.target.value }))}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                      />
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="text-sm font-medium text-slate-700">
+                        Start date
+                        <input
+                          type="date"
+                          value={medicationForm.startDate}
+                          onChange={(event) => setMedicationForm((current) => ({ ...current, startDate: event.target.value }))}
+                          className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                        />
+                      </label>
+                      <label className="text-sm font-medium text-slate-700">
+                        End date
+                        <input
+                          type="date"
+                          value={medicationForm.endDate}
+                          onChange={(event) => setMedicationForm((current) => ({ ...current, endDate: event.target.value }))}
+                          className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                        />
+                      </label>
+                    </div>
+                    <div className="md:col-span-2">
+                      <p className="text-sm font-medium text-slate-700">Schedule times</p>
+                      <div className="mt-2 space-y-2">
+                        {medicationForm.scheduleTimes.map((time, index) => (
+                          <div key={`${index}-${time}`} className="flex items-center gap-2">
+                            <input
+                              type="time"
+                              value={time}
+                              onChange={(event) => updateMedicationTime(index, event.target.value)}
+                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                            />
+                            <button type="button" onClick={() => removeMedicationTime(index)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100">Remove</button>
+                          </div>
+                        ))}
+                      </div>
+                      <button type="button" onClick={addMedicationTime} className="mt-2 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">Add time</button>
+                    </div>
+                    <label className="md:col-span-2 text-sm font-medium text-slate-700">
+                      Notes
+                      <textarea
+                        rows={3}
+                        value={medicationForm.notes}
+                        onChange={(event) => setMedicationForm((current) => ({ ...current, notes: event.target.value }))}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                      />
+                    </label>
+                  </div>
+                  <div className="mt-4 flex items-center gap-3">
+                    <button type="submit" disabled={savingMedication} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:bg-slate-400">
+                      {savingMedication ? "Saving..." : editingMedicationId ? "Update medication" : "Save medication"}
+                    </button>
+                    <button type="button" onClick={() => setMedicationFormOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : null}
+              <div className="mt-4 space-y-3">
+                {medications.length ? medications.map((medication) => {
+                  const scheduleTimes = formatScheduleInput(medication.scheduleJson, medication.frequency) || [];
+                  return (
+                    <div key={medication.id} className="rounded-2xl border border-slate-200 bg-white/90 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-slate-900">{medication.name || "Unnamed medication"}</p>
+                          <p className="mt-1 text-sm text-slate-600">
+                            {formatMedicationDose(medication)} • {medication.frequency || "Frequency not recorded"}
+                          </p>
+                        </div>
+                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getMedicationStatus(medication) === "Active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-700"}`}>
+                          {getMedicationStatus(medication)}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs text-slate-500">
+                        Schedule: {scheduleTimes.length ? scheduleTimes.join(", ") : "No schedule times"}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Start {formatDate(medication.startDate)} • End {formatDate(medication.endDate)}
+                      </p>
+                      {medication.notes ? <p className="mt-2 text-sm text-slate-700">{medication.notes}</p> : null}
+                      <div className="mt-3 flex items-center gap-2">
+                        <button type="button" onClick={() => openMedicationForm(medication)} className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-200">
+                          Edit
+                        </button>
+                        <button type="button" onClick={() => handleMedicationDelete(medication.id)} className="rounded-lg bg-rose-100 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-200">
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }) : <p className="text-sm text-slate-500">No medications recorded yet for this patient.</p>}
+              </div>
+            </div>
+            ) : null}
             <div className="rounded-3xl bg-gradient-to-br from-white to-amber-50 p-5 shadow-sm">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h3 className="text-lg font-semibold text-slate-900">Appointments</h3>
                   <p className="mt-1 text-sm text-slate-500">Upcoming patient visits with this doctor.</p>
                 </div>
-                <InfoPill label="Upcoming" value={appointments.length} tone="amber" />
+                <InfoPill label="Upcoming" value={upcomingAppointments.length} tone="amber" />
               </div>
               <div className="mt-4 space-y-3">
-                {appointments.length ? appointments.slice(0,5).map((appointment) => (
+                {upcomingAppointments.length ? upcomingAppointments.slice(0, 5).map((appointment) => (
                   <div key={appointment.id} className="rounded-2xl border border-slate-200 bg-white/90 p-4">
                     <div className="flex items-center justify-between gap-3"><p className="font-semibold text-slate-900">{formatDateTime(appointment.startsAt)}</p><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">{appointment.status}</span></div>
                     <p className="mt-1 text-sm text-slate-500">{appointment.location || 'Location pending'}</p>
                     <p className="mt-1 text-sm text-slate-500">{appointment.notes || 'No notes.'}</p>
                   </div>
-                )) : <p className="text-sm text-slate-500">No appointment history with this patient yet. Open Appointments to schedule the first visit for this patient.</p>}
+                )) : <p className="text-sm text-slate-500">No upcoming appointment items for this patient right now.</p>}
               </div>
             </div>
-            <div className="rounded-3xl bg-gradient-to-br from-white to-emerald-50 p-5 shadow-sm">
+            {activeWorkspaceSection === "symptoms" ? (
+            <div ref={sectionRefs.symptoms} className="rounded-3xl bg-gradient-to-br from-white to-emerald-50 p-5 shadow-sm">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Caregiver contact</h3>
-                  <p className="mt-1 text-sm text-slate-500">Linked caregiver contact details for coordination.</p>
+                  <h3 className="text-lg font-semibold text-slate-900">Symptoms</h3>
+                  <p className="mt-1 text-sm text-slate-500">Recent and historical symptom entries for this patient.</p>
                 </div>
-                <InfoPill label="Linked" value={caregivers.length} tone="emerald" />
+                <InfoPill label="Logged" value={symptoms.length} tone="emerald" />
               </div>
               <div className="mt-4 space-y-3">
-                {caregivers.length ? caregivers.map((entry) => (
-                  <div key={`${entry.caregiverId}-${entry.createdAt}`} className="rounded-2xl border border-slate-200 bg-white/90 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-slate-900">{entry.caregiver?.displayName || entry.caregiver?.email || "Caregiver"}</p>
-                        <p className="mt-1 text-sm text-slate-500">{entry.caregiver?.email || "Email not recorded"}</p>
+                {symptoms.length ? symptoms
+                  .slice()
+                  .sort((left, right) => new Date(right.loggedAt || right.createdAt || right.updatedAt || 0) - new Date(left.loggedAt || left.createdAt || left.updatedAt || 0))
+                  .map((symptom) => (
+                    <div key={symptom.id} className="rounded-2xl border border-slate-200 bg-white/90 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-slate-900">{symptom.symptomName || symptom.name || "Symptom"}</p>
+                          <p className="mt-1 text-sm text-slate-500">
+                            Severity: {symptom.severity || "Not recorded"} • Logged {formatDateTime(symptom.loggedAt || symptom.createdAt || symptom.updatedAt)}
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                          {symptom.status || "Recorded"}
+                        </span>
                       </div>
-                      <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">{entry.status || "active"}</span>
+                      {symptom.notes ? <p className="mt-2 text-sm text-slate-700">{symptom.notes}</p> : null}
                     </div>
-                  </div>
-                )) : <p className="text-sm text-slate-500">No active caregiver linked to this patient. Ask the patient to add a caregiver if shared support access is needed.</p>}
+                  )) : <p className="text-sm text-slate-500">No symptoms recorded yet for this patient.</p>}
               </div>
             </div>
+            ) : null}
             <div className="rounded-3xl bg-gradient-to-br from-white to-sky-50 p-5 shadow-sm xl:col-span-2">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
@@ -820,7 +1036,10 @@ export default function DoctorPatientDetail() {
             <div className="rounded-3xl bg-gradient-to-br from-white to-indigo-50 p-5 shadow-sm xl:col-span-2">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-lg font-semibold text-slate-900">Clinical notes</h3>
-                <button type="button" onClick={() => navigate(`/doctor-clinical-notes?patientId=${patientId}`)} className="rounded-lg bg-indigo-100 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-200">Open notes</button>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => navigate(`/doctor-treatment-plans?patientId=${patientId}`)} className="rounded-lg bg-violet-100 px-3 py-1.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-200">Open plans</button>
+                  <button type="button" onClick={() => navigate(`/doctor-clinical-notes?patientId=${patientId}`)} className="rounded-lg bg-indigo-100 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-200">Open notes</button>
+                </div>
               </div>
               <div className="mt-4 space-y-3">
                 {localNotes.length ? localNotes.slice(0,4).map((note) => (
@@ -840,7 +1059,8 @@ export default function DoctorPatientDetail() {
                 )) : <p className="text-sm text-slate-500">No clinical notes recorded yet. Use Open notes to add the first structured or freeform clinical note.</p>}
               </div>
             </div>
-            <div className="rounded-3xl bg-gradient-to-br from-white to-violet-50 p-5 shadow-sm xl:col-span-2">
+            {activeWorkspaceSection === "diagnoses" ? (
+            <div ref={sectionRefs.diagnoses} className="rounded-3xl bg-gradient-to-br from-white to-violet-50 p-5 shadow-sm xl:col-span-2">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-lg font-semibold text-slate-900">Treatment summary</h3>
                 <button type="button" onClick={() => navigate(`/doctor-treatment-plans?patientId=${patientId}`)} className="rounded-lg bg-violet-100 px-3 py-1.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-200">Open plans</button>
@@ -863,7 +1083,9 @@ export default function DoctorPatientDetail() {
                 )) : <p className="text-sm text-slate-500">No diagnoses or treatment items recorded yet. Use Open plans to define the patient&apos;s first treatment plan or diagnosis summary.</p>}
               </div>
             </div>
-            <div className="rounded-3xl bg-gradient-to-br from-white to-slate-100 p-5 shadow-sm xl:col-span-2">
+            ) : null}
+            {activeWorkspaceSection === "activity" ? (
+            <div ref={sectionRefs.activity} className="rounded-3xl bg-gradient-to-br from-white to-slate-100 p-5 shadow-sm xl:col-span-2">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h3 className="text-lg font-semibold text-slate-900">Activity timeline</h3>
@@ -886,6 +1108,7 @@ export default function DoctorPatientDetail() {
                 )) : <p className="text-sm text-slate-500">No recent activity for this patient yet. After symptoms, appointments, notes, or medications are added, the timeline will populate here.</p>}
               </div>
             </div>
+            ) : null}
             </div>
           </div>
         ) : null}

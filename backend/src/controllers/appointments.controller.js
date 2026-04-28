@@ -10,6 +10,28 @@ import NotificationService from "../services/notificationService.js";
 import ContextService from "../services/ContextService.js";
 import ReminderSchedulerService from "../services/reminderSchedulerService.js";
 
+const REQUEST_HOLD_TTL_HOURS = Number(process.env.APPOINTMENT_REQUEST_HOLD_TTL_HOURS || 24);
+
+function getRequestHoldCutoffDate() {
+  if (!Number.isFinite(REQUEST_HOLD_TTL_HOURS) || REQUEST_HOLD_TTL_HOURS <= 0) return null;
+  return new Date(Date.now() - REQUEST_HOLD_TTL_HOURS * 60 * 60 * 1000);
+}
+
+async function expireStaleRequestedAppointments() {
+  const cutoff = getRequestHoldCutoffDate();
+  if (!cutoff) return;
+  await ensureAppointmentSchemaReady();
+  await Appointment.update(
+    { status: "denied" },
+    {
+      where: {
+        status: "requested",
+        createdAt: { [Op.lt]: cutoff },
+      },
+    }
+  );
+}
+
 function parseISODate(value, fieldName) {
   const d = new Date(value);
   if (!value || Number.isNaN(d.getTime())) {
@@ -51,6 +73,42 @@ async function ensureAvailabilityTableReady() {
     }
     throw error;
   }
+}
+
+async function ensureAvailabilitySchemaReady() {
+  await ensureAvailabilityTableReady();
+  const queryInterface = Availability.sequelize.getQueryInterface();
+  const table = await queryInterface.describeTable(Availability.getTableName());
+  if (!table.effectiveFrom) {
+    await queryInterface.addColumn(Availability.getTableName(), "effectiveFrom", {
+      type: Availability.sequelize.Sequelize.DATEONLY,
+      allowNull: true,
+    });
+  }
+  if (!table.effectiveUntil) {
+    await queryInterface.addColumn(Availability.getTableName(), "effectiveUntil", {
+      type: Availability.sequelize.Sequelize.DATEONLY,
+      allowNull: true,
+    });
+  }
+  if (!table.workHoursScope) {
+    await queryInterface.addColumn(Availability.getTableName(), "workHoursScope", {
+      type: Availability.sequelize.Sequelize.ENUM("default", "override"),
+      allowNull: false,
+      defaultValue: "default",
+    });
+  }
+}
+
+async function pruneExpiredAvailabilityForDoctor(doctorId) {
+  const today = new Date().toISOString().slice(0, 10);
+  await Availability.destroy({
+    where: {
+      doctorId,
+      type: "workHours",
+      effectiveUntil: { [Op.lt]: today },
+    },
+  });
 }
 
 async function ensureAppointmentRequestSourceColumnReady() {
@@ -131,8 +189,11 @@ export async function buildDoctorAvailability({
   to,
   slotMinutes,
 }) {
+  await expireStaleRequestedAppointments();
   await ensureAvailabilityTableReady();
+  await ensureAvailabilitySchemaReady();
   await ensureAppointmentSchemaReady();
+  await pruneExpiredAvailabilityForDoctor(doctorId);
 
   const [availabilities, appointments] = await Promise.all([
     Availability.findAll({
@@ -179,7 +240,13 @@ export async function buildDoctorAvailability({
     const dateStr = toLocalDateKey(cursor);
     
     // Find work hours for this day of week
-    const todayWorkHours = workHours.filter(wh => wh.dayOfWeek === dayOfWeek);
+    const matchingWorkHours = workHours.filter((wh) => {
+      if (wh.dayOfWeek !== dayOfWeek) return false;
+      if (wh.effectiveFrom && dateStr < wh.effectiveFrom) return false;
+      if (wh.effectiveUntil && dateStr > wh.effectiveUntil) return false;
+      return true;
+    });
+    const todayWorkHours = matchingWorkHours;
     
     for (const wh of todayWorkHours) {
       let [startH, startM] = wh.startTime.split(':').map(Number);
@@ -256,6 +323,7 @@ async function ensureDoctorUser(doctorId) {
 }
 
 async function hasDoctorConflict(doctorId, startsAt, endsAt, excludeAppointmentId = null) {
+  await expireStaleRequestedAppointments();
   await ensureAppointmentSchemaReady();
   const where = {
     doctorId,
@@ -306,6 +374,7 @@ function isDateOnlyRequestSlot(startsAt) {
 
 export async function getDoctorSchedule(req, res) {
   try {
+    await expireStaleRequestedAppointments();
     await ensureAppointmentSchemaReady();
     const doctorId = req.user.id;
     const { from, to } = parseRange(req);
@@ -825,11 +894,19 @@ export async function suggestAlternativeSlot(req, res) {
     }
 
     await appt.update({
-      startsAt: start,
-      endsAt: end,
-      notes: notes ? `Suggesting alternative: ${notes}` : appt.notes,
-      // Keep status as requested, but doctor has updated the time
+      status: "reschedule_requested",
+      proposedStartsAt: start,
+      proposedEndsAt: end,
+      proposedLocation: appt.location,
+      rescheduleRequestedBy: "doctor",
+      rescheduleNotes: notes || null,
     });
+
+    await NotificationService.notifyAppointmentUpdate(
+      appt.patientId,
+      appt.id,
+      `Your doctor suggested a different time slot (${start.toLocaleString()}). Please approve or deny this change.`
+    );
 
     return res.json(appt);
   } catch (err) {
@@ -894,6 +971,7 @@ export async function getPatientDoctorAvailability(req, res) {
 
 export async function getMyAppointments(req, res) {
   try {
+    await expireStaleRequestedAppointments();
     await ensureAppointmentSchemaReady();
     const userId = req.user.id;
     const role = req.user.role;

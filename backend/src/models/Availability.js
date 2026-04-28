@@ -21,6 +21,11 @@ const Availability = sequelize.define('Availability', {
     allowNull: false,
     defaultValue: 'workHours'
   },
+  workHoursScope: {
+    type: DataTypes.ENUM('default', 'override'),
+    allowNull: false,
+    defaultValue: 'default',
+  },
   dayOfWeek: {
     type: DataTypes.INTEGER,
     allowNull: true,
@@ -32,6 +37,14 @@ const Availability = sequelize.define('Availability', {
   specificDate: {
     type: DataTypes.DATEONLY,
     allowNull: true
+  },
+  effectiveFrom: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+  },
+  effectiveUntil: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
   },
   startTime: {
     type: DataTypes.TIME,
@@ -56,10 +69,19 @@ const Availability = sequelize.define('Availability', {
       fields: ['type']
     },
     {
+      fields: ['workHoursScope']
+    },
+    {
       fields: ['dayOfWeek']
     },
     {
       fields: ['specificDate']
+    },
+    {
+      fields: ['effectiveFrom']
+    },
+    {
+      fields: ['effectiveUntil']
     }
   ]
 });
