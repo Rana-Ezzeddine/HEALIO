@@ -2,9 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import { apiUrl, authHeaders, getUser } from "../api/http";
-import { getMyAppointments } from "../api/appointments";
 import { getConversationMessages, getConversations } from "../api/messaging";
-import { getCaregiverReminders, getCaregiverPatientSymptoms, getCareNotes } from "../api/caregiver";
+import {
+  getCaregiverDashboard,
+  getCaregiverReminders,
+  getCaregiverPatientAppointments,
+  getCaregiverPatientMedications,
+  getCaregiverPatientSymptoms,
+  getCareNotes,
+} from "../api/caregiver";
 import {
   formatDoseTime,
   getScheduleTimes,
@@ -162,7 +168,6 @@ export default function DashboardCaregiver() {
   const [activePatientId, setActivePatientId] = useState("");
   const [appointments, setAppointments] = useState([]);
   const [medications, setMedications] = useState([]);
-  const [symptoms, setSymptoms] = useState([]);
   const [reminders, setReminders] = useState([]);
   const [caregiverSymptoms, setCaregiverSymptoms] = useState([]);
   const [caregiverNotes, setCaregiverNotes] = useState([]);
@@ -190,10 +195,33 @@ export default function DashboardCaregiver() {
     () =>
       scopedAppointments
         .filter((appointment) => {
+          const now = Date.now();
           const startsAt = new Date(appointment.startsAt).getTime();
-          return startsAt >= Date.now() && (appointment.status === "scheduled" || appointment.status === "requested");
+          const endsAt = new Date(appointment.endsAt || appointment.startsAt).getTime();
+          const status = String(appointment.status || "").toLowerCase();
+          const isTerminalStatus = status === "cancelled" || status === "completed" || status === "denied";
+
+          if (isTerminalStatus) return false;
+          if (Number.isFinite(startsAt) && startsAt >= now) return true;
+          if (Number.isFinite(endsAt) && endsAt >= now) return true;
+          return false;
         })
-        .sort((left, right) => new Date(left.startsAt) - new Date(right.startsAt)),
+        .sort((left, right) => {
+          const leftStart = new Date(left.startsAt).getTime();
+          const rightStart = new Date(right.startsAt).getTime();
+
+          if (Number.isFinite(leftStart) && Number.isFinite(rightStart)) {
+            return leftStart - rightStart;
+          }
+
+          const leftEnd = new Date(left.endsAt || left.startsAt).getTime();
+          const rightEnd = new Date(right.endsAt || right.startsAt).getTime();
+          if (Number.isFinite(leftEnd) && Number.isFinite(rightEnd)) {
+            return leftEnd - rightEnd;
+          }
+
+          return 0;
+        }),
     [scopedAppointments]
   );
 
@@ -236,7 +264,7 @@ export default function DashboardCaregiver() {
 
     async function loadCaregiverDashboard() {
       try {
-        const [patientsRes, appointmentsData, medicationsRes, symptomsRes, conversationsData] = await Promise.all([
+        const [patientsRes, conversationsData] = await Promise.all([
           fetch(`${apiUrl}/api/caregivers/patients`, {
             headers: { "Content-Type": "application/json", ...authHeaders() },
           }).then(async (res) => {
@@ -244,13 +272,6 @@ export default function DashboardCaregiver() {
             if (!res.ok) throw new Error(data.message || "Failed to load caregiver patients.");
             return data;
           }),
-          getMyAppointments().catch(() => ({ appointments: [] })),
-          fetch(`${apiUrl}/api/medications`, {
-            headers: { "Content-Type": "application/json", ...authHeaders() },
-          }).then((res) => (res.ok ? res.json() : [])),
-          fetch(`${apiUrl}/api/symptoms`, {
-            headers: { "Content-Type": "application/json", ...authHeaders() },
-          }).then((res) => (res.ok ? res.json() : [])),
           getConversations().catch(() => ({ conversations: [] })),
         ]);
 
@@ -261,9 +282,8 @@ export default function DashboardCaregiver() {
 
         setLinkedPatients(patients);
         setActivePatientId(resolvedId);
-        setAppointments(appointmentsData.appointments || []);
-        setMedications(Array.isArray(medicationsRes) ? medicationsRes : []);
-        setSymptoms(Array.isArray(symptomsRes) ? symptomsRes : []);
+        setAppointments([]);
+        setMedications([]);
         setUnreadMessageCount(await countUnreadMessages(conversationsData.conversations || [], currentUserId));
       } catch (error) {
         if (cancelled) return;
@@ -272,7 +292,6 @@ export default function DashboardCaregiver() {
         setActivePatientId("");
         setAppointments([]);
         setMedications([]);
-        setSymptoms([]);
         setReminders([]);
         setCaregiverSymptoms([]);
         setCaregiverNotes([]);
@@ -288,6 +307,8 @@ export default function DashboardCaregiver() {
 
   useEffect(() => {
     if (!activePatientId) {
+      setAppointments([]);
+      setMedications([]);
       setReminders([]);
       setCaregiverSymptoms([]);
       setCaregiverNotes([]);
@@ -300,22 +321,31 @@ export default function DashboardCaregiver() {
 
     async function loadPatientSpecificData() {
       try {
-        const [remindersData, symptomsData, notesData] = await Promise.all([
+        const [dashboardData, appointmentsData, medicationsData, remindersData, symptomsData, notesData] = await Promise.all([
+          getCaregiverDashboard(activePatientId).catch(() => ({ dashboard: { nextAppointment: { appointment: null } } })),
+          getCaregiverPatientAppointments(activePatientId).catch(() => ({ appointments: [] })),
+          getCaregiverPatientMedications(activePatientId).catch(() => ({ medications: [] })),
           getCaregiverReminders(activePatientId).catch(() => ({ reminders: [] })),
-          getCaregiverPatientSymptoms(activePatientId).catch(() => ([])),
-          getCareNotes(activePatientId).catch(() => ([])),
+          getCaregiverPatientSymptoms(activePatientId).catch(() => ({ symptoms: [] })),
+          getCareNotes(activePatientId).catch(() => ({ notes: [] })),
         ]);
 
         if (cancelled) return;
 
+        const appointmentItems = Array.isArray(appointmentsData?.appointments) ? appointmentsData.appointments : [];
+        const fallbackNextAppointment = dashboardData?.dashboard?.nextAppointment?.appointment || null;
+        setAppointments(appointmentItems.length ? appointmentItems : fallbackNextAppointment ? [fallbackNextAppointment] : []);
+        setMedications(Array.isArray(medicationsData?.medications) ? medicationsData.medications : []);
         setReminders(remindersData.reminders || remindersData || []);
-        setCaregiverSymptoms(Array.isArray(symptomsData) ? symptomsData : []);
-        setCaregiverNotes(Array.isArray(notesData) ? notesData : []);
+        setCaregiverSymptoms(Array.isArray(symptomsData?.symptoms) ? symptomsData.symptoms : []);
+        setCaregiverNotes(Array.isArray(notesData?.notes) ? notesData.notes : []);
         setDoctorClinicalNotes(getPatientClinicalNotes(activePatientId));
         setDoctorTreatmentPlans(getPatientTreatmentPlans(activePatientId));
       } catch (error) {
         if (!cancelled) {
           console.error("Failed to load patient-specific data:", error);
+          setAppointments([]);
+          setMedications([]);
           setReminders([]);
           setCaregiverSymptoms([]);
           setCaregiverNotes([]);

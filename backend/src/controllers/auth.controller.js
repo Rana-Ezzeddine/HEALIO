@@ -1310,6 +1310,15 @@ export const googleCallback = async (req, res) => {
       role: parsedState.role,
     });
 
+    if (session?.requiresTwoFactor) {
+      return redirectToFrontend(res, {
+        challengeToken: session.challengeToken,
+        user: JSON.stringify(session.user),
+        provider: 'google',
+        mfaRequired: '1',
+      });
+    }
+
     return redirectToFrontend(res, {
       token: session.token,
       user: JSON.stringify(session.user),
@@ -1361,6 +1370,15 @@ export const appleCallback = async (req, res) => {
       ...identity,
       role: parsedState.role,
     });
+
+    if (session?.requiresTwoFactor) {
+      return redirectToFrontend(res, {
+        challengeToken: session.challengeToken,
+        user: JSON.stringify(session.user),
+        provider: 'apple',
+        mfaRequired: '1',
+      });
+    }
 
     return redirectToFrontend(res, {
       token: session.token,

@@ -255,7 +255,7 @@ export default function DoctorCalendar() {
     setRescheduleOpenId(appointment.id);
     setRescheduleForm({
       appointmentId: appointment.id,
-      date: startsAt.toISOString().slice(0, 10),
+      date: toDateKey(startsAt),
       duration: String(Math.round((endsAt - startsAt) / 60000) || 30),
       timeSlot: "",
       location: appointment.proposedLocation || appointment.location || "",

@@ -386,6 +386,28 @@ export default function App() {
   const [message, setMessage] = useState("Loading...");
 
   useEffect(() => {
+    const currentUrl = new URL(window.location.href);
+    const queryToken = currentUrl.searchParams.get("token");
+
+    if (currentUrl.pathname === "/" && queryToken) {
+      window.location.replace(`/verify-email?token=${encodeURIComponent(queryToken)}`);
+      return;
+    }
+
+    const hash = String(window.location.hash || "");
+    if (!hash.startsWith("#/verify-email")) return;
+
+    const hashQueryIndex = hash.indexOf("?");
+    const hashQuery = hashQueryIndex >= 0 ? hash.slice(hashQueryIndex + 1) : "";
+    const hashParams = new URLSearchParams(hashQuery);
+    const hashToken = hashParams.get("token");
+
+    if (hashToken) {
+      window.location.replace(`/verify-email?token=${encodeURIComponent(hashToken)}`);
+    }
+  }, []);
+
+  useEffect(() => {
     // Drop legacy persisted auth so a fresh browser session starts at landing/login.
     if (!window.sessionStorage.getItem("accessToken")) {
       clearSession();

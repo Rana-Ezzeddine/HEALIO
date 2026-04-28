@@ -102,6 +102,30 @@ export function caregiverRequestAppointment(patientId, payload) {
   });
 }
 
+export function getCaregiverPatientAppointmentAvailability({
+  patientId,
+  doctorId,
+  from,
+  to,
+  slotMinutes = 30,
+}) {
+  const params = new URLSearchParams({
+    from,
+    to,
+    slotMinutes: String(slotMinutes),
+  });
+
+  if (doctorId) {
+    params.set("doctorId", doctorId);
+  }
+
+  return request(`/api/caregivers/patients/${patientId}/appointments/availability?${params.toString()}`);
+}
+
+export function getCaregiverPatientDoctors(patientId) {
+  return request(`/api/caregivers/patients/${patientId}/doctors`);
+}
+
 export function sendCareConcern(patientId, concern, context = "") {
   return request("/api/caregiver-actions/care-concerns", {
     method: "POST",
