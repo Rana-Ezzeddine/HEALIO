@@ -20,6 +20,14 @@ function formatDateTimeParts(dateLike) {
   };
 }
 
+function toLocalDateKey(dateLike) {
+  const date = new Date(dateLike);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function statusLabel(status) {
   if (status === "requested") return "Requested";
   if (status === "scheduled") return "Upcoming";
@@ -279,7 +287,7 @@ export default function PatientAppointments() {
     setRescheduleForm({
       appointmentId: appointment.id,
       doctorId: appointment.doctor?.id || "",
-      date: startsAt.toISOString().slice(0, 10),
+      date: toLocalDateKey(startsAt),
       duration: String(Math.round((endsAt - startsAt) / 60000) || 30),
       timeSlot: "",
       location: appointment.proposedLocation || appointment.location || "",

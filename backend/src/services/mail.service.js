@@ -116,9 +116,11 @@ export async function sendVerificationEmail({ to, token }) {
       process.env.FRONTEND_URL ||
       'http://localhost:5173';
 
+    const normalizedBaseUrl = String(baseUrl).replace(/\/+$/, '');
+
     console.log('[sendVerificationEmail] baseUrl:', baseUrl);
 
-    const verifyUrl = `${baseUrl}/api/auth/verify-email?token=${encodeURIComponent(token)}`;
+    const verifyUrl = `${normalizedBaseUrl}/verify-email?token=${encodeURIComponent(token)}`;
     console.log('[sendVerificationEmail] verifyUrl:', verifyUrl);
 
     const email = buildVerificationEmail({ verifyUrl });

@@ -147,3 +147,10 @@ export function reviewAppointmentReschedule(id, decision, note = "") {
     body: JSON.stringify({ decision, note }),
   });
 }
+
+export function markAppointmentComplete(id) {
+  return request(`/api/appointments/${id}/complete`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}

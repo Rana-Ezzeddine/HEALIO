@@ -16,6 +16,7 @@ import {
   updateAppointment,
   updateAppointmentStatus,
   suggestAlternativeSlot,
+  markAppointmentComplete,
 } from "../controllers/appointments.controller.js";
 
 const router = express.Router();
@@ -37,7 +38,8 @@ router.post("/requests", requireRole("patient"), createAppointmentRequest);
 router.put("/:id", requireRole("doctor"), updateAppointment);
 router.post("/requests/:id/suggest-slot", requireRole("doctor"), suggestAlternativeSlot);
 router.post("/:id/reschedule", requireRole("doctor", "patient"), requestAppointmentReschedule);
-router.post("/:id/reschedule/review", requireRole("doctor", "patient"), reviewAppointmentReschedule);
+router.post("/:id/reschedule/review", requireRole("doctor", "patient", "caregiver"), reviewAppointmentReschedule);
+router.post("/:id/complete", requireRole("doctor", "patient"), markAppointmentComplete);
 router.patch("/:id/status", requireRole("doctor", "patient"), updateAppointmentStatus);
 
 export default router;

@@ -75,7 +75,7 @@ function getInitialResult(searchParams) {
 export default function SocialAuthCompletePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const initialResult = getInitialResult(searchParams);
+  const [initialResult] = useState(() => getInitialResult(searchParams));
   const [message] = useState(initialResult.message);
   const [hasError] = useState(initialResult.hasError);
   const [mfaCode, setMfaCode] = useState("");

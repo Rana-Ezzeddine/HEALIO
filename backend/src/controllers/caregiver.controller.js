@@ -5,7 +5,9 @@ import Medication from "../models/Medication.js";
 import Symptom from "../models/Symptom.js";
 import Appointment from "../models/Appointment.js";
 import CaregiverPatientPermission from "../models/CaregiverPatientPermission.js";
+import DoctorPatientAssignment from "../models/DoctorPatientAssignment.js";
 import CaregiverNote from '../models/CaregiverNote.js';
+import { buildDoctorAvailability, ensureAppointmentSchemaReady } from "./appointments.controller.js";
 
 async function getPatientDisplayProfiles(patientIds) {
   if (!patientIds.length) return new Map();
@@ -519,6 +521,11 @@ export async function getCaregiverPatientAppointments(req, res) {
         status: a.status,
         location: a.location,
         notes: a.notes,
+        rescheduleRequestedBy: a.rescheduleRequestedBy,
+        proposedStartsAt: a.proposedStartsAt,
+        proposedEndsAt: a.proposedEndsAt,
+        proposedLocation: a.proposedLocation,
+        rescheduleNotes: a.rescheduleNotes,
         doctor: a.doctor
           ? {
               id: a.doctor.id,
@@ -757,5 +764,142 @@ export async function getCaregiverDashboardData(req, res) {
   } catch (err) {
     console.error('getCaregiverDashboardData error:', err);
     return res.status(500).json({ message: 'Server error.' });
+  }
+}
+
+export async function getCaregiverPatientDoctors(req, res) {
+  try {
+    if (req.user?.role !== "caregiver") {
+      return res.status(403).json({ message: "Only caregivers can view this." });
+    }
+
+    const caregiverId = req.user.id;
+    const { patientId } = req.params;
+    const link = await requireCaregiverPermissionOrThrow(caregiverId, patientId, "canViewAppointments");
+    if (!link) return res.status(403).json({ message: "Permission denied for appointments." });
+
+    const assignments = await DoctorPatientAssignment.findAll({
+      where: { patientId, status: "active" },
+      order: [["createdAt", "DESC"]],
+    });
+
+    const doctorIds = Array.from(new Set(assignments.map((item) => item.doctorId).filter(Boolean)));
+    const doctors = await User.findAll({
+      where: { id: doctorIds, role: "doctor" },
+      attributes: ["id", "email"],
+    });
+    const doctorById = new Map(doctors.map((item) => [item.id, item]));
+    const doctorProfileMap = await getPatientDisplayProfiles(doctorIds);
+
+    return res.json({
+      patientId,
+      count: assignments.length,
+      doctors: assignments.map((item) => ({
+        id: item.doctorId,
+        email: doctorById.get(item.doctorId)?.email || null,
+        displayName:
+          [doctorProfileMap.get(item.doctorId)?.firstName, doctorProfileMap.get(item.doctorId)?.lastName]
+            .filter(Boolean)
+            .join(" ")
+            .trim() || doctorById.get(item.doctorId)?.email || "Doctor",
+      })),
+    });
+  } catch (err) {
+    console.error("caregiver patient doctors error:", err);
+    return res.status(500).json({
+      message: "Server error.",
+      debug: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
+  }
+}
+
+export async function getCaregiverPatientAppointmentAvailability(req, res) {
+  try {
+    await ensureAppointmentSchemaReady();
+
+    if (req.user?.role !== "caregiver") {
+      return res.status(403).json({ message: "Only caregivers can view this." });
+    }
+
+    const caregiverId = req.user.id;
+    const { patientId } = req.params;
+    const link = await requireCaregiverPermissionOrThrow(caregiverId, patientId, "canViewAppointments");
+    if (!link) return res.status(403).json({ message: "Permission denied for appointments." });
+
+    const from = new Date(req.query.from);
+    const to = new Date(req.query.to);
+    const slotMinutes = Number(req.query.slotMinutes || 30);
+
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from >= to) {
+      return res.status(400).json({ message: "from/to must be a valid date range." });
+    }
+
+    if (!Number.isInteger(slotMinutes) || slotMinutes <= 0 || slotMinutes > 240) {
+      return res.status(400).json({ message: "slotMinutes must be an integer between 1 and 240" });
+    }
+
+    const requestedDoctorId = String(req.query.doctorId || "").trim();
+
+    const assignments = await DoctorPatientAssignment.findAll({
+      where: { patientId, status: "active" },
+      order: [["createdAt", "DESC"]],
+    });
+
+    if (assignments.length === 0) {
+      return res.status(400).json({
+        message: "Patient has no active doctor. No appointment slots are available.",
+      });
+    }
+
+    const doctorIds = Array.from(new Set(assignments.map((item) => item.doctorId).filter(Boolean)));
+    const doctors = await User.findAll({
+      where: { id: doctorIds, role: "doctor" },
+      attributes: ["id", "email"],
+    });
+    const doctorById = new Map(doctors.map((item) => [item.id, item]));
+
+    const selectedAssignment = requestedDoctorId
+      ? assignments.find((item) => item.doctorId === requestedDoctorId)
+      : assignments[0];
+
+    if (requestedDoctorId && !selectedAssignment) {
+      return res.status(400).json({
+        message: "Selected doctor is not actively linked to this patient.",
+      });
+    }
+
+    const doctorProfileMap = await getPatientDisplayProfiles([selectedAssignment.doctorId]);
+    const selectedDoctor = doctorById.get(selectedAssignment.doctorId);
+    const slots = await buildDoctorAvailability({
+      doctorId: selectedAssignment.doctorId,
+      from,
+      to,
+      slotMinutes,
+    });
+
+    return res.json({
+      patientId,
+      doctorId: selectedAssignment.doctorId,
+      doctor: {
+        id: selectedAssignment.doctorId,
+        email: selectedDoctor?.email || null,
+        displayName:
+          [doctorProfileMap.get(selectedAssignment.doctorId)?.firstName, doctorProfileMap.get(selectedAssignment.doctorId)?.lastName]
+            .filter(Boolean)
+            .join(" ")
+            .trim() || selectedDoctor?.email || "Doctor",
+      },
+      from,
+      to,
+      slotMinutes,
+      count: slots.length,
+      slots,
+    });
+  } catch (err) {
+    console.error("caregiver appointment availability error:", err);
+    return res.status(500).json({
+      message: err.message || "Failed to fetch appointment availability.",
+      debug: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
   }
 }

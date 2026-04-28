@@ -5,6 +5,8 @@ import {
   assignCaregiver,
   getCaregiverPatientHealthData,
   getCaregiverPatientAppointments,
+  getCaregiverPatientDoctors,
+  getCaregiverPatientAppointmentAvailability,
   getCaregiverPatientMedications,
   getCaregiverPatientSymptoms,
   listCaregiverRequests,
@@ -43,6 +45,16 @@ router.get(
   "/patients/:patientId/appointments",
   requireRole("caregiver"),
   getCaregiverPatientAppointments
+);
+router.get(
+  "/patients/:patientId/doctors",
+  requireRole("caregiver"),
+  getCaregiverPatientDoctors
+);
+router.get(
+  "/patients/:patientId/appointments/availability",
+  requireRole("caregiver"),
+  getCaregiverPatientAppointmentAvailability
 );
 router.get(
   "/patients/:patientId/health-data",

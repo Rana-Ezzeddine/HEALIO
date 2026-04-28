@@ -4,6 +4,7 @@ import Availability from "../models/Availability.js";
 import User from "../models/User.js";
 import DoctorPatientAssignment from "../models/DoctorPatientAssignment.js";
 import PatientProfile from "../models/PatientProfile.js";
+import CaregiverPatientPermission from "../models/CaregiverPatientPermission.js";
 import { DOCTOR_APPROVAL_STATUS, isApprovedDoctorUser } from "../lib/doctorApproval.js";
 import NotificationService from "../services/notificationService.js";
 import ContextService from "../services/ContextService.js";
@@ -102,7 +103,7 @@ async function ensureAppointmentRescheduleColumnsReady() {
   }
 }
 
-async function ensureAppointmentSchemaReady() {
+export async function ensureAppointmentSchemaReady() {
   await ensureAppointmentRequestSourceColumnReady();
   await ensureAppointmentRescheduleColumnsReady();
 }
@@ -124,7 +125,7 @@ async function ensurePatientUser(patientId) {
   }
 }
 
-async function buildDoctorAvailability({
+export async function buildDoctorAvailability({
   doctorId,
   from,
   to,
@@ -1050,9 +1051,26 @@ export async function reviewAppointmentReschedule(req, res) {
 
     const isDoctorActor = actorRole === "doctor" && appt.doctorId === actorId;
     const isPatientActor = actorRole === "patient" && appt.patientId === actorId;
-    if (!isDoctorActor && !isPatientActor) {
+    
+    // Check if caregiver has permission to manage this patient's appointments
+    let isCaregiverActor = false;
+    if (actorRole === "caregiver") {
+      const caregiverPerm = await CaregiverPatientPermission.findOne({
+        where: {
+          caregiverId: actorId,
+          patientId: appt.patientId,
+          canViewAppointments: true
+        }
+      });
+      isCaregiverActor = !!caregiverPerm;
+    }
+    
+    if (!isDoctorActor && !isPatientActor && !isCaregiverActor) {
       return res.status(403).json({ message: "You are not allowed to review this reschedule request." });
     }
+    
+    // Only the party that did NOT request the reschedule can review it
+    // Caregiver acts on behalf of patient, so if doctor requested, caregiver can approve/deny
     if ((appt.rescheduleRequestedBy === "doctor" && isDoctorActor) || (appt.rescheduleRequestedBy === "patient" && isPatientActor)) {
       return res.status(403).json({ message: "The other party must review this reschedule request." });
     }
@@ -1076,7 +1094,8 @@ export async function reviewAppointmentReschedule(req, res) {
       });
 
       await ReminderSchedulerService.scheduleAppointmentReminder(appt);
-      const recipientId = isDoctorActor ? appt.patientId : appt.doctorId;
+      // Determine who to notify: if doctor or caregiver acted, notify patient; if patient acted, notify doctor
+      const recipientId = (isDoctorActor || isCaregiverActor) ? appt.patientId : appt.doctorId;
       await NotificationService.notifyAppointmentUpdate(
         recipientId,
         appt.id,
@@ -1092,7 +1111,8 @@ export async function reviewAppointmentReschedule(req, res) {
         rescheduleNotes: null,
       });
 
-      const recipientId = isDoctorActor ? appt.patientId : appt.doctorId;
+      // Determine who to notify: if doctor or caregiver acted, notify patient; if patient acted, notify doctor
+      const recipientId = (isDoctorActor || isCaregiverActor) ? appt.patientId : appt.doctorId;
       await NotificationService.notifyAppointmentUpdate(
         recipientId,
         appt.id,
@@ -1103,5 +1123,41 @@ export async function reviewAppointmentReschedule(req, res) {
     return res.json(appt);
   } catch (err) {
     return res.status(500).json({ message: err.message || "Failed to review appointment reschedule." });
+  }
+}
+
+export async function markAppointmentComplete(req, res) {
+  try {
+    await ensureAppointmentSchemaReady();
+    const actorId = req.user.id;
+    const actorRole = req.user.role;
+    const { id } = req.params;
+
+    const appt = await Appointment.findByPk(id);
+    if (!appt) {
+      return res.status(404).json({ message: "Appointment not found" });
+    }
+
+    const isDoctorActor = actorRole === "doctor" && appt.doctorId === actorId;
+    const isPatientActor = actorRole === "patient" && appt.patientId === actorId;
+
+    // Only doctor or patient can mark as complete
+    if (!isDoctorActor && !isPatientActor) {
+      return res.status(403).json({ message: "You are not allowed to mark this appointment as complete." });
+    }
+
+    if (appt.status === "completed") {
+      return res.status(400).json({ message: "This appointment is already marked as completed." });
+    }
+
+    // Only scheduled or requested appointments can be marked complete
+    if (!["scheduled", "requested"].includes(appt.status)) {
+      return res.status(400).json({ message: "Only scheduled or requested appointments can be marked complete." });
+    }
+
+    await appt.update({ status: "completed" });
+    return res.json(appt);
+  } catch (err) {
+    return res.status(500).json({ message: err.message || "Failed to mark appointment as complete." });
   }
 }
