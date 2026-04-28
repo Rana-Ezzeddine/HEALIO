@@ -1,4 +1,4 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -7,7 +7,12 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const localLogoPath = path.resolve(__dirname, '../../../frontend/public/logo.png');
-const verificationLogoCid = 'healio-logo';
+
+// ================== RESEND SETUP ==================
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+// For demo while domain is not verified:
+const EMAIL_FROM = process.env.EMAIL_FROM || 'HEALIO <onboarding@resend.dev>';
 
 // ================== HELPERS ==================
 function escapeHtml(value) {
@@ -30,16 +35,8 @@ function getVerificationLogoMarkup() {
     `;
   }
 
-  if (fs.existsSync(localLogoPath)) {
-    return `
-      <img src="cid:${verificationLogoCid}" alt="HEALIO"
-        width="156"
-        style="display:block;margin:0 auto 8px;" />
-    `;
-  }
-
   return `
-    <div style="width:68px;height:68px;margin:0 auto 8px;border-radius:20px;background:#fff;text-align:center;line-height:68px;font-weight:bold;">
+    <div style="width:68px;height:68px;margin:0 auto 8px;border-radius:20px;background:#e0f2f1;text-align:center;line-height:68px;font-weight:bold;color:#047857;">
       H
     </div>
   `;
@@ -57,7 +54,7 @@ function buildVerificationEmail({ verifyUrl }) {
       <div style="font-family:Arial;padding:20px;">
         ${logo}
         <h2>Verify your email</h2>
-        <p>Please confirm your account:</p>
+        <p>Please confirm your HEALIO account by clicking the link below:</p>
         <a href="${safeUrl}" style="color:#2563eb;">Verify Email</a>
       </div>
     `,
@@ -73,36 +70,11 @@ function buildPasswordResetEmail({ resetUrl }) {
     html: `
       <div style="font-family:Arial;padding:20px;">
         <h2>Password Reset</h2>
+        <p>Click below to reset your password:</p>
         <a href="${safeUrl}" style="color:#2563eb;">Reset Password</a>
       </div>
     `,
   };
-}
-
-// ================== TRANSPORT ==================
-let transporter = null;
-
-function getTransporter() {
-  if (transporter) return transporter;
-
-  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    throw new Error('MAILTRAP_SMTP_NOT_CONFIGURED');
-  }
-
-  transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,          // sandbox.smtp.mailtrap.io
-    port: Number(process.env.SMTP_PORT || 2525),
-    secure: String(process.env.SMTP_SECURE || '').toLowerCase() === 'true' || Number(process.env.SMTP_PORT || 2525) === 465,
-    connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 10000),
-    greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 10000),
-    socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 15000),
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-
-  return transporter;
 }
 
 // ================== SEND FUNCTIONS ==================
@@ -114,6 +86,10 @@ export async function sendVerificationEmail({ to, token }) {
     return { skipped: true };
   }
 
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error('RESEND_API_KEY_NOT_CONFIGURED');
+  }
+
   try {
     const baseUrl =
       process.env.APP_BASE_URL ||
@@ -121,40 +97,18 @@ export async function sendVerificationEmail({ to, token }) {
       'http://localhost:5173';
 
     const normalizedBaseUrl = String(baseUrl).replace(/\/+$/, '');
-
-    console.log('[sendVerificationEmail] baseUrl:', baseUrl);
-
     const verifyUrl = `${normalizedBaseUrl}/verify-email?token=${encodeURIComponent(token)}`;
+
     console.log('[sendVerificationEmail] verifyUrl:', verifyUrl);
 
     const email = buildVerificationEmail({ verifyUrl });
-    console.log('[sendVerificationEmail] email content built:', {
-      subject: email.subject,
-    });
 
-    const tx = getTransporter();
-    console.log('[sendVerificationEmail] transporter initialized');
-
-    const logoExists = fs.existsSync(localLogoPath);
-    console.log('[sendVerificationEmail] logo exists:', logoExists);
-
-    const attachments = logoExists
-      ? [{
-          filename: 'healio-logo.png',
-          path: localLogoPath,
-          cid: verificationLogoCid,
-        }]
-      : [];
-
-    console.log('[sendVerificationEmail] attachments:', attachments.length);
-
-    const info = await tx.sendMail({
-      from: process.env.SMTP_FROM || 'HEALIO <no-reply@healio.local>',
+    const info = await resend.emails.send({
+      from: EMAIL_FROM,
       to,
       subject: email.subject,
       text: email.text,
       html: email.html,
-      attachments,
     });
 
     console.log('[sendVerificationEmail] email sent successfully:', info);
@@ -169,17 +123,22 @@ export async function sendVerificationEmail({ to, token }) {
 export async function sendPasswordResetEmail({ to, token }) {
   if (process.env.NODE_ENV === 'test') return { skipped: true };
 
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error('RESEND_API_KEY_NOT_CONFIGURED');
+  }
+
   const baseUrl =
     process.env.APP_BASE_URL ||
     process.env.FRONTEND_URL ||
     'http://localhost:5173';
 
-  const resetUrl = `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
-  const email = buildPasswordResetEmail({ resetUrl });
-  const tx = getTransporter();
+  const normalizedBaseUrl = String(baseUrl).replace(/\/+$/, '');
+  const resetUrl = `${normalizedBaseUrl}/reset-password?token=${encodeURIComponent(token)}`;
 
-  await tx.sendMail({
-    from: process.env.SMTP_FROM || 'HEALIO <no-reply@healio.local>',
+  const email = buildPasswordResetEmail({ resetUrl });
+
+  await resend.emails.send({
+    from: EMAIL_FROM,
     to,
     subject: email.subject,
     text: email.text,
@@ -192,14 +151,20 @@ export async function sendPasswordResetEmail({ to, token }) {
 export async function sendDoctorEmergencyAlert({ to, patientEmail, reason }) {
   if (process.env.NODE_ENV === 'test') return { skipped: true };
 
-  const tx = getTransporter();
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error('RESEND_API_KEY_NOT_CONFIGURED');
+  }
 
-  await tx.sendMail({
-    from: process.env.SMTP_FROM || 'HEALIO <no-reply@healio.local>',
+  await resend.emails.send({
+    from: EMAIL_FROM,
     to,
     subject: 'HEALIO Emergency Alert',
     text: `Emergency alert from ${patientEmail}. Reason: ${reason || 'N/A'}`,
-    html: `<p><strong>Emergency alert</strong></p><p>${patientEmail}</p><p>${reason || 'N/A'}</p>`,
+    html: `
+      <p><strong>Emergency alert</strong></p>
+      <p>${escapeHtml(patientEmail)}</p>
+      <p>${escapeHtml(reason || 'N/A')}</p>
+    `,
   });
 
   return { skipped: false };

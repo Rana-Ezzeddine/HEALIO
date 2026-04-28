@@ -878,7 +878,7 @@ export const requestPasswordReset = async (req, res) => {
     );
 
     return res.status(200).json({
-      message: 'If an account with that email exists, a password reset link is being sent.',
+      message: 'Password reset link request received. If email delivery succeeds, check your inbox shortly.',
       ...(process.env.NODE_ENV === 'test' ? { resetToken: rawToken } : {}),
     });
   } catch (err) {
