@@ -45,7 +45,7 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
   };
   const isNameValid = (value) => {
     const trimmed = value.trim();
-    return /^[A-Za-z]+(?:\s+[A-Za-z]+)*$/.test(trimmed) && trimmed.replace(/\s+/g, "").length >= 2;
+    return /^[\p{L}]+(?:[ '\-][\p{L}]+)*$/u.test(trimmed) && trimmed.replace(/[^\p{L}]/gu, "").length >= 2;
   };
   const isStrongPassword = (value) =>
     value.length >= 10 &&
@@ -303,7 +303,6 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
                 minLength={2}
-                pattern="[A-Za-z]+(?:\\s+[A-Za-z]+)*"
                 required
                 className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-400 focus:ring-sky-400 transition"
               />
@@ -316,7 +315,6 @@ export default function SignupPage({ embedded = false, onClose, onSwitchToLogin 
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
                 minLength={2}
-                pattern="[A-Za-z]+(?:\\s+[A-Za-z]+)*"
                 required
                 className="w-full h-11 bg-white rounded-lg border border-slate-300 text-slate-900 px-3 placeholder:text-slate-400 focus:ring-2 focus:outline-none focus:border-sky-400 focus:ring-sky-400 transition"
               />

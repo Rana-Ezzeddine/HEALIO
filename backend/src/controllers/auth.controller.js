@@ -45,7 +45,7 @@ const APPLE_JWKS_URL = 'https://appleid.apple.com/auth/keys';
 const isValidName = (name) => {
   if (typeof name !== 'string') return false;
   const trimmed = name.trim();
-  return /^[A-Za-z]+(?:\s+[A-Za-z]+)*$/.test(trimmed) && trimmed.replace(/\s+/g, '').length >= 2;
+  return /^[\p{L}]+(?:[ '\-][\p{L}]+)*$/u.test(trimmed) && trimmed.replace(/[^\p{L}]/gu, '').length >= 2;
 };
 
 const isStrongPassword = (pw) => (
@@ -132,6 +132,16 @@ const verifyMfaCodeForUser = async (user, code) => {
 
 const createVerificationToken = async () => crypto.randomBytes(32).toString('hex');
 const createPasswordResetToken = async () => crypto.randomBytes(32).toString('hex');
+const queueEmailDelivery = (label, sendFn) => {
+  Promise.resolve()
+    .then(sendFn)
+    .catch((error) => {
+      console.error(`[${label}] background email delivery failed:`, error);
+    });
+};
+
+const isSmtpConfigurationError = (error) =>
+  String(error?.message || '').includes('MAILTRAP_SMTP_NOT_CONFIGURED');
 
 const getFrontendBaseUrl = () => process.env.FRONTEND_URL || process.env.APP_BASE_URL || 'http://localhost:5173';
 
@@ -473,10 +483,7 @@ const completeSocialLogin = async ({ provider, providerSubject, email, firstName
   } else {
     const updates = {};
 
-    if (user.authProvider === 'local') {
-      updates.authProvider = provider;
-      updates.providerSubject = providerSubject;
-    } else if (!user.providerSubject) {
+    if (user.authProvider !== 'local' && !user.providerSubject) {
       updates.providerSubject = providerSubject;
     }
 
@@ -697,12 +704,25 @@ export const register = async (req, res) => {
         });
       }
 
-      await sendVerificationEmail({ to: cleanEmail, token: rawToken });
+      try {
+        await sendVerificationEmail({ to: cleanEmail, token: rawToken });
+      } catch (mailErr) {
+        if (isSmtpConfigurationError(mailErr)) {
+          return res.status(500).json({
+            message: 'Signup created but verification email could not be sent because SMTP is not configured on the server.',
+            code: 'SMTP_NOT_CONFIGURED',
+          });
+        }
+        return res.status(502).json({
+          message: 'Signup created but verification email delivery failed. Please try resending in a minute.',
+          code: 'EMAIL_DELIVERY_FAILED',
+        });
+      }
 
       return res.status(existingPending ? 200 : 201).json({
         message: existingPending
-          ? 'Pending registration updated. Please verify your email using the newest link.'
-          : 'Registered successfully. Please verify your email.',
+          ? 'Pending registration updated. A fresh verification email is being sent.'
+          : 'Registered successfully. A verification email is being sent.',
         user: pendingUser,
         verificationRequired: true,
         ...(process.env.NODE_ENV === 'test' ? { verificationToken: rawToken } : {}),
@@ -712,16 +732,8 @@ export const register = async (req, res) => {
         await PendingRegistration.destroy({ where: { email: cleanEmail } });
       }
 
-      if (mailErr.message === 'SMTP_NOT_CONFIGURED') {
-        return res.status(503).json({
-          message: 'Email verification is not configured on the server. Add SMTP settings before allowing signup.',
-        });
-      }
-
       console.error(mailErr);
-      return res.status(502).json({
-        message: 'Failed to send verification email. Please try again later.',
-      });
+      return res.status(500).json({ message: 'Server error during registration.' });
     }
   } catch (err) {
     if (err.name === 'SequelizeUniqueConstraintError') {
@@ -833,16 +845,20 @@ export const resendVerification = async (req, res) => {
     try {
       await sendVerificationEmail({ to: pendingRegistration.email, token: rawToken });
     } catch (mailErr) {
-      if (mailErr.message === 'SMTP_NOT_CONFIGURED') {
-        return res.status(503).json({
-          message: 'Email verification is not configured on the server. Add SMTP settings before resending.',
+      if (isSmtpConfigurationError(mailErr)) {
+        return res.status(500).json({
+          message: 'Verification email could not be sent because SMTP is not configured on the server.',
+          code: 'SMTP_NOT_CONFIGURED',
         });
       }
-      throw mailErr;
+      return res.status(502).json({
+        message: 'Verification email delivery failed. Please try again shortly.',
+        code: 'EMAIL_DELIVERY_FAILED',
+      });
     }
 
     return res.status(200).json({
-      message: 'Verification email sent.',
+      message: 'Verification email is being sent.',
       ...(process.env.NODE_ENV === 'test' ? { verificationToken: rawToken } : {}),
     });
   } catch (err) {
@@ -867,13 +883,6 @@ export const requestPasswordReset = async (req, res) => {
       });
     }
 
-    if (user.authProvider !== 'local') {
-      return res.status(400).json({
-        code: 'PASSWORD_RESET_UNAVAILABLE',
-        message: `This account uses ${user.authProvider === 'google' ? 'Google' : 'social'} sign-in and does not support password reset.`,
-      });
-    }
-
     const rawToken = await createPasswordResetToken();
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
 
@@ -889,26 +898,12 @@ export const requestPasswordReset = async (req, res) => {
       expiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
     });
 
-    try {
-      await sendPasswordResetEmail({ to: cleanEmail, token: rawToken });
-    } catch (mailErr) {
-      await PasswordResetToken.destroy({
-        where: {
-          userId: user.id,
-        },
-      });
-
-      if (mailErr.message === 'SMTP_NOT_CONFIGURED') {
-        return res.status(503).json({
-          message: 'Password reset email is not configured on the server. Add SMTP settings before using this feature.',
-        });
-      }
-
-      throw mailErr;
-    }
+    queueEmailDelivery('password-reset-email', () =>
+      sendPasswordResetEmail({ to: cleanEmail, token: rawToken })
+    );
 
     return res.status(200).json({
-      message: 'A password reset link has been sent.',
+      message: 'Password reset link request received. If email delivery succeeds, check your inbox shortly.',
       ...(process.env.NODE_ENV === 'test' ? { resetToken: rawToken } : {}),
     });
   } catch (err) {
@@ -961,14 +956,6 @@ export const resetPassword = async (req, res) => {
       return res.status(404).json({
         code: 'RESET_USER_NOT_FOUND',
         message: 'User not found for this reset link.',
-      });
-    }
-
-    if (user.authProvider !== 'local') {
-      await PasswordResetToken.destroy({ where: { id: record.id } });
-      return res.status(400).json({
-        code: 'PASSWORD_RESET_UNAVAILABLE',
-        message: 'This account uses social sign-in and does not support password reset.',
       });
     }
 

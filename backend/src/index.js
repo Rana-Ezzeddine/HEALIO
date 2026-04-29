@@ -1,5 +1,5 @@
 /////////////////////////////////////////////////
-// ✅ Load environment variables FIRST
+// ? Load environment variables FIRST
 /////////////////////////////////////////////////
 import path from "path";
 import { fileURLToPath } from "url";
@@ -11,7 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /////////////////////////////////////////////////
-// ✅ Fail-fast env validation
+// ? Fail-fast env validation
 /////////////////////////////////////////////////
 const requiredEnv = ["DB_NAME", "DB_USER", "DB_PASSWORD", "JWT_ACCESS_SECRET"];
 
@@ -22,7 +22,7 @@ for (const key of requiredEnv) {
 }
 
 /////////////////////////////////////////////////
-// ✅ Core Imports
+// ? Core Imports
 /////////////////////////////////////////////////
 import express from "express";
 import cors from "cors";
@@ -44,7 +44,7 @@ import caregiverActionsRoutes from "./routes/caregiverActions.routes.js";
 import doctorNotesRoutes from "./routes/doctorNotes.routes.js";
 
 /////////////////////////////////////////////////
-// ✅ Initialize App
+// ? Initialize App
 /////////////////////////////////////////////////
 const app = express();
 
@@ -60,19 +60,17 @@ async function startNgrokTunnel(port) {
 
     const publicUrl = listener.url();
 
-    console.log(`🌍 Ngrok public URL: ${publicUrl}`);
-    console.log(`🔗 Health check: ${publicUrl}/health`);
-    console.log(`🔐 Verification base URL: ${publicUrl}`);
-    console.log(
-      `✅ Put this in your .env for email verification:\nAPP_BASE_URL=${publicUrl}`
-    );
+    console.log(`?? Ngrok public URL: ${publicUrl}`);
+    console.log(`?? Health check: ${publicUrl}/health`);
+    console.log(`?? Verification base URL: ${publicUrl}`);
+    console.log(`? Put this in your .env for email verification:\nAPP_BASE_URL=${publicUrl}`);
   } catch (ngrokError) {
-    console.error("❌ Failed to start ngrok:", ngrokError);
+    console.error("? Failed to start ngrok:", ngrokError);
   }
 }
 
 /////////////////////////////////////////////////
-// ✅ Middlewares
+// ? Middlewares
 /////////////////////////////////////////////////
 app.use(
   cors({
@@ -84,14 +82,14 @@ app.use(
 app.use(express.json({ limit: "1mb" }));
 
 /////////////////////////////////////////////////
-// ✅ Health Route
+// ? Health Route
 /////////////////////////////////////////////////
 app.get("/health", (req, res) => {
   res.status(200).json({ ok: true, service: "healio-backend" });
 });
 
 /////////////////////////////////////////////////
-// ✅ API Routes
+// ? API Routes
 /////////////////////////////////////////////////
 app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
@@ -106,7 +104,7 @@ app.use("/api/caregiver-actions", caregiverActionsRoutes);
 app.use("/api/doctor-notes", doctorNotesRoutes);
 
 /////////////////////////////////////////////////
-// ✅ Global error handler
+// ? Global error handler
 /////////////////////////////////////////////////
 app.use((err, req, res, next) => {
   console.error(err);
@@ -114,14 +112,16 @@ app.use((err, req, res, next) => {
 });
 
 /////////////////////////////////////////////////
-// ✅ Start Server ONLY after DB connects
+// ? Start Server ONLY after DB connects
 /////////////////////////////////////////////////
 const PORT = process.env.PORT || 5050;
 
 const startServer = async () => {
   try {
     const connected = await testConnection();
-    if (!connected) throw new Error("PostgreSQL connection failed");    const [result] = await sequelize.query(`
+    if (!connected) throw new Error("PostgreSQL connection failed");
+
+    const [result] = await sequelize.query(`
       SELECT EXISTS (
         SELECT 1
         FROM information_schema.tables
@@ -136,10 +136,12 @@ const startServer = async () => {
       console.log("Migrations detected (database schema ready)");
     }
 
-    app.listen(PORT, async () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
+    if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+      console.warn("SMTP is not fully configured. Verification and reset emails will fail.");
+    }
 
-      // ✅ Start ngrok only if enabled
+    app.listen(PORT, async () => {
+      console.log(`?? Server running on http://localhost:${PORT}`);
       await startNgrokTunnel(PORT);
     });
   } catch (error) {
@@ -149,4 +151,3 @@ const startServer = async () => {
 };
 
 startServer();
-
