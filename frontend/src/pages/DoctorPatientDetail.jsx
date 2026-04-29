@@ -10,7 +10,6 @@ import {
   saveDoctorEmergencyReview,
 } from "../utils/doctorPatientRecords";
 import { formatDoseTime, getNextMedicationDose, getScheduleTimes, isActiveMedication } from "../utils/medicationSchedule";
-import { createConversation, getConversationMessages, sendConversationMessage } from "../api/messaging";
 
 function patientDisplayName(record) {
   const p = record?.patient || record;
@@ -163,14 +162,6 @@ export default function DoctorPatientDetail() {
   const [emergencyReview, setEmergencyReview] = useState(null);
   const [emergencyReviewForm, setEmergencyReviewForm] = useState({ disposition: "monitoring", note: "" });
   const [emergencyReviewMessage, setEmergencyReviewMessage] = useState("");
-  const [communicationConversationId, setCommunicationConversationId] = useState("");
-  const [communicationMessages, setCommunicationMessages] = useState([]);
-  const [communicationLoading, setCommunicationLoading] = useState(false);
-  const [communicationError, setCommunicationError] = useState("");
-  const [communicationDraft, setCommunicationDraft] = useState("");
-  const [sendingCommunication, setSendingCommunication] = useState(false);
-  const [communicationContextType, setCommunicationContextType] = useState("");
-  const [communicationContextRelatedId, setCommunicationContextRelatedId] = useState("");
   const [aiSummary, setAiSummary] = useState(null);
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
   const [aiSummaryError, setAiSummaryError] = useState("");
@@ -214,12 +205,6 @@ export default function DoctorPatientDetail() {
     setLocalNotes(normalizedNotes);
     setLocalPlans(getPatientTreatmentPlans(currentPatientId));
     setEmergencyReview(getDoctorEmergencyReview(currentPatientId));
-    setCommunicationConversationId("");
-    setCommunicationMessages([]);
-    setCommunicationError("");
-    setCommunicationDraft("");
-    setCommunicationContextType("");
-    setCommunicationContextRelatedId("");
     if (!preserveMedicationForm) {
       setMedicationFormOpen(false);
       setEditingMedicationId(null);
@@ -286,7 +271,6 @@ export default function DoctorPatientDetail() {
       return actionableAppointmentStatuses.has(String(appointment.status || "").toLowerCase());
     })
     .sort((left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime());
-  const currentUserId = reqUserId();
   const activeMedications = medications.filter((item) => isActiveMedication(item));
   const nextMedicationDose = getNextMedicationDose(activeMedications);
   const activeDiagnosisCount = diagnoses.filter((item) => item.status === "active").length;
@@ -296,49 +280,6 @@ export default function DoctorPatientDetail() {
     window.setTimeout(() => {
       sectionRefs[sectionKey]?.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 0);
-  }
-
-  const communicationContextOptions = [
-    ...appointments.map((appointment) => ({
-      key: `appointment-${appointment.id}`,
-      type: "appointment",
-      relatedId: appointment.id,
-      label: `Appointment • ${formatDateTime(appointment.startsAt)}`,
-    })),
-    ...activeMedications.map((medication) => ({
-      key: `medication-${medication.id}`,
-      type: "medication",
-      relatedId: medication.id,
-      label: `Medication • ${medication.name}`,
-    })),
-    ...diagnoses.map((diagnosis) => ({
-      key: `diagnosis-${diagnosis.id}`,
-      type: "diagnosis",
-      relatedId: diagnosis.id,
-      label: `Diagnosis • ${diagnosis.diagnosisText}`,
-    })),
-    ...localNotes.slice(0, 6).map((note) => ({
-      key: `medical_note-${note.id}`,
-      type: "medical_note",
-      relatedId: note.id,
-      label: `Clinical note • ${note.noteTitle || "Untitled note"}`,
-    })),
-    ...(profile?.emergencyStatus ? [{
-      key: `care_concern-${patientId}`,
-      type: "care_concern",
-      relatedId: patientId,
-      label: "Care concern • Active emergency alert",
-    }] : []),
-  ];
-
-  function reqUserId() {
-    try {
-      const raw = sessionStorage.getItem("user");
-      const parsed = raw ? JSON.parse(raw) : null;
-      return parsed?.id || "";
-    } catch {
-      return "";
-    }
   }
 
   function openMedicationForm(medication = null) {
@@ -475,63 +416,6 @@ export default function DoctorPatientDetail() {
     });
     setEmergencyReview(review);
     setEmergencyReviewMessage("Emergency review saved.");
-  }
-
-  async function ensurePatientConversation() {
-    const created = await createConversation({ recipientId: patientId });
-    return created.conversation?.id || "";
-  }
-
-  async function loadPatientConversation() {
-    try {
-      setCommunicationLoading(true);
-      setCommunicationError("");
-      const conversationId = await ensurePatientConversation();
-      setCommunicationConversationId(conversationId);
-      if (!conversationId) {
-        setCommunicationMessages([]);
-        return;
-      }
-      const messagesData = await getConversationMessages(conversationId);
-      setCommunicationMessages(messagesData.messages || []);
-    } catch (err) {
-      setCommunicationError(err.message || "Failed to load patient communication.");
-    } finally {
-      setCommunicationLoading(false);
-    }
-  }
-
-  async function handleSendContextMessage(event) {
-    event.preventDefault();
-    const body = communicationDraft.trim();
-    if (!body) {
-      setCommunicationError("Write a message first.");
-      return;
-    }
-    try {
-      setSendingCommunication(true);
-      setCommunicationError("");
-      const conversationId = communicationConversationId || await ensurePatientConversation();
-      setCommunicationConversationId(conversationId);
-      const selectedContext = communicationContextOptions.find(
-        (option) => option.type === communicationContextType && option.relatedId === communicationContextRelatedId
-      );
-      const data = await sendConversationMessage(conversationId, body, communicationContextType && communicationContextRelatedId ? {
-        contextType: communicationContextType,
-        contextRelatedId: communicationContextRelatedId,
-        contextMetadata: {
-          patientId,
-          patientName: overview ? patientDisplayName(overview) : "Patient",
-          label: selectedContext?.label || null,
-        },
-      } : {});
-      setCommunicationMessages((current) => [...current, data.data]);
-      setCommunicationDraft("");
-    } catch (err) {
-      setCommunicationError(err.message || "Failed to send message.");
-    } finally {
-      setSendingCommunication(false);
-    }
   }
 
   return (
@@ -917,122 +801,6 @@ export default function DoctorPatientDetail() {
               </div>
             </div>
             ) : null}
-            <div className="rounded-3xl bg-gradient-to-br from-white to-sky-50 p-5 shadow-sm xl:col-span-2">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Patient-context communication</h3>
-                  <p className="mt-1 text-sm text-slate-500">Send a patient-specific update from this workspace and attach the relevant patient context.</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={loadPatientConversation}
-                  className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
-                >
-                  {communicationConversationId ? "Refresh conversation" : "Open patient conversation"}
-                </button>
-              </div>
-              <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-                <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
-                  {communicationLoading ? (
-                    <p className="text-sm text-slate-500">Loading patient conversation...</p>
-                  ) : communicationMessages.length ? (
-                    <div className="space-y-3">
-                      {communicationMessages.slice(-6).map((message) => {
-                        const isCurrentUser = message.sender?.id === currentUserId;
-                        return (
-                          <div
-                            key={message.id}
-                            className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
-                              isCurrentUser
-                                ? "ml-auto bg-sky-600 text-white"
-                                : "bg-slate-100 text-slate-800"
-                            }`}
-                          >
-                            <p>{message.body}</p>
-                            <p className={`mt-2 text-[11px] ${isCurrentUser ? "text-white/75" : "text-slate-400"}`}>
-                              {message.sender?.displayName || message.sender?.email || "Participant"} • {formatDateTime(message.sentAt)}
-                            </p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-slate-500">No patient conversation loaded yet. Click Open patient conversation, then send a contextual update from this panel.</p>
-                  )}
-                </div>
-                <form onSubmit={handleSendContextMessage} className="rounded-2xl border border-slate-200 bg-white/90 p-4">
-                  <label className="block text-sm font-medium text-slate-700">
-                    Context type
-                    <select
-                      value={communicationContextType}
-                      onChange={(event) => {
-                        const nextType = event.target.value;
-                        setCommunicationContextType(nextType);
-                        setCommunicationContextRelatedId("");
-                      }}
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                    >
-                      <option value="">General update</option>
-                      <option value="appointment">Appointment</option>
-                      <option value="medication">Medication</option>
-                      <option value="diagnosis">Diagnosis</option>
-                      <option value="medical_note">Clinical note</option>
-                      {profile?.emergencyStatus ? <option value="care_concern">Care concern</option> : null}
-                    </select>
-                  </label>
-                  {communicationContextType ? (
-                    <label className="mt-3 block text-sm font-medium text-slate-700">
-                      Context item
-                      <select
-                        value={communicationContextRelatedId}
-                        onChange={(event) => setCommunicationContextRelatedId(event.target.value)}
-                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                      >
-                        <option value="">Select context</option>
-                        {communicationContextOptions
-                          .filter((option) => option.type === communicationContextType)
-                          .map((option) => (
-                            <option key={option.key} value={option.relatedId}>
-                              {option.label}
-                            </option>
-                          ))}
-                      </select>
-                    </label>
-                  ) : null}
-                  <label className="mt-3 block text-sm font-medium text-slate-700">
-                    Message
-                    <textarea
-                      value={communicationDraft}
-                      onChange={(event) => setCommunicationDraft(event.target.value)}
-                      rows={4}
-                      placeholder="Example: I reviewed your latest medication adjustment. Keep the evening dose unchanged until the next visit."
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                    />
-                  </label>
-                  {communicationError ? <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{communicationError}</div> : null}
-                  <div className="mt-4 flex flex-wrap items-center gap-3">
-                    <button
-                      type="submit"
-                      disabled={sendingCommunication}
-                      className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:bg-slate-400"
-                    >
-                      {sendingCommunication ? "Sending..." : "Send patient update"}
-                    </button>
-                    {communicationContextType && communicationContextRelatedId ? (
-                      <InfoPill
-                        label="Attached"
-                        value={
-                          communicationContextOptions.find(
-                            (option) => option.type === communicationContextType && option.relatedId === communicationContextRelatedId
-                          )?.label || "Context"
-                        }
-                        tone="sky"
-                      />
-                    ) : null}
-                  </div>
-                </form>
-              </div>
-            </div>
             <div className="rounded-3xl bg-gradient-to-br from-white to-indigo-50 p-5 shadow-sm xl:col-span-2">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-lg font-semibold text-slate-900">Clinical notes</h3>
