@@ -31,6 +31,13 @@ const seedData = [
 
 async function setupDatabase() {
   try {
+    const confirmReset = String(process.env.CONFIRM_DB_RESET || '').trim();
+    if (confirmReset !== 'YES_ERASE_HEALIO_DB') {
+      throw new Error(
+        'Refusing to reset database. Set CONFIRM_DB_RESET=YES_ERASE_HEALIO_DB to run this script intentionally.'
+      );
+    }
+
     console.log('Testing database connection...');
     const connected = await testConnection();
     
@@ -39,7 +46,7 @@ async function setupDatabase() {
     }
 
     console.log('\nSynchronizing database schema...');
-    await sequelize.sync({ force: true }); // This will drop and recreate tables
+    await sequelize.sync({ force: true }); // Explicitly guarded by CONFIRM_DB_RESET
     console.log('✓ Database schema synchronized');
 
     console.log('\nCreating dummy patient...');

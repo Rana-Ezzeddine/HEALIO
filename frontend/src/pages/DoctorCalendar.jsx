@@ -205,7 +205,7 @@ export default function DoctorCalendar() {
   }, [assignedPatients]);
 
   const visibleAppointments = useMemo(
-    () => appointments.filter((appointment) => appointment.status !== "denied"),
+    () => appointments,
     [appointments]
   );
 

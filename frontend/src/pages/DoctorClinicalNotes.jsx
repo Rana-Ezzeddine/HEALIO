@@ -6,8 +6,6 @@ import { rememberDoctorPatientTab } from "../utils/doctorPatientTabs";
 import {
   formatListInput,
   formatListOutput,
-  getPatientClinicalNotes,
-  savePatientClinicalNote,
 } from "../utils/doctorPatientRecords";
 
 function patientDisplayName(record) {
@@ -128,7 +126,31 @@ export default function DoctorClinicalNotes() {
   }, [selectedPatientId]);
 
   useEffect(() => {
-    setSavedNotes(getPatientClinicalNotes(selectedPatientId));
+    let cancelled = false;
+    async function loadNotes() {
+      if (!selectedPatientId) {
+        setSavedNotes([]);
+        return;
+      }
+      try {
+        const response = await fetch(`${apiUrl}/api/doctor-notes/patient/${selectedPatientId}/notes`, {
+          headers: { ...authHeaders() },
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.message || "Failed to load clinical notes.");
+        if (!cancelled) {
+          const normalized = Array.isArray(data.notes) ? data.notes.map(normalizeStoredNote).filter(Boolean) : [];
+          setSavedNotes(normalized);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setSavedNotes([]);
+          setSaveMessage(err.message || "Failed to load clinical notes.");
+        }
+      }
+    }
+    loadNotes();
+    return () => { cancelled = true; };
   }, [selectedPatientId]);
 
   const selectedPatient = useMemo(() => {
@@ -136,26 +158,60 @@ export default function DoctorClinicalNotes() {
     return assignedPatients.find((record) => (record.patient?.id || record.id) === selectedPatientId) || null;
   }, [assignedPatients, selectedPatientId]);
 
+  function normalizeStoredNote(note) {
+    if (!note) return null;
+    let structured = note.structured || null;
+    if (!structured && note.content) {
+      try {
+        structured = JSON.parse(note.content);
+      } catch {
+        structured = null;
+      }
+    }
+    return {
+      id: note.id,
+      createdAt: note.date || note.createdAt || new Date().toISOString(),
+      noteTitle: structured?.noteTitle || "Clinical note",
+      encounterType: structured?.encounterType || "Visit",
+      chiefComplaint: structured?.chiefComplaint || "",
+      diagnosticSummary: structured?.diagnosticSummary || "",
+      carePlan: structured?.carePlan || [],
+      patientSafeSummary: structured?.patientSafeSummary || "",
+      content: note.content || "",
+    };
+  }
+
   function updateField(key, value) {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
   function fillFromPatient(kind) {
     const profile = patientOverview?.patientProfile;
-    if (!profile) return;
+    if (!profile) {
+      setSaveMessage("Patient overview is not loaded yet. Try again in a moment.");
+      return;
+    }
+    setShowAdvanced(true);
     if (kind === "conditions") {
-      updateField("chronicConditions", Array.isArray(profile.medicalConditions) ? profile.medicalConditions.join("\n") : "");
+      const value = Array.isArray(profile.medicalConditions) ? profile.medicalConditions.join("\n") : "";
+      updateField("chronicConditions", value);
+      setSaveMessage(value ? "Imported chronic conditions into Advanced details." : "No chronic conditions found to import.");
     }
     if (kind === "allergies") {
-      updateField("allergiesReviewed", Array.isArray(profile.allergies) ? profile.allergies.join("\n") : "");
+      const value = Array.isArray(profile.allergies) ? profile.allergies.join("\n") : "";
+      updateField("allergiesReviewed", value);
+      setSaveMessage(value ? "Imported allergies into Advanced details." : "No allergies found to import.");
     }
     if (kind === "medications") {
-      updateField(
-        "medicationsReviewed",
+      const value =
         Array.isArray(patientOverview?.medications)
           ? patientOverview.medications.map((med) => `${med.name}${med.dosage ? ` - ${med.dosage}` : ""}`).join("\n")
-          : ""
+          : "";
+      updateField(
+        "medicationsReviewed",
+        value
       );
+      setSaveMessage(value ? "Imported medications into Advanced details." : "No medications found to import.");
     }
   }
 
@@ -186,7 +242,7 @@ export default function DoctorClinicalNotes() {
     });
   }
 
-  function handleSaveNote(event) {
+  async function handleSaveNote(event) {
     event.preventDefault();
     if (!selectedPatientId) return;
     if (!form.noteTitle.trim() || !form.chiefComplaint.trim()) {
@@ -195,8 +251,6 @@ export default function DoctorClinicalNotes() {
     }
 
     const entry = {
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
       encounterType: form.encounterType,
       noteTitle: form.noteTitle.trim(),
       chiefComplaint: form.chiefComplaint.trim(),
@@ -221,10 +275,20 @@ export default function DoctorClinicalNotes() {
       patientSafeSummary: form.patientSafeSummary.trim(),
     };
 
-    const next = savePatientClinicalNote(selectedPatientId, entry);
-    setSavedNotes(next);
-    setSaveMessage("Clinical note saved for this patient.");
-    resetForm();
+    try {
+      const response = await fetch(`${apiUrl}/api/doctor-notes/patient/${selectedPatientId}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify(entry),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || "Failed to save clinical note.");
+      setSavedNotes((current) => [normalizeStoredNote(data), ...current].filter(Boolean));
+      setSaveMessage("Clinical note saved and shared with patient.");
+      resetForm();
+    } catch (err) {
+      setSaveMessage(err.message || "Failed to save clinical note.");
+    }
   }
 
   return (
@@ -277,8 +341,6 @@ export default function DoctorClinicalNotes() {
                   </p>
 
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <button type="button" onClick={() => fillFromPatient("allergies")} className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-200">Import allergies</button>
-                    <button type="button" onClick={() => fillFromPatient("medications")} className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-200">Import medications</button>
                     <button type="button" onClick={() => setShowAdvanced((current) => !current)} className="rounded-full bg-indigo-100 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-200">
                       {showAdvanced ? "Hide advanced details" : "Add more detail"}
                     </button>

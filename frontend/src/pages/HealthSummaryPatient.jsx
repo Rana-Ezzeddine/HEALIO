@@ -6,7 +6,7 @@ import { getMyAppointments } from "../api/appointments";
 import { getConversations } from "../api/messaging";
 import { getDoctorLinkRequests, getMyCaregivers, getMyDoctors } from "../api/links";
 import { getNextMedicationDose, isActiveMedication, formatDoseTime } from "../utils/medicationSchedule";
-import { formatListOutput, getPatientClinicalNotes, getPatientTreatmentPlans } from "../utils/doctorPatientRecords";
+import { formatListOutput, getPatientTreatmentPlans } from "../utils/doctorPatientRecords";
 
 function SummaryTile({ label, value, hint, onClick }) {
   return (
@@ -101,8 +101,48 @@ export default function HealthSummaryPatient() {
 
   useEffect(() => {
     const patientId = user?.id || "";
-    setDoctorClinicalNotes(getPatientClinicalNotes(patientId));
     setDoctorTreatmentPlans(getPatientTreatmentPlans(patientId));
+  }, [user?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadDoctorClinicalNotes() {
+      const patientId = user?.id || "";
+      if (!patientId) {
+        setDoctorClinicalNotes([]);
+        return;
+      }
+      try {
+        const response = await fetch(`${apiUrl}/api/doctor-notes/patient/${patientId}/notes`, {
+          headers: { ...authHeaders() },
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.message || "Failed to load doctor notes.");
+        const notes = Array.isArray(data.notes) ? data.notes.map((note) => {
+          let structured = note.structured || null;
+          if (!structured && note.content) {
+            try {
+              structured = JSON.parse(note.content);
+            } catch {
+              structured = null;
+            }
+          }
+          return {
+            id: note.id,
+            noteTitle: structured?.noteTitle || "Clinical note",
+            followUpPlan: structured?.followUpPlan || "",
+            patientSafeSummary: structured?.patientSafeSummary || "",
+            diagnosticSummary: structured?.diagnosticSummary || "",
+            patientInstructions: structured?.patientInstructions || [],
+          };
+        }) : [];
+        if (!cancelled) setDoctorClinicalNotes(notes);
+      } catch {
+        if (!cancelled) setDoctorClinicalNotes([]);
+      }
+    }
+    loadDoctorClinicalNotes();
+    return () => { cancelled = true; };
   }, [user?.id]);
 
   const scheduledAppointments = useMemo(

@@ -4,6 +4,7 @@ import User from "../models/User.js";
 import DoctorPatientAssignment from "../models/DoctorPatientAssignment.js";
 import PatientProfile from "../models/PatientProfile.js";
 import Medication from "../models/Medication.js";
+import Symptom from "../models/Symptom.js";
 import Diagnosis from "../models/Diagnosis.js";
 import Appointment from "../models/Appointment.js";
 import CaregiverPatientPermission from "../models/CaregiverPatientPermission.js";
@@ -1271,6 +1272,13 @@ export const getPatientOverview = async (req, res) => {
           as: "medications",
           where: { [Op.or]: [{ endDate: null }, { endDate: { [Op.gte]: new Date() } }] },
           required: false
+        },
+        {
+          model: Symptom,
+          as: "symptoms",
+          required: false,
+          limit: 100,
+          order: [["loggedAt", "DESC"]],
         },
         { model: Diagnosis, as: "diagnoses", where: { status: "active" }, required: false },
         { model: Appointment, as: "appointmentsAsPatient", where: { doctorId, startsAt: { [Op.gte]: new Date() } }, limit: 5, required: false }

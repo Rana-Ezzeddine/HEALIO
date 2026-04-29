@@ -132,7 +132,11 @@ function availabilityTypeLabel(type) {
 
 function availabilityTimingLabel(entry) {
   if (entry.type === "workHours") {
-    return `${weekDays[entry.dayOfWeek] || "Day"} • ${entry.startTime.slice(0, 5)} - ${entry.endTime.slice(0, 5)}`;
+    const effectiveLabel =
+      entry.effectiveFrom || entry.effectiveUntil
+        ? ` • ${entry.effectiveFrom || "Any start"} to ${entry.effectiveUntil || "ongoing"}`
+        : "";
+    return `${weekDays[entry.dayOfWeek] || "Day"} • ${entry.startTime.slice(0, 5)} - ${entry.endTime.slice(0, 5)}${effectiveLabel}`;
   }
   return `${entry.specificDate || "Date"} • ${entry.startTime.slice(0, 5)} - ${entry.endTime.slice(0, 5)}`;
 }
@@ -263,12 +267,17 @@ export default function DoctorAppointments() {
   const [availabilitySaving, setAvailabilitySaving] = useState(false);
   const [plannerSaving, setPlannerSaving] = useState(false);
   const [plannerSelection, setPlannerSelection] = useState({});
+  const [plannerEffectiveFrom, setPlannerEffectiveFrom] = useState("");
+  const [plannerEffectiveUntil, setPlannerEffectiveUntil] = useState("");
+  const [plannerEditingRange, setPlannerEditingRange] = useState(null);
   const [editingAvailabilityId, setEditingAvailabilityId] = useState("");
   const [availabilityForm, setAvailabilityForm] = useState({
     type: doctorAppointmentsPrefill.availabilityType || "break",
     dayOfWeek: "1",
     selectedWeekdays: ["1"],
     specificDate: "",
+    effectiveFrom: "",
+    effectiveUntil: "",
     startTime: doctorAppointmentsPrefill.availabilityStart || "09:00",
     endTime: doctorAppointmentsPrefill.availabilityEnd || "17:00",
     reason: doctorAppointmentsPrefill.availabilityReason || "",
@@ -542,25 +551,41 @@ export default function DoctorAppointments() {
     const grouped = new Map();
 
     for (const entry of availabilityByType.workHours) {
-      const dayIndex = Number(entry.dayOfWeek);
-      const dayLabel = weekDays[dayIndex] || "Day";
-      const current = grouped.get(dayLabel) || [];
-      current.push(`${entry.startTime.slice(0, 5)}-${entry.endTime.slice(0, 5)}`);
-      grouped.set(dayLabel, current);
+      const from = entry.effectiveFrom || "any";
+      const until = entry.effectiveUntil || "ongoing";
+      const timeRange = `${entry.startTime.slice(0, 5)}-${entry.endTime.slice(0, 5)}`;
+      const dayLabel = weekDays[Number(entry.dayOfWeek)] || "Day";
+      const key = `${from}||${until}||${timeRange}`;
+
+      const current = grouped.get(key) || { days: new Set() };
+      current.days.add(dayLabel);
+      grouped.set(key, current);
     }
 
-    return Array.from(grouped.entries()).map(([dayLabel, ranges]) => ({
-      dayLabel,
-      ranges,
-    }));
+    return Array.from(grouped.entries()).map(([key, value]) => {
+      const [effectiveFrom, effectiveUntil, timeRange] = key.split("||");
+      return {
+        effectiveFrom: effectiveFrom === "any" ? null : effectiveFrom,
+        effectiveUntil: effectiveUntil === "ongoing" ? null : effectiveUntil,
+        timeRange,
+        days: Array.from(value.days),
+      };
+    });
   }, [availabilityByType.workHours]);
 
   const plannerSlotMinutes = useMemo(() => Number(preferredDuration || "30"), [preferredDuration]);
   const plannerSlots = useMemo(() => buildPlannerSlots(plannerSlotMinutes), [plannerSlotMinutes]);
 
   useEffect(() => {
-    setPlannerSelection(buildPlannerSelection(availabilityEntries, plannerSlots, plannerSlotMinutes));
-  }, [availabilityEntries, plannerSlots, plannerSlotMinutes]);
+    const entriesForRange = availabilityEntries.filter((entry) => {
+      if (entry.type !== "workHours") return false;
+      return (
+        (entry.effectiveFrom || "") === (plannerEffectiveFrom || "") &&
+        (entry.effectiveUntil || "") === (plannerEffectiveUntil || "")
+      );
+    });
+    setPlannerSelection(buildPlannerSelection(entriesForRange, plannerSlots, plannerSlotMinutes));
+  }, [availabilityEntries, plannerSlots, plannerSlotMinutes, plannerEffectiveFrom, plannerEffectiveUntil]);
 
   const monthDays = useMemo(() => {
     const year = visibleMonth.getFullYear();
@@ -728,6 +753,8 @@ export default function DoctorAppointments() {
       dayOfWeek: "1",
       selectedWeekdays: [],
       specificDate: "",
+      effectiveFrom: "",
+      effectiveUntil: "",
       startTime: doctorAppointmentsPrefill.availabilityStart || "09:00",
       endTime: doctorAppointmentsPrefill.availabilityEnd || "17:00",
       reason: doctorAppointmentsPrefill.availabilityReason || "",
@@ -749,6 +776,8 @@ export default function DoctorAppointments() {
       selectedWeekdays:
         entry.dayOfWeek !== null && entry.dayOfWeek !== undefined ? [String(entry.dayOfWeek)] : [],
       specificDate: entry.specificDate || "",
+      effectiveFrom: entry.effectiveFrom || "",
+      effectiveUntil: entry.effectiveUntil || "",
       startTime: entry.startTime?.slice(0, 5) || "09:00",
       endTime: entry.endTime?.slice(0, 5) || "17:00",
       reason: entry.reason || "",
@@ -779,6 +808,8 @@ export default function DoctorAppointments() {
     const basePayload = {
       type: availabilityForm.type,
       specificDate: availabilityForm.type === "workHours" ? null : availabilityForm.specificDate,
+      effectiveFrom: availabilityForm.type === "workHours" ? availabilityForm.effectiveFrom || null : null,
+      effectiveUntil: availabilityForm.type === "workHours" ? availabilityForm.effectiveUntil || null : null,
       startTime: availabilityForm.startTime,
       endTime: availabilityForm.endTime,
       reason: availabilityForm.reason,
@@ -843,8 +874,8 @@ export default function DoctorAppointments() {
   async function handleSaveWeeklyPlanner() {
     const ranges = compressPlannerSelection(plannerSelection, plannerSlots, plannerSlotMinutes);
 
-    if (!ranges.length) {
-      setAvailabilityError("Choose at least one weekly slot before saving.");
+    if (plannerEffectiveFrom && plannerEffectiveUntil && plannerEffectiveUntil < plannerEffectiveFrom) {
+      setAvailabilityError("Weekly planner end date must be on or after start date.");
       return;
     }
 
@@ -853,14 +884,47 @@ export default function DoctorAppointments() {
       setPlannerSaving(true);
       setAvailabilityError("");
       const existingWorkHours = availabilityByType.workHours || [];
+      const targetFrom = plannerEditingRange ? plannerEditingRange.effectiveFrom : (plannerEffectiveFrom || "");
+      const targetUntil = plannerEditingRange ? plannerEditingRange.effectiveUntil : (plannerEffectiveUntil || "");
 
-      await Promise.all(existingWorkHours.map((entry) => deleteDoctorAvailability(entry.id)));
+      await Promise.all(
+        existingWorkHours
+          .filter(
+            (entry) =>
+              (entry.effectiveFrom || "") === targetFrom &&
+              (entry.effectiveUntil || "") === targetUntil
+          )
+          .map(async (entry) => {
+            try {
+              await deleteDoctorAvailability(entry.id);
+            } catch (err) {
+              const message = String(err?.message || "");
+              if (!/not found/i.test(message)) {
+                throw err;
+              }
+            }
+          })
+      );
+
+      if (!ranges.length) {
+        if (plannerEditingRange) {
+          await loadPageData();
+          setPlannerEditingRange(null);
+          setSuccessMessage("Weekly schedule deleted.");
+          return;
+        }
+        setAvailabilityError("Choose at least one weekly slot before saving.");
+        return;
+      }
+
       await Promise.all(
         ranges.map((range) =>
           createDoctorAvailability({
             type: "workHours",
             dayOfWeek: range.dayOfWeek,
             specificDate: null,
+            effectiveFrom: plannerEffectiveFrom || null,
+            effectiveUntil: plannerEffectiveUntil || null,
             startTime: range.startTime,
             endTime: range.endTime,
             reason: "Saved from weekly planner",
@@ -868,11 +932,25 @@ export default function DoctorAppointments() {
         )
       );
       await loadPageData();
+      setPlannerEditingRange(null);
       setSuccessMessage("Weekly planner saved successfully.");
     } catch (err) {
       setAvailabilityError(err.message || "Failed to save weekly planner.");
     } finally {
       setPlannerSaving(false);
+    }
+  }
+
+  function editWorkGroupInPlanner(group) {
+    setPlannerEffectiveFrom(group.effectiveFrom || "");
+    setPlannerEffectiveUntil(group.effectiveUntil || "");
+    setPlannerEditingRange({
+      effectiveFrom: group.effectiveFrom || "",
+      effectiveUntil: group.effectiveUntil || "",
+    });
+    const planner = document.getElementById("weekly-availability-planner");
+    if (planner) {
+      planner.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }
 
@@ -1254,7 +1332,7 @@ export default function DoctorAppointments() {
             ) : null}
           </div>
 
-          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+          <div id="weekly-availability-planner" className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h3 className="text-lg font-semibold text-slate-900">Weekly availability planner</h3>
@@ -1392,13 +1470,30 @@ export default function DoctorAppointments() {
               </div>
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-slate-500">
-                Breaks and blocked dates can still be added below for exceptions. Current slot size: {plannerSlotMinutes} minutes.
-              </p>
-              <button
-                type="button"
-                onClick={handleSaveWeeklyPlanner}
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-slate-500">
+                  Breaks and blocked dates can still be added below for exceptions. Current slot size: {plannerSlotMinutes} minutes.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="date"
+                    value={plannerEffectiveFrom}
+                    onChange={(event) => setPlannerEffectiveFrom(event.target.value)}
+                    className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    title="Weekly schedule effective from"
+                  />
+                  <span className="text-xs text-slate-500">to</span>
+                  <input
+                    type="date"
+                    value={plannerEffectiveUntil}
+                    onChange={(event) => setPlannerEffectiveUntil(event.target.value)}
+                    className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    title="Weekly schedule effective until"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSaveWeeklyPlanner}
                 disabled={plannerSaving}
                 className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-600 disabled:opacity-70"
               >
@@ -1514,15 +1609,24 @@ export default function DoctorAppointments() {
                   ) : section.key === "workHours" && groupedWorkHours.length > 0 ? (
                     <div className="space-y-2">
                       {groupedWorkHours.map((group) => (
-                        <div key={group.dayLabel} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                        <div key={`${group.effectiveFrom || "any"}-${group.effectiveUntil || "ongoing"}-${group.timeRange}`} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <p className="text-sm font-semibold text-slate-900">{group.dayLabel}</p>
-                              <p className="mt-1 text-sm text-slate-600">{group.ranges.join("  •  ")}</p>
+                              <p className="text-sm font-semibold text-slate-900">{group.timeRange}</p>
+                              <p className="mt-1 text-sm text-slate-600">{group.days.join(" • ")}</p>
+                              {group.effectiveFrom || group.effectiveUntil ? (
+                                <p className="mt-1 text-xs text-slate-500">
+                                  Effective {group.effectiveFrom || "any start"} to {group.effectiveUntil || "ongoing"}
+                                </p>
+                              ) : null}
                             </div>
-                            <span className="rounded-full bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-700">
+                            <button
+                              type="button"
+                              onClick={() => editWorkGroupInPlanner(group)}
+                              className="rounded-full bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-700 hover:bg-sky-100"
+                            >
                               Edit in planner
-                            </span>
+                            </button>
                           </div>
                         </div>
                       ))}
@@ -1534,9 +1638,18 @@ export default function DoctorAppointments() {
                         {entry.reason ? <p className="mt-1 text-xs text-slate-500">{entry.reason}</p> : null}
                         <div className="mt-3 flex gap-2">
                           {entry.type === "workHours" ? (
-                            <span className="rounded-lg bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                editWorkGroupInPlanner({
+                                  effectiveFrom: entry.effectiveFrom || "",
+                                  effectiveUntil: entry.effectiveUntil || "",
+                                })
+                              }
+                              className="rounded-lg bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-100"
+                            >
                               Edit in planner
-                            </span>
+                            </button>
                           ) : (
                             <button
                               type="button"
@@ -1572,3 +1685,6 @@ export default function DoctorAppointments() {
     </div>
   );
 }
+
+
+
