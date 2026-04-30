@@ -574,6 +574,25 @@ const getResetTokenRecord = async (rawToken) => {
   return { record };
 };
 
+const issuePasswordSetupLink = async (user) => {
+  const rawToken = await createPasswordResetToken();
+  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+  await PasswordResetToken.destroy({
+    where: {
+      userId: user.id,
+    },
+  });
+
+  await PasswordResetToken.create({
+    userId: user.id,
+    tokenHash,
+    expiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
+  });
+
+  await sendPasswordResetEmail({ to: user.email, token: rawToken });
+};
+
 export const register = async (req, res) => {
   try {
     const { firstName, lastName, email, password, role, licenseNb } = req.body;
@@ -1019,9 +1038,26 @@ export const login = async (req, res) => {
     }
 
     if (!user.passwordHash) {
-      return res.status(400).json({
-        code: 'PASSWORD_LOGIN_UNAVAILABLE',
-        message: `This account uses ${user.authProvider === 'apple' ? 'Apple' : 'Google'} sign-in. Continue with that provider instead.`,
+      try {
+        await issuePasswordSetupLink(user);
+      } catch (mailErr) {
+        if (isMailConfigurationError(mailErr)) {
+          return res.status(500).json({
+            code: 'EMAIL_NOT_CONFIGURED',
+            message: 'This account does not have a password yet, and the password setup email service is not configured.',
+          });
+        }
+
+        return res.status(502).json({
+          code: 'PASSWORD_SETUP_EMAIL_FAILED',
+          message: 'This account does not have a password yet, and we could not send the password setup email. Please try again shortly.',
+        });
+      }
+
+      return res.status(403).json({
+        code: 'PASSWORD_SETUP_REQUIRED',
+        message: 'This account does not have a password yet. We sent you a secure link to set one, then you can sign in normally.',
+        email: cleanEmail,
       });
     }
 

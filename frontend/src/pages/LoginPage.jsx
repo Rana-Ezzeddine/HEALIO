@@ -71,6 +71,13 @@ export default function LoginPage({ embedded = false, onClose, onSwitchToSignup 
 
       if (embedded) onClose?.();
     } catch (err) {
+      if (err?.code === "PASSWORD_SETUP_REQUIRED") {
+        setInfo(
+          err?.message ||
+            "This account doesn't have a password yet. We emailed you a secure link to set one, then you can sign in normally."
+        );
+        return;
+      }
       if (err?.code === "EMAIL_NOT_VERIFIED") {
         setNeedsVerification(true);
       }
