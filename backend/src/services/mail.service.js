@@ -20,6 +20,66 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function buildEmailShell({ eyebrow = 'HEALIO', title, intro, actionLabel, actionUrl, note, footer }) {
+  const safeEyebrow = escapeHtml(eyebrow);
+  const safeTitle = escapeHtml(title);
+  const safeIntro = escapeHtml(intro);
+  const safeActionLabel = escapeHtml(actionLabel);
+  const safeActionUrl = escapeHtml(actionUrl);
+  const safeNote = note ? escapeHtml(note) : '';
+  const safeFooter = footer ? escapeHtml(footer) : '';
+
+  return `
+    <div style="margin:0;padding:32px 16px;background:linear-gradient(180deg,#f4fbff 0%,#eef6fb 100%);font-family:'Inter',Arial,sans-serif;color:#16324f;">
+      <div style="max-width:620px;margin:0 auto;background:#ffffff;border:1px solid #dbe8f2;border-radius:24px;overflow:hidden;box-shadow:0 18px 44px rgba(22,50,79,0.10);">
+        <div style="padding:36px 36px 20px;background:linear-gradient(135deg,#effaf8 0%,#f8fbff 100%);border-bottom:1px solid #e5eef5;">
+          <div style="display:inline-block;padding:6px 12px;border-radius:999px;background:#dff5ee;color:#0f766e;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">
+            ${safeEyebrow}
+          </div>
+          <h1 style="margin:18px 0 12px;font-size:31px;line-height:1.15;color:#10213a;font-weight:800;">
+            ${safeTitle}
+          </h1>
+          <p style="margin:0;font-size:16px;line-height:1.7;color:#506684;">
+            ${safeIntro}
+          </p>
+        </div>
+
+        <div style="padding:32px 36px 18px;">
+          <div style="text-align:center;margin:0 0 28px;">
+            <a href="${safeActionUrl}" style="display:inline-block;padding:15px 28px;border-radius:14px;background:linear-gradient(135deg,#27b8f2 0%,#726ef2 100%);color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;box-shadow:0 12px 26px rgba(64,119,242,0.28);">
+              ${safeActionLabel}
+            </a>
+          </div>
+
+          <div style="padding:18px 20px;border-radius:16px;background:#f7fbfe;border:1px solid #e2ecf5;">
+            <p style="margin:0 0 10px;font-size:13px;font-weight:700;color:#314966;text-transform:uppercase;letter-spacing:0.06em;">
+              Direct link
+            </p>
+            <p style="margin:0;word-break:break-word;">
+              <a href="${safeActionUrl}" style="color:#2f72e5;text-decoration:none;font-size:14px;line-height:1.7;">
+                ${safeActionUrl}
+              </a>
+            </p>
+          </div>
+
+          ${safeNote ? `
+            <p style="margin:22px 0 0;font-size:14px;line-height:1.7;color:#61758f;">
+              ${safeNote}
+            </p>
+          ` : ''}
+        </div>
+
+        <div style="padding:20px 36px 34px;">
+          <div style="height:1px;background:#e5eef5;margin-bottom:18px;"></div>
+          <p style="margin:0;font-size:13px;line-height:1.7;color:#7b8da6;">
+            ${safeFooter || 'If you did not request this email, you can safely ignore it.'}
+          </p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 // ================== LOGO ==================
 function getVerificationLogoMarkup() {
   if (process.env.EMAIL_LOGO_URL) {
@@ -48,35 +108,46 @@ function getVerificationLogoMarkup() {
 
 // ================== EMAIL BUILDERS ==================
 function buildVerificationEmail({ verifyUrl }) {
-  const safeUrl = escapeHtml(verifyUrl);
-  const logo = getVerificationLogoMarkup();
-
   return {
-    subject: 'Welcome to HEALIO. Verify your account',
-    text: `Verify your account: ${verifyUrl}`,
-    html: `
-      <div style="font-family:Arial;padding:20px;">
-        ${logo}
-        <h2>Verify your email</h2>
-        <p>Please confirm your account:</p>
-        <a href="${safeUrl}" style="color:#2563eb;">Verify Email</a>
-      </div>
-    `,
+    subject: 'HEALIO: Verify your email address',
+    text: [
+      'Welcome to HEALIO.',
+      '',
+      'Please verify your email address by opening this link:',
+      verifyUrl,
+      '',
+      'If you did not create this account, you can ignore this message.',
+    ].join('\n'),
+    html: buildEmailShell({
+      title: 'Verify your email address',
+      intro: 'Thanks for joining HEALIO. Confirm your email to activate your account and continue securely.',
+      actionLabel: 'Verify email',
+      actionUrl: verifyUrl,
+      note: 'For security, this verification link should only be used by the person who created the account.',
+      footer: 'If you did not create a HEALIO account, you can safely ignore this message and no changes will be made.',
+    }),
   };
 }
 
 function buildPasswordResetEmail({ resetUrl }) {
-  const safeUrl = escapeHtml(resetUrl);
-
   return {
-    subject: 'Reset your HEALIO password',
-    text: `Reset password: ${resetUrl}`,
-    html: `
-      <div style="font-family:Arial;padding:20px;">
-        <h2>Password Reset</h2>
-        <a href="${safeUrl}" style="color:#2563eb;">Reset Password</a>
-      </div>
-    `,
+    subject: 'HEALIO: Reset your password',
+    text: [
+      'A password reset was requested for your HEALIO account.',
+      '',
+      'Open this link to choose a new password:',
+      resetUrl,
+      '',
+      'If you did not request this, you can ignore this message.',
+    ].join('\n'),
+    html: buildEmailShell({
+      title: 'Reset your password',
+      intro: 'We received a request to reset your HEALIO password. Use the button below to choose a new one.',
+      actionLabel: 'Reset password',
+      actionUrl: resetUrl,
+      note: 'If you did not request a password reset, you can ignore this email. Your account will stay unchanged.',
+      footer: 'For your security, this link should only be used by you and will expire automatically.',
+    }),
   };
 }
 

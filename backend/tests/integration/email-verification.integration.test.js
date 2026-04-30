@@ -111,7 +111,7 @@ test('repeat registration before verification refreshes the pending signup and l
   assert.equal(secondRegisterRes.body.user.licenseNb, 'DOC-4421');
   assert.equal(
     secondRegisterRes.body.message,
-    'Pending registration updated. Please verify your email using the newest link.'
+    'Pending registration updated. A fresh verification email was sent.'
   );
   assert.ok(secondRegisterRes.body.verificationToken);
 
