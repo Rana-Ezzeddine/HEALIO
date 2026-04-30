@@ -80,6 +80,15 @@ function buildPasswordResetEmail({ resetUrl }) {
   };
 }
 
+function getFrontendAppBaseUrl() {
+  const baseUrl =
+    process.env.FRONTEND_URL ||
+    process.env.APP_BASE_URL ||
+    'http://localhost:5173';
+
+  return String(baseUrl).replace(/\/+$/, '');
+}
+
 // ================== TRANSPORT ==================
 let transporter = null;
 
@@ -275,14 +284,9 @@ export async function sendVerificationEmail({ to, token }) {
   }
 
   try {
-    const baseUrl =
-      process.env.APP_BASE_URL ||
-      process.env.FRONTEND_URL ||
-      'http://localhost:5173';
+    const normalizedBaseUrl = getFrontendAppBaseUrl();
 
-    const normalizedBaseUrl = String(baseUrl).replace(/\/+$/, '');
-
-    console.log('[sendVerificationEmail] baseUrl:', baseUrl);
+    console.log('[sendVerificationEmail] baseUrl:', normalizedBaseUrl);
 
     const verifyUrl = `${normalizedBaseUrl}/verify-email?token=${encodeURIComponent(token)}`;
     console.log('[sendVerificationEmail] verifyUrl:', verifyUrl);
@@ -325,11 +329,7 @@ export async function sendVerificationEmail({ to, token }) {
 export async function sendPasswordResetEmail({ to, token }) {
   if (process.env.NODE_ENV === 'test') return { skipped: true };
 
-  const baseUrl =
-    process.env.APP_BASE_URL ||
-    process.env.FRONTEND_URL ||
-    'http://localhost:5173';
-
+  const baseUrl = getFrontendAppBaseUrl();
   const resetUrl = `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
   const email = buildPasswordResetEmail({ resetUrl });
   await sendEmail({
