@@ -1342,12 +1342,10 @@ export default function DoctorAppointments() {
               </div>
               <div className="flex flex-wrap gap-2">
                 <SoftPill label="Weekly blocks" value={availabilityByType.workHours.length} tone="sky" />
-                <SoftPill label="Breaks" value={availabilityByType.breaks.length} tone="amber" />
-                <SoftPill label="Blocked" value={availabilityByType.blocked.length} tone="rose" />
               </div>
             </div>
 
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
               <div className="rounded-2xl bg-white/90 p-4 shadow-sm">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Planner</p>
                 <p className="mt-2 text-2xl font-black text-slate-900">{availabilityByType.workHours.length}</p>
@@ -1357,11 +1355,6 @@ export default function DoctorAppointments() {
                 <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Slot size</p>
                 <p className="mt-2 text-2xl font-black text-slate-900">{plannerSlotMinutes} min</p>
                 <p className="mt-2 text-sm text-slate-500">Driven by duration rule</p>
-              </div>
-              <div className="rounded-2xl bg-white/90 p-4 shadow-sm">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Exceptions</p>
-                <p className="mt-2 text-2xl font-black text-slate-900">{availabilityByType.breaks.length + availabilityByType.blocked.length}</p>
-                <p className="mt-2 text-sm text-slate-500">Breaks and blocked dates</p>
               </div>
             </div>
 
@@ -1472,7 +1465,7 @@ export default function DoctorAppointments() {
 
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                 <p className="text-sm text-slate-500">
-                  Breaks and blocked dates can still be added below for exceptions. Current slot size: {plannerSlotMinutes} minutes.
+                  Current slot size: {plannerSlotMinutes} minutes.
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
                   <input
@@ -1502,79 +1495,6 @@ export default function DoctorAppointments() {
             </div>
           </div>
 
-          <form onSubmit={handleSubmitAvailability} className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-6">
-            <select
-              value={availabilityForm.type}
-              onChange={(event) =>
-                setAvailabilityForm((current) => ({
-                  ...current,
-                  type: event.target.value,
-                  selectedWeekdays:
-                    event.target.value === "workHours"
-                      ? current.selectedWeekdays?.length
-                        ? current.selectedWeekdays
-                        : [current.dayOfWeek || "1"]
-                      : [],
-                  specificDate: event.target.value === "workHours" ? "" : current.specificDate,
-                }))
-              }
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-            >
-              <option value="break">Break</option>
-              <option value="blocked">Blocked date</option>
-            </select>
-
-            <input
-              type="date"
-              value={availabilityForm.specificDate}
-              onChange={(event) => setAvailabilityForm((current) => ({ ...current, specificDate: event.target.value }))}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-              required
-            />
-
-            <input
-              type="time"
-              value={availabilityForm.startTime}
-              onChange={(event) => setAvailabilityForm((current) => ({ ...current, startTime: event.target.value }))}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-              required
-            />
-
-            <input
-              type="time"
-              value={availabilityForm.endTime}
-              onChange={(event) => setAvailabilityForm((current) => ({ ...current, endTime: event.target.value }))}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-              required
-            />
-
-            <input
-              type="text"
-              placeholder="Reason (optional)"
-              value={availabilityForm.reason}
-              onChange={(event) => setAvailabilityForm((current) => ({ ...current, reason: event.target.value }))}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 md:col-span-2"
-            />
-
-            <button
-              type="submit"
-              disabled={availabilitySaving}
-              className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 transition disabled:opacity-70"
-            >
-              {availabilitySaving ? "Saving..." : editingAvailabilityId ? "Update entry" : "Add entry"}
-            </button>
-          </form>
-
-          <div className="mt-3 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-800">
-            Use the visual planner for weekly bookable hours. Use the form below only for one-off breaks and blocked dates.
-          </div>
-
-          {availabilityError && (
-            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {availabilityError}
-            </div>
-          )}
-
           <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
@@ -1593,91 +1513,46 @@ export default function DoctorAppointments() {
             </div>
           </div>
 
-          <div className="mt-5 grid gap-4 lg:grid-cols-3">
-            {[
-              { key: "workHours", title: "Work days & hours", empty: "No weekly work-hour blocks yet. Use the planner above, then save weekly availability to open booking slots." },
-              { key: "breaks", title: "Breaks", empty: "No break windows defined yet. Add a break entry above if you need to protect time inside your workday." },
-              { key: "blocked", title: "Blocked dates", empty: "No blocked dates defined yet. Add a blocked date above when you need to close a full day or one-off window." },
-            ].map((section) => (
-              <div key={section.key} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <h3 className="text-sm font-semibold text-slate-900">{section.title}</h3>
-                <div className="mt-3 space-y-3">
-                  {availabilityLoading ? (
-                    <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">
-                      Loading...
-                    </div>
-                  ) : section.key === "workHours" && groupedWorkHours.length > 0 ? (
-                    <div className="space-y-2">
-                      {groupedWorkHours.map((group) => (
-                        <div key={`${group.effectiveFrom || "any"}-${group.effectiveUntil || "ongoing"}-${group.timeRange}`} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-semibold text-slate-900">{group.timeRange}</p>
-                              <p className="mt-1 text-sm text-slate-600">{group.days.join(" • ")}</p>
-                              {group.effectiveFrom || group.effectiveUntil ? (
-                                <p className="mt-1 text-xs text-slate-500">
-                                  Effective {group.effectiveFrom || "any start"} to {group.effectiveUntil || "ongoing"}
-                                </p>
-                              ) : null}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => editWorkGroupInPlanner(group)}
-                              className="rounded-full bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-700 hover:bg-sky-100"
-                            >
-                              Edit in planner
-                            </button>
+          <div className="mt-5">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <h3 className="text-sm font-semibold text-slate-900">Work days &amp; hours</h3>
+              <div className="mt-3 space-y-3">
+                {availabilityLoading ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">
+                    Loading...
+                  </div>
+                ) : groupedWorkHours.length > 0 ? (
+                  <div className="space-y-2">
+                    {groupedWorkHours.map((group) => (
+                      <div key={`${group.effectiveFrom || "any"}-${group.effectiveUntil || "ongoing"}-${group.timeRange}`} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{group.timeRange}</p>
+                            <p className="mt-1 text-sm text-slate-600">{group.days.join(" • ")}</p>
+                            {group.effectiveFrom || group.effectiveUntil ? (
+                              <p className="mt-1 text-xs text-slate-500">
+                                Effective {group.effectiveFrom || "any start"} to {group.effectiveUntil || "ongoing"}
+                              </p>
+                            ) : null}
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : availabilityByType[section.key].length > 0 ? (
-                    availabilityByType[section.key].map((entry) => (
-                      <div key={entry.id} className="rounded-2xl border border-slate-200 bg-white p-4">
-                        <p className="text-sm font-semibold text-slate-900">{availabilityTimingLabel(entry)}</p>
-                        {entry.reason ? <p className="mt-1 text-xs text-slate-500">{entry.reason}</p> : null}
-                        <div className="mt-3 flex gap-2">
-                          {entry.type === "workHours" ? (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                editWorkGroupInPlanner({
-                                  effectiveFrom: entry.effectiveFrom || "",
-                                  effectiveUntil: entry.effectiveUntil || "",
-                                })
-                              }
-                              className="rounded-lg bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-100"
-                            >
-                              Edit in planner
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => startEditAvailability(entry)}
-                              className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                            >
-                              Edit
-                            </button>
-                          )}
                           <button
                             type="button"
-                            disabled={availabilitySaving}
-                            onClick={() => handleDeleteAvailability(entry.id)}
-                            className="rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-600 disabled:opacity-70"
+                            onClick={() => editWorkGroupInPlanner(group)}
+                            className="rounded-full bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-700 hover:bg-sky-100"
                           >
-                            Delete
+                            Edit in planner
                           </button>
                         </div>
                       </div>
-                    ))
-                  ) : (
-                    <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">
-                      {section.empty}
-                    </div>
-                  )}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">
+                    No weekly work-hour blocks yet. Use the planner above, then save weekly availability to open booking slots.
+                  </div>
+                )}
               </div>
-            ))}
+            </div>
           </div>
         </section>
 
@@ -1685,6 +1560,4 @@ export default function DoctorAppointments() {
     </div>
   );
 }
-
-
 
