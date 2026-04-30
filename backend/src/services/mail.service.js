@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
 // ================== PATH SETUP ==================
@@ -30,7 +31,7 @@ function getVerificationLogoMarkup() {
     `;
   }
 
-  if (fs.existsSync(localLogoPath)) {
+  if (!isGmailApiConfigured() && fs.existsSync(localLogoPath)) {
     return `
       <img src="cid:${verificationLogoCid}" alt="HEALIO"
         width="156"
@@ -82,11 +83,15 @@ function buildPasswordResetEmail({ resetUrl }) {
 // ================== TRANSPORT ==================
 let transporter = null;
 
+const BREVO_SEND_URL = 'https://api.brevo.com/v3/smtp/email';
+const GOOGLE_OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const GMAIL_SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
+
 function getTransporter() {
   if (transporter) return transporter;
 
   if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    throw new Error('MAILTRAP_SMTP_NOT_CONFIGURED');
+    throw new Error('MAIL_DELIVERY_NOT_CONFIGURED');
   }
 
   transporter = nodemailer.createTransport({
@@ -103,6 +108,161 @@ function getTransporter() {
   });
 
   return transporter;
+}
+
+function isGmailApiConfigured() {
+  return Boolean(
+    process.env.GOOGLE_CLIENT_ID &&
+    process.env.GOOGLE_CLIENT_SECRET &&
+    process.env.GOOGLE_MAIL_REFRESH_TOKEN &&
+    process.env.GOOGLE_SENDER_EMAIL
+  );
+}
+
+function isBrevoApiConfigured() {
+  return Boolean(
+    process.env.BREVO_API_KEY &&
+    process.env.BREVO_SENDER_EMAIL
+  );
+}
+
+async function getGoogleMailAccessToken() {
+  const response = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET,
+      refresh_token: process.env.GOOGLE_MAIL_REFRESH_TOKEN,
+      grant_type: 'refresh_token',
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`GOOGLE_MAIL_TOKEN_FAILED: ${errorText || response.statusText}`);
+  }
+
+  const payload = await response.json();
+  if (!payload.access_token) {
+    throw new Error('GOOGLE_MAIL_TOKEN_MISSING');
+  }
+
+  return payload.access_token;
+}
+
+function encodeSubject(subject) {
+  if (/^[\x00-\x7F]*$/.test(subject)) {
+    return subject;
+  }
+
+  return `=?UTF-8?B?${Buffer.from(subject, 'utf8').toString('base64')}?=`;
+}
+
+function buildRawEmail({ from, to, subject, text, html }) {
+  const boundary = `healio-${crypto.randomUUID?.() || Date.now()}`;
+  const lines = [
+    `From: ${from}`,
+    `To: ${to}`,
+    `Subject: ${encodeSubject(subject)}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    text || '',
+    '',
+    `--${boundary}`,
+    'Content-Type: text/html; charset="UTF-8"',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    html || '',
+    '',
+    `--${boundary}--`,
+    '',
+  ];
+
+  return Buffer.from(lines.join('\r\n'), 'utf8')
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+}
+
+async function sendViaGmailApi({ from, to, subject, text, html }) {
+  const accessToken = await getGoogleMailAccessToken();
+  const raw = buildRawEmail({ from, to, subject, text, html });
+
+  const response = await fetch(GMAIL_SEND_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ raw }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`GOOGLE_MAIL_SEND_FAILED: ${errorText || response.statusText}`);
+  }
+
+  return response.json();
+}
+
+async function sendViaBrevoApi({ to, subject, text, html }) {
+  const senderEmail = process.env.BREVO_SENDER_EMAIL;
+  const senderName = process.env.BREVO_SENDER_NAME || 'HEALIO';
+
+  const response = await fetch(BREVO_SEND_URL, {
+    method: 'POST',
+    headers: {
+      'api-key': process.env.BREVO_API_KEY,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({
+      sender: {
+        name: senderName,
+        email: senderEmail,
+      },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+      textContent: text,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`BREVO_SEND_FAILED: ${errorText || response.statusText}`);
+  }
+
+  return response.json();
+}
+
+async function sendEmail({ to, subject, text, html, attachments = [] }) {
+  if (isBrevoApiConfigured()) {
+    return sendViaBrevoApi({ to, subject, text, html });
+  }
+
+  if (isGmailApiConfigured()) {
+    const from = process.env.EMAIL_FROM || process.env.GOOGLE_SENDER_EMAIL;
+    return sendViaGmailApi({ from, to, subject, text, html });
+  }
+
+  const tx = getTransporter();
+
+  return tx.sendMail({
+    from: process.env.SMTP_FROM || 'HEALIO <no-reply@healio.local>',
+    to,
+    subject,
+    text,
+    html,
+    attachments,
+  });
 }
 
 // ================== SEND FUNCTIONS ==================
@@ -132,9 +292,6 @@ export async function sendVerificationEmail({ to, token }) {
       subject: email.subject,
     });
 
-    const tx = getTransporter();
-    console.log('[sendVerificationEmail] transporter initialized');
-
     const logoExists = fs.existsSync(localLogoPath);
     console.log('[sendVerificationEmail] logo exists:', logoExists);
 
@@ -148,8 +305,7 @@ export async function sendVerificationEmail({ to, token }) {
 
     console.log('[sendVerificationEmail] attachments:', attachments.length);
 
-    const info = await tx.sendMail({
-      from: process.env.SMTP_FROM || 'HEALIO <no-reply@healio.local>',
+    const info = await sendEmail({
       to,
       subject: email.subject,
       text: email.text,
@@ -176,10 +332,7 @@ export async function sendPasswordResetEmail({ to, token }) {
 
   const resetUrl = `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
   const email = buildPasswordResetEmail({ resetUrl });
-  const tx = getTransporter();
-
-  await tx.sendMail({
-    from: process.env.SMTP_FROM || 'HEALIO <no-reply@healio.local>',
+  await sendEmail({
     to,
     subject: email.subject,
     text: email.text,
@@ -192,10 +345,7 @@ export async function sendPasswordResetEmail({ to, token }) {
 export async function sendDoctorEmergencyAlert({ to, patientEmail, reason }) {
   if (process.env.NODE_ENV === 'test') return { skipped: true };
 
-  const tx = getTransporter();
-
-  await tx.sendMail({
-    from: process.env.SMTP_FROM || 'HEALIO <no-reply@healio.local>',
+  await sendEmail({
     to,
     subject: 'HEALIO Emergency Alert',
     text: `Emergency alert from ${patientEmail}. Reason: ${reason || 'N/A'}`,
