@@ -132,16 +132,8 @@ const verifyMfaCodeForUser = async (user, code) => {
 
 const createVerificationToken = async () => crypto.randomBytes(32).toString('hex');
 const createPasswordResetToken = async () => crypto.randomBytes(32).toString('hex');
-const queueEmailDelivery = (label, sendFn) => {
-  Promise.resolve()
-    .then(sendFn)
-    .catch((error) => {
-      console.error(`[${label}] background email delivery failed:`, error);
-    });
-};
-
-const isSmtpConfigurationError = (error) =>
-  String(error?.message || '').includes('MAILTRAP_SMTP_NOT_CONFIGURED');
+const isMailConfigurationError = (error) =>
+  String(error?.message || '').includes('MAIL_DELIVERY_NOT_CONFIGURED');
 
 const getFrontendBaseUrl = () => process.env.FRONTEND_URL || process.env.APP_BASE_URL || 'http://localhost:5173';
 
@@ -707,22 +699,22 @@ export const register = async (req, res) => {
       try {
         await sendVerificationEmail({ to: cleanEmail, token: rawToken });
       } catch (mailErr) {
-        if (isSmtpConfigurationError(mailErr)) {
+        if (isMailConfigurationError(mailErr)) {
           return res.status(500).json({
-            message: 'Signup created but verification email could not be sent because SMTP is not configured on the server.',
-            code: 'SMTP_NOT_CONFIGURED',
+            message: 'Signup could not be completed because email delivery is not configured on the server.',
+            code: 'EMAIL_NOT_CONFIGURED',
           });
         }
         return res.status(502).json({
-          message: 'Signup created but verification email delivery failed. Please try resending in a minute.',
+          message: 'Verification email could not be sent. Please try again in a minute.',
           code: 'EMAIL_DELIVERY_FAILED',
         });
       }
 
       return res.status(existingPending ? 200 : 201).json({
         message: existingPending
-          ? 'Pending registration updated. A fresh verification email is being sent.'
-          : 'Registered successfully. A verification email is being sent.',
+          ? 'Pending registration updated. A fresh verification email was sent.'
+          : 'Registered successfully. A verification email was sent.',
         user: pendingUser,
         verificationRequired: true,
         ...(process.env.NODE_ENV === 'test' ? { verificationToken: rawToken } : {}),
@@ -845,10 +837,10 @@ export const resendVerification = async (req, res) => {
     try {
       await sendVerificationEmail({ to: pendingRegistration.email, token: rawToken });
     } catch (mailErr) {
-      if (isSmtpConfigurationError(mailErr)) {
+      if (isMailConfigurationError(mailErr)) {
         return res.status(500).json({
-          message: 'Verification email could not be sent because SMTP is not configured on the server.',
-          code: 'SMTP_NOT_CONFIGURED',
+          message: 'Verification email could not be sent because email delivery is not configured on the server.',
+          code: 'EMAIL_NOT_CONFIGURED',
         });
       }
       return res.status(502).json({
@@ -858,7 +850,7 @@ export const resendVerification = async (req, res) => {
     }
 
     return res.status(200).json({
-      message: 'Verification email is being sent.',
+      message: 'Verification email sent.',
       ...(process.env.NODE_ENV === 'test' ? { verificationToken: rawToken } : {}),
     });
   } catch (err) {
@@ -898,12 +890,24 @@ export const requestPasswordReset = async (req, res) => {
       expiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
     });
 
-    queueEmailDelivery('password-reset-email', () =>
-      sendPasswordResetEmail({ to: cleanEmail, token: rawToken })
-    );
+    try {
+      await sendPasswordResetEmail({ to: cleanEmail, token: rawToken });
+    } catch (mailErr) {
+      if (isMailConfigurationError(mailErr)) {
+        return res.status(500).json({
+          message: 'Password reset email could not be sent because email delivery is not configured on the server.',
+          code: 'EMAIL_NOT_CONFIGURED',
+        });
+      }
+
+      return res.status(502).json({
+        message: 'Password reset email could not be sent. Please try again shortly.',
+        code: 'EMAIL_DELIVERY_FAILED',
+      });
+    }
 
     return res.status(200).json({
-      message: 'Password reset link request received. If email delivery succeeds, check your inbox shortly.',
+      message: 'Password reset email sent.',
       ...(process.env.NODE_ENV === 'test' ? { resetToken: rawToken } : {}),
     });
   } catch (err) {

@@ -244,13 +244,13 @@ async function sendViaBrevoApi({ to, subject, text, html }) {
 }
 
 async function sendEmail({ to, subject, text, html, attachments = [] }) {
-  if (isBrevoApiConfigured()) {
-    return sendViaBrevoApi({ to, subject, text, html });
-  }
-
   if (isGmailApiConfigured()) {
     const from = process.env.EMAIL_FROM || process.env.GOOGLE_SENDER_EMAIL;
     return sendViaGmailApi({ from, to, subject, text, html });
+  }
+
+  if (isBrevoApiConfigured()) {
+    return sendViaBrevoApi({ to, subject, text, html });
   }
 
   const tx = getTransporter();
