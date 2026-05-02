@@ -325,7 +325,7 @@ export default function Navbar({ onLogin, onSignup }) {
                           : "text-slate-600 hover:text-slate-900"
                     }`}
                 >
-                  {isReviewer ? "Reviewer Workspace" : isDoctor && doctorApprovalHeld ? "Application Status" : "Dashboard"}
+                  {isReviewer ? "Reviewer Workspace" : isDoctor && doctorApprovalHeld ? "Application Status" : isAdmin ? "Admin Home" : "Dashboard"}
                 </button>
 
                 {isDoctor && !doctorApprovalHeld && (
@@ -562,7 +562,7 @@ export default function Navbar({ onLogin, onSignup }) {
                   </div>
                 )}
 
-                {!isPatient && userRole !== "caregiver" && !isDoctor && !isReviewer && (
+                {!isPatient && userRole !== "caregiver" && !isDoctor && !isReviewer && !isAdmin && (
                   <button
                     onClick={() => navigate(profilePath)}
                     className={`text-sm font-medium transition ${isProfile ? "text-sky-700 font-semibold" : "text-slate-600 hover:text-slate-900"
