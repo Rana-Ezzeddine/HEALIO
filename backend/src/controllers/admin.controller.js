@@ -78,13 +78,6 @@ export const createAdminAccount = async (req, res) => {
       doctorApprovalStatus: "not_applicable",
     });
 
-    await PatientProfile.create({
-      userId: user.id,
-      firstName,
-      lastName,
-      email,
-    });
-
     return res.status(201).json({
       message: "Admin account created.",
       user: {
@@ -92,9 +85,9 @@ export const createAdminAccount = async (req, res) => {
         email: user.email,
         role: user.role,
         isVerified: user.isVerified,
-        firstName,
-        lastName,
-        displayName: buildDisplayName(user, { firstName, lastName }),
+        firstName: null,
+        lastName: null,
+        displayName: user.email,
       },
     });
   } catch (err) {
