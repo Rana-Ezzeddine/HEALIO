@@ -309,24 +309,26 @@ export default function Navbar({ onLogin, onSignup }) {
               </>
             ) : (
               <>
-                <button
-                  onClick={() => navigate(homePath)}
-                  className={`text-sm font-medium transition ${
-                    isReviewer
-                      ? isDoctorReview
-                        ? "text-sky-700 font-semibold"
-                        : "text-slate-600 hover:text-slate-900"
-                      : isDoctor && doctorApprovalHeld
-                        ? isDoctorApprovalStatus
+                {!isAdmin && (
+                  <button
+                    onClick={() => navigate(homePath)}
+                    className={`text-sm font-medium transition ${
+                      isReviewer
+                        ? isDoctorReview
                           ? "text-sky-700 font-semibold"
                           : "text-slate-600 hover:text-slate-900"
-                        : isDashboard
-                          ? "text-sky-700 font-semibold"
-                          : "text-slate-600 hover:text-slate-900"
-                    }`}
-                >
-                  {isReviewer ? "Reviewer Workspace" : isDoctor && doctorApprovalHeld ? "Application Status" : isAdmin ? "Admin Home" : "Dashboard"}
-                </button>
+                        : isDoctor && doctorApprovalHeld
+                          ? isDoctorApprovalStatus
+                            ? "text-sky-700 font-semibold"
+                            : "text-slate-600 hover:text-slate-900"
+                          : isDashboard
+                            ? "text-sky-700 font-semibold"
+                            : "text-slate-600 hover:text-slate-900"
+                      }`}
+                  >
+                    {isReviewer ? "Reviewer Workspace" : isDoctor && doctorApprovalHeld ? "Application Status" : "Dashboard"}
+                  </button>
+                )}
 
                 {isDoctor && !doctorApprovalHeld && (
                   <button
